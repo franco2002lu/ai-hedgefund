@@ -304,10 +304,10 @@ Unified data access layer. Branches request data through a single interface; the
 |                            |                                      |
 |  +-------------------------v----------------------------+         |
 |  | Source Adapters                                       |        |
-|  |  +- FinancialDatasetsAdapter (equities)              |        |
-|  |  +- YahooFinanceAdapter (equities fallback)          |        |
+|  |  +- YahooFinanceAdapter (equities + crypto, primary)  |        |
+|  |  +- FinancialDatasetsAdapter (equities, future)      |        |
 |  |  +- FREDAdapter (macro, bonds, interest rates)       |        |
-|  |  +- CoinGeckoAdapter (crypto)                        |        |
+|  |  +- CoinGeckoAdapter (crypto, future fallback)       |        |
 |  |  +- QuandlAdapter (commodities, futures)             |        |
 |  |  +- AlphaVantageAdapter (multi-asset)                |        |
 |  |  +- ...                                               |        |
@@ -507,7 +507,7 @@ Phase 1 through 6, designed so each phase delivers working, testable functionali
 - Shared library: models, enums, interfaces, event schemas
 - Portfolio module (CRUD + position updates)
 - Trade Execution module (paper mode only, with PaperTradingAdapter)
-- Data Platform module (with FinancialDatasetsAdapter for equities, in-memory cache)
+- Data Platform module (with YahooFinanceAdapter for equities/crypto, in-memory cache)
 - Event log table + helper for appending events
 - Single FastAPI app wiring all modules together
 

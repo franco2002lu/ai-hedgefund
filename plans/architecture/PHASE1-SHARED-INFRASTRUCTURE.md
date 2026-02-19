@@ -86,7 +86,7 @@ ai-hedge-fund/
 │   │   │   ├── rate_limiter.py            # Per-source rate limiting
 │   │   │   └── adapters/                  # Data source adapters
 │   │   │       ├── __init__.py
-│   │   │       └── financial_datasets.py  # FinancialDatasetsAdapter
+│   │   │       └── yahoo_finance.py       # YahooFinanceAdapter (primary for Phase 1)
 │   │   │
 │   │   └── event_log/                     # Event Log Module
 │   │       ├── __init__.py
@@ -1998,15 +1998,15 @@ class DataPlatformService:
 
     Adapter registry example:
       prices:
-        equity:     [FinancialDatasetsAdapter, YahooFinanceAdapter]
-        crypto:     [CoinGeckoAdapter]
-        commodity:  [QuandlAdapter]
+        equity:     [YahooFinanceAdapter, FinancialDatasetsAdapter (future)]
+        crypto:     [YahooFinanceAdapter, CoinGeckoAdapter (future)]
+        commodity:  [QuandlAdapter (future)]
       fundamentals:
-        equity:     [FinancialDatasetsAdapter]
+        equity:     [YahooFinanceAdapter, FinancialDatasetsAdapter (future)]
       news:
-        all:        [FinancialDatasetsAdapter]
+        all:        [YahooFinanceAdapter]
       macro:
-        all:        [FREDAdapter]
+        all:        [FREDAdapter (future)]
     """
 
     def __init__(self, adapter_registry: dict):
@@ -2174,9 +2174,9 @@ for Phase 2 (Equities Branch).
 
 | Test | Verifies |
 |------|----------|
-| Get prices for a known equity ticker, receive OHLCV bars | FinancialDatasetsAdapter works |
-| Get financial metrics for a ticker | Fundamentals adapter works |
-| Get news articles | News adapter works |
+| Get prices for a known equity ticker, receive OHLCV bars | YahooFinanceAdapter works |
+| Get financial metrics for a ticker | Fundamentals adapter works (via yfinance) |
+| Get news articles | News adapter works (via yfinance) |
 | Request with invalid symbol → meaningful error | Error handling, not a 500 |
 | Second request for same symbol within TTL → served from cache (no API call) | In-memory cache works |
 | Request after TTL expires → fresh API call | Cache expiration works |
@@ -2242,6 +2242,6 @@ agents into branch modules.
 | `src/backtesting/types.py` (Action, PositionState) | `common/enums.py` (OrderSide) + `common/models/position.py` |
 | `src/backtesting/portfolio.py` (Portfolio class) | Portfolio module (server-side state management) |
 | `src/backtesting/trader.py` (TradeExecutor) | Trade Execution module |
-| `src/tools/api.py` (get_prices, etc.) | Data Platform module + FinancialDatasetsAdapter |
+| `src/tools/api.py` (get_prices, etc.) | Data Platform module + YahooFinanceAdapter (FinancialDatasetsAdapter added later) |
 | `src/graph/state.py` (AgentState) | Adapted in Phase 2 within branch modules |
 | `app/backend/database/` (SQLite ORM) | PostgreSQL schema (this document) |
