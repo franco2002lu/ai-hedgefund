@@ -1,126 +1,120 @@
-# Phase 1: Shared Infrastructure -- Service Interfaces & Data Models
+# Phase 1: Shared Infrastructure -- Module Interfaces & Data Models
 
-This document defines the concrete service interfaces, data models, event schemas, and
-project structure for the shared infrastructure layer that all branch services depend on.
+This document defines the concrete module interfaces, data models, event schemas, and
+project structure for the shared infrastructure layer that all branch modules depend on.
+
+> **Architecture**: This project uses a **modular monolith** -- a single FastAPI process
+> with clean module boundaries. See [HIGH-LEVEL-ARCH.md](HIGH-LEVEL-ARCH.md) for rationale.
 
 ---
 
 ## 1. Project Structure
 
-Monorepo layout. Each service is a separate Python package with its own FastAPI app,
-but shares common models via the `common` library.
+Single Python package with module subdirectories. All modules run within one FastAPI
+process and share a single PostgreSQL database.
 
 ```
 ai-hedge-fund/
-├── services/
-│   ├── common/                          # Shared library (installed as editable dep)
-│   │   ├── pyproject.toml
-│   │   └── common/
-│   │       ├── __init__.py
-│   │       ├── enums.py                 # Shared enumerations
-│   │       ├── events/                  # Event schemas (Pydantic)
-│   │       │   ├── __init__.py
-│   │       │   ├── base.py              # BaseEvent
-│   │       │   ├── trade.py             # Trade lifecycle events
-│   │       │   ├── portfolio.py         # Portfolio events
-│   │       │   ├── allocation.py        # Allocation events
-│   │       │   ├── risk.py              # Risk alert events
-│   │       │   └── signal.py            # Agent signal events
-│   │       ├── models/                  # Domain models
-│   │       │   ├── __init__.py
-│   │       │   ├── instrument.py        # Instrument model
-│   │       │   ├── position.py          # Position model
-│   │       │   ├── portfolio.py         # Portfolio model
-│   │       │   ├── order.py             # Order model
-│   │       │   └── trade.py             # Trade (fill) model
-│   │       ├── interfaces/              # Abstract adapter interfaces
-│   │       │   ├── __init__.py
-│   │       │   ├── broker.py            # BrokerAdapter ABC
-│   │       │   ├── price_data.py        # PriceDataAdapter ABC
-│   │       │   ├── fundamentals.py      # FundamentalsAdapter ABC
-│   │       │   ├── news.py              # NewsAdapter ABC
-│   │       │   └── macro.py             # MacroAdapter ABC
-│   │       ├── kafka/                   # Kafka producer/consumer helpers
-│   │       │   ├── __init__.py
-│   │       │   ├── producer.py
-│   │       │   └── consumer.py
-│   │       └── config.py                # Shared configuration (env vars, defaults)
+├── app/                                   # Main application package
+│   ├── __init__.py
+│   ├── main.py                            # Single FastAPI app, router registration, lifespan
+│   ├── config.py                          # App configuration (env vars, defaults)
+│   ├── dependencies.py                    # Top-level DI wiring (composition root)
 │   │
-│   ├── portfolio-service/               # Portfolio Service
-│   │   ├── pyproject.toml
-│   │   ├── Dockerfile
-│   │   └── portfolio_service/
+│   ├── common/                            # Shared library (models, enums, interfaces)
+│   │   ├── __init__.py
+│   │   ├── enums.py                       # Shared enumerations
+│   │   ├── events/                        # Event schemas (Pydantic, logged to DB)
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py                    # BaseEvent
+│   │   │   ├── trade.py                   # Trade lifecycle events
+│   │   │   ├── portfolio.py               # Portfolio events
+│   │   │   ├── allocation.py              # Allocation events
+│   │   │   ├── risk.py                    # Risk alert events
+│   │   │   └── signal.py                  # Agent signal events
+│   │   ├── models/                        # Domain models (Pydantic)
+│   │   │   ├── __init__.py
+│   │   │   ├── instrument.py
+│   │   │   ├── position.py
+│   │   │   ├── portfolio.py
+│   │   │   ├── order.py
+│   │   │   └── trade.py
+│   │   ├── interfaces/                    # Abstract interfaces (ABCs)
+│   │   │   ├── __init__.py
+│   │   │   ├── broker.py                  # BrokerAdapter ABC
+│   │   │   ├── price_data.py              # PriceDataAdapter ABC
+│   │   │   ├── fundamentals.py            # FundamentalsAdapter ABC
+│   │   │   ├── news.py                    # NewsAdapter ABC
+│   │   │   ├── macro.py                   # MacroAdapter ABC
+│   │   │   └── repositories.py            # Repository ABCs
+│   │   └── schemas/                       # Shared API response schemas
 │   │       ├── __init__.py
-│   │       ├── main.py                  # FastAPI app
-│   │       ├── api/
-│   │       │   ├── __init__.py
-│   │       │   ├── portfolios.py        # Portfolio endpoints
-│   │       │   ├── positions.py         # Position endpoints
-│   │       │   └── snapshots.py         # Snapshot endpoints
-│   │       ├── db/
-│   │       │   ├── __init__.py
-│   │       │   ├── connection.py        # SQLAlchemy engine + session
-│   │       │   ├── models.py            # ORM models
-│   │       │   └── migrations/          # Alembic migrations
-│   │       ├── event_handlers.py        # Kafka event consumers
-│   │       └── service.py               # Business logic
+│   │       ├── responses.py               # ErrorResponse
+│   │       └── pagination.py              # PaginationParams, PaginatedResponse
 │   │
-│   ├── trade-execution-service/         # Trade Execution Service
-│   │   ├── pyproject.toml
-│   │   ├── Dockerfile
-│   │   └── trade_execution_service/
+│   ├── db/                                # Database layer (shared across modules)
+│   │   ├── __init__.py
+│   │   ├── connection.py                  # SQLAlchemy async engine + session factory
+│   │   ├── models.py                      # All ORM models (single source of truth)
+│   │   └── migrations/                    # Alembic migrations
+│   │       ├── env.py
+│   │       └── versions/
+│   │
+│   ├── modules/                           # Business logic modules
+│   │   ├── __init__.py
+│   │   │
+│   │   ├── portfolio/                     # Portfolio Module
+│   │   │   ├── __init__.py
+│   │   │   ├── api.py                     # FastAPI routes (thin)
+│   │   │   ├── service.py                 # Business logic
+│   │   │   └── repository.py              # PostgreSQL data access
+│   │   │
+│   │   ├── trade_execution/               # Trade Execution Module
+│   │   │   ├── __init__.py
+│   │   │   ├── api.py                     # FastAPI routes (thin)
+│   │   │   ├── service.py                 # Order routing + validation
+│   │   │   ├── repository.py              # PostgreSQL data access
+│   │   │   └── adapters/                  # Broker adapters
+│   │   │       ├── __init__.py
+│   │   │       └── paper.py               # PaperTradingAdapter
+│   │   │
+│   │   ├── data_platform/                 # Data Platform Module
+│   │   │   ├── __init__.py
+│   │   │   ├── api.py                     # FastAPI routes (thin)
+│   │   │   ├── service.py                 # Routing + fallback logic
+│   │   │   ├── cache.py                   # In-memory TTL cache (cachetools)
+│   │   │   ├── rate_limiter.py            # Per-source rate limiting
+│   │   │   └── adapters/                  # Data source adapters
+│   │   │       ├── __init__.py
+│   │   │       └── financial_datasets.py  # FinancialDatasetsAdapter
+│   │   │
+│   │   └── event_log/                     # Event Log Module
 │   │       ├── __init__.py
-│   │       ├── main.py                  # FastAPI app
-│   │       ├── api/
-│   │       │   ├── __init__.py
-│   │       │   └── orders.py            # Order endpoints
-│   │       ├── adapters/
-│   │       │   ├── __init__.py
-│   │       │   ├── paper.py             # PaperTradingAdapter
-│   │       │   ├── alpaca.py            # AlpacaAdapter (future)
-│   │       │   └── coinbase.py          # CoinbaseAdapter (future)
-│   │       ├── event_handlers.py        # Kafka event consumers
-│   │       └── service.py               # Order routing + validation logic
+│   │       ├── service.py                 # append_event(), query_events()
+│   │       └── repository.py              # PostgreSQL events table access
 │   │
-│   ├── data-platform-service/           # Data Platform Service
-│   │   ├── pyproject.toml
-│   │   ├── Dockerfile
-│   │   └── data_platform_service/
-│   │       ├── __init__.py
-│   │       ├── main.py                  # FastAPI app
-│   │       ├── api/
-│   │       │   ├── __init__.py
-│   │       │   ├── prices.py            # Price data endpoints
-│   │       │   ├── fundamentals.py      # Fundamentals endpoints
-│   │       │   ├── news.py              # News endpoints
-│   │       │   └── macro.py             # Macro indicator endpoints
-│   │       ├── adapters/
-│   │       │   ├── __init__.py
-│   │       │   ├── financial_datasets.py  # FinancialDatasetsAdapter
-│   │       │   ├── yahoo_finance.py       # YahooFinanceAdapter (future)
-│   │       │   ├── fred.py                # FREDAdapter (future)
-│   │       │   └── coingecko.py           # CoinGeckoAdapter (future)
-│   │       ├── cache.py                 # Redis cache layer
-│   │       ├── rate_limiter.py          # Per-source rate limiting
-│   │       └── service.py               # Routing + fallback logic
-│   │
-│   └── central-orchestrator/            # Central Orchestration (Phase 3, stubbed)
-│       └── ...
+│   └── central_orchestrator/              # Central Orchestration (Phase 3, stubbed)
+│       └── __init__.py
 │
 ├── infrastructure/
-│   ├── docker-compose.yml               # Local dev: Kafka, PostgreSQL, Redis
-│   ├── kafka/
-│   │   └── topics.yml                   # Topic definitions
-│   └── db/
-│       └── init.sql                     # Initial schema (also managed by Alembic)
+│   └── docker-compose.yml                 # Local dev: PostgreSQL only
 │
-├── plans/                               # Architecture docs
+├── pyproject.toml                         # Single project dependencies
+├── Dockerfile                             # Single container
+│
+├── plans/                                 # Architecture docs
 │   └── architecture/
 │       ├── HIGH-LEVEL-ARCH.md
 │       └── PHASE1-SHARED-INFRASTRUCTURE.md  (this file)
 │
-└── src/                                 # Existing repo (reference, not modified)
+└── src/                                   # Existing repo (reference, not modified)
 ```
+
+**Key differences from a microservices layout:**
+- One `app/main.py` creates a single FastAPI app and registers all module routers
+- One `app/db/` directory with shared ORM models and migrations (no per-service databases)
+- Modules call each other's service classes directly (no HTTP or message bus between them)
+- One `Dockerfile`, one `pyproject.toml`, one deployment unit
 
 ---
 
@@ -255,10 +249,10 @@ class Position(BaseModel):
     instrument_id: str
     symbol: str                          # Denormalized for convenience
 
-    long_quantity: int = 0
+    long_quantity: float = 0.0           # float to support fractional shares and crypto
     long_cost_basis: float = 0.0         # Total cost of long position
 
-    short_quantity: int = 0
+    short_quantity: float = 0.0          # float to support fractional shares and crypto
     short_cost_basis: float = 0.0        # Total proceeds from short sale
     short_margin_used: float = 0.0       # Margin held for short position
 
@@ -275,6 +269,7 @@ class Position(BaseModel):
 
 from pydantic import BaseModel
 from datetime import datetime
+from common.models.position import Position
 
 
 class PortfolioSummary(BaseModel):
@@ -300,7 +295,7 @@ class PortfolioSummary(BaseModel):
     unrealized_pnl: float
     realized_pnl: float
 
-    positions: list                      # list[Position] -- populated on detail requests
+    positions: list[Position] = []       # Populated on detail requests
     updated_at: datetime
 
 
@@ -347,7 +342,7 @@ class OrderRequest(BaseModel):
     symbol: str                          # Denormalized
     side: OrderSide
     order_type: OrderType = OrderType.MARKET
-    quantity: int
+    quantity: float                      # float to support fractional shares and crypto
     limit_price: float | None = None     # Required for LIMIT and STOP_LIMIT
     stop_price: float | None = None      # Required for STOP and STOP_LIMIT
     time_in_force: TimeInForce = TimeInForce.DAY
@@ -368,13 +363,13 @@ class Order(BaseModel):
     symbol: str
     side: OrderSide
     order_type: OrderType
-    quantity: int
+    quantity: float                      # float to support fractional shares and crypto
     limit_price: float | None = None
     stop_price: float | None = None
     time_in_force: TimeInForce
 
     status: OrderStatus = OrderStatus.PENDING
-    filled_quantity: int = 0
+    filled_quantity: float = 0.0         # float to support fractional shares and crypto
     average_fill_price: float = 0.0
     commission: float = 0.0
 
@@ -410,7 +405,7 @@ class Trade(BaseModel):
     symbol: str
 
     side: OrderSide
-    quantity: int
+    quantity: float                      # float to support fractional shares and crypto
     price: float                         # Fill price
     commission: float = 0.0
     slippage: float = 0.0                # Difference from mid-price at time of fill
@@ -423,22 +418,26 @@ class Trade(BaseModel):
 
 ## 4. Event Schemas
 
-### 4.1 Kafka Topic Design
+### 4.1 Event Log Design
 
-| Topic Name | Key | Partitioned By | Producers | Consumers |
-|---|---|---|---|---|
-| `trade.requested` | `branch_id` | branch | Branch services | Trade Execution Service |
-| `trade.executed` | `branch_id` | branch | Trade Execution Service | Portfolio Service, Branch services |
-| `trade.rejected` | `branch_id` | branch | Trade Execution Service | Branch services |
-| `order.status_changed` | `order_id` | order | Trade Execution Service | Branch services |
-| `portfolio.updated` | `branch_id` | branch | Portfolio Service | Central Orchestrator, Branch services |
-| `portfolio.snapshot` | `branch_id` | branch | Portfolio Service | Central Orchestrator |
-| `allocation.directive` | `branch_id` | branch | Central Orchestrator | Branch services, Portfolio Service |
-| `risk.alert` | `branch_id` | branch | Global Risk Manager | Central Orchestrator, Branch services |
-| `signal.generated` | `branch_id` | branch | Branch services (agents) | Logging, Analytics |
+Instead of Kafka topics, all events are logged to a single PostgreSQL `events` table.
+Events are append-only rows with JSON payloads, providing the same audit trail as a
+message bus but with SQL queryability and zero additional infrastructure.
 
-All events are serialized as JSON. Schema registry (e.g., Confluent Schema Registry) is
-recommended for production but not required for MVP.
+| Event Type | Logged By | Used By |
+|---|---|---|
+| `trade.requested` | Branch modules | Audit trail, replay |
+| `trade.executed` | Trade Execution module | Portfolio module (called directly), audit trail |
+| `trade.rejected` | Trade Execution module | Audit trail |
+| `order.status_changed` | Trade Execution module | Audit trail |
+| `portfolio.updated` | Portfolio module | Audit trail |
+| `portfolio.snapshot` | Portfolio module | Central Orchestrator (queries event log) |
+| `allocation.directive` | Central Orchestrator | Audit trail |
+| `risk.alert` | Global Risk Manager | Central Orchestrator (queries event log) |
+| `signal.generated` | Branch modules (agents) | Audit trail, analytics |
+
+Events are serialized as JSON in the `payload` column. The Pydantic event schemas
+(sections 4.2-4.7) define the structure of each event type's payload.
 
 ### 4.2 Base Event
 
@@ -446,7 +445,7 @@ recommended for production but not required for MVP.
 # common/events/base.py
 
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -454,7 +453,7 @@ class BaseEvent(BaseModel):
     """All events inherit from this."""
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     event_type: str                      # e.g. "trade.requested"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str                          # Service that produced the event
     correlation_id: str | None = None    # For tracing a request across services
 ```
@@ -476,7 +475,7 @@ class TradeRequestedEvent(BaseEvent):
     symbol: str
     side: OrderSide
     order_type: OrderType
-    quantity: int
+    quantity: float
     limit_price: float | None = None
     stop_price: float | None = None
     time_in_force: TimeInForce = TimeInForce.DAY
@@ -496,7 +495,7 @@ class TradeExecutedEvent(BaseEvent):
     instrument_id: str
     symbol: str
     side: OrderSide
-    quantity: int
+    quantity: float
     fill_price: float
     commission: float = 0.0
     slippage: float = 0.0
@@ -511,7 +510,7 @@ class TradeRejectedEvent(BaseEvent):
     instrument_id: str
     symbol: str
     side: OrderSide
-    quantity: int
+    quantity: float
     rejection_reason: str                # e.g. "insufficient_cash", "risk_limit_exceeded"
 
 
@@ -522,7 +521,7 @@ class OrderStatusChangedEvent(BaseEvent):
     branch_id: str
     previous_status: OrderStatus
     new_status: OrderStatus
-    filled_quantity: int = 0
+    filled_quantity: float = 0.0
     average_fill_price: float = 0.0
 ```
 
@@ -577,6 +576,7 @@ class PortfolioSnapshotEvent(BaseEvent):
 ```python
 # common/events/allocation.py
 
+from pydantic import BaseModel
 from common.events.base import BaseEvent
 
 
@@ -646,7 +646,169 @@ class SignalGeneratedEvent(BaseEvent):
 
 ---
 
-## 5. PostgreSQL Schema
+## 5. Repository Pattern
+
+All database access is abstracted behind repository interfaces defined in `common/interfaces/repositories.py`.
+Modules depend on the abstract interface; concrete implementations live in each module's `repository.py`.
+This enables swapping persistence for testing (in-memory) or backtesting (historical replay) without changing business logic.
+
+### 5.1 Repository Interfaces
+
+```python
+# common/interfaces/repositories.py
+
+from abc import ABC, abstractmethod
+from datetime import datetime
+
+
+class PortfolioRepository(ABC):
+    """Data access for portfolio state."""
+
+    @abstractmethod
+    async def get_by_branch(self, branch_id: str) -> PortfolioSummary | None:
+        ...
+
+    @abstractmethod
+    async def create(self, branch_id: str, branch_type: str, initial_cash: float, margin_requirement: float) -> PortfolioSummary:
+        ...
+
+    @abstractmethod
+    async def update_cash(self, branch_id: str, amount: float, reason: str) -> PortfolioSummary:
+        ...
+
+    @abstractmethod
+    async def get_fund_summary(self, fund_id: str) -> FundSummaryResponse:
+        ...
+
+
+class PositionRepository(ABC):
+    """Data access for positions within a portfolio."""
+
+    @abstractmethod
+    async def get_by_portfolio(self, portfolio_id: str) -> list[Position]:
+        ...
+
+    @abstractmethod
+    async def get_by_symbol(self, portfolio_id: str, symbol: str) -> Position | None:
+        ...
+
+    @abstractmethod
+    async def upsert(self, position: Position) -> Position:
+        """Create or update a position. Used after trade execution."""
+        ...
+
+    @abstractmethod
+    async def delete_if_flat(self, portfolio_id: str, instrument_id: str) -> bool:
+        """Remove position record if both long and short quantities are zero."""
+        ...
+
+
+class SnapshotRepository(ABC):
+    """Data access for portfolio snapshots."""
+
+    @abstractmethod
+    async def create(self, portfolio_id: str, branch_id: str) -> PortfolioSnapshot:
+        ...
+
+    @abstractmethod
+    async def list_by_branch(
+        self, branch_id: str, limit: int = 30, offset: int = 0
+    ) -> tuple[list[PortfolioSnapshot], int]:
+        """Returns (snapshots, total_count) for pagination."""
+        ...
+
+
+class OrderRepository(ABC):
+    """Data access for orders."""
+
+    @abstractmethod
+    async def create(self, order: Order) -> Order:
+        ...
+
+    @abstractmethod
+    async def get_by_id(self, order_id: str) -> Order | None:
+        ...
+
+    @abstractmethod
+    async def update_status(
+        self, order_id: str, status: OrderStatus, **kwargs
+    ) -> Order:
+        """Update order status and optional fields (filled_quantity, average_fill_price, etc.)."""
+        ...
+
+    @abstractmethod
+    async def list_orders(
+        self,
+        branch_id: str | None = None,
+        status: OrderStatus | None = None,
+        since: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Order], int]:
+        """Returns (orders, total_count) for pagination."""
+        ...
+
+
+class TradeRepository(ABC):
+    """Data access for executed trades (fills)."""
+
+    @abstractmethod
+    async def create(self, trade: Trade) -> Trade:
+        ...
+
+    @abstractmethod
+    async def get_by_id(self, trade_id: str) -> Trade | None:
+        ...
+
+    @abstractmethod
+    async def list_trades(
+        self,
+        branch_id: str | None = None,
+        since: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Trade], int]:
+        """Returns (trades, total_count) for pagination."""
+        ...
+
+
+class EventLogRepository(ABC):
+    """
+    Append-only event log for auditability and replay.
+    Every business action logs an event to this store.
+    """
+
+    @abstractmethod
+    async def append(self, event: "BaseEvent") -> None:
+        """Persist an event to the event log."""
+        ...
+
+    @abstractmethod
+    async def query(
+        self,
+        event_type: str | None = None,
+        branch_id: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Query events with optional filters. Returns raw event dicts."""
+        ...
+```
+
+### 5.2 Implementation Notes
+
+- **PostgreSQL implementations** (e.g., `PostgresPortfolioRepository`) use SQLAlchemy async sessions
+  and are the default for all modules.
+- **In-memory implementations** (e.g., `InMemoryPortfolioRepository`) can be used for unit tests
+  and future backtesting, implementing the same interface with dict-based storage.
+- Repository methods that return lists use the `tuple[list[T], int]` pattern to support
+  paginated responses (items + total count).
+- Repositories do NOT log events -- that is the service layer's responsibility (via the EventLogRepository).
+
+---
+
+## 6. PostgreSQL Schema
 
 All tables use UUIDs as primary keys. Timestamps are timezone-aware.
 
@@ -727,10 +889,10 @@ CREATE TABLE positions (
     instrument_id       UUID NOT NULL REFERENCES instruments(id),
     symbol              VARCHAR(50) NOT NULL,                -- denormalized
 
-    long_quantity       INTEGER NOT NULL DEFAULT 0,
+    long_quantity       NUMERIC(18, 8) NOT NULL DEFAULT 0,  -- supports fractional shares and crypto
     long_cost_basis     NUMERIC(18, 2) NOT NULL DEFAULT 0,
 
-    short_quantity      INTEGER NOT NULL DEFAULT 0,
+    short_quantity      NUMERIC(18, 8) NOT NULL DEFAULT 0,  -- supports fractional shares and crypto
     short_cost_basis    NUMERIC(18, 2) NOT NULL DEFAULT 0,
     short_margin_used   NUMERIC(18, 2) NOT NULL DEFAULT 0,
 
@@ -758,13 +920,13 @@ CREATE TABLE orders (
 
     side                VARCHAR(20) NOT NULL,                -- OrderSide enum
     order_type          VARCHAR(20) NOT NULL,                -- OrderType enum
-    quantity            INTEGER NOT NULL,
+    quantity            NUMERIC(18, 8) NOT NULL,           -- supports fractional shares and crypto
     limit_price         NUMERIC(18, 6),
     stop_price          NUMERIC(18, 6),
     time_in_force       VARCHAR(10) NOT NULL DEFAULT 'day',
 
     status              VARCHAR(30) NOT NULL DEFAULT 'pending',
-    filled_quantity     INTEGER NOT NULL DEFAULT 0,
+    filled_quantity     NUMERIC(18, 8) NOT NULL DEFAULT 0, -- supports fractional shares and crypto
     average_fill_price  NUMERIC(18, 6) NOT NULL DEFAULT 0,
     commission          NUMERIC(12, 4) NOT NULL DEFAULT 0,
     rejection_reason    TEXT,
@@ -794,7 +956,7 @@ CREATE TABLE trades (
     symbol              VARCHAR(50) NOT NULL,
 
     side                VARCHAR(20) NOT NULL,
-    quantity            INTEGER NOT NULL,
+    quantity            NUMERIC(18, 8) NOT NULL,           -- supports fractional shares and crypto
     price               NUMERIC(18, 6) NOT NULL,
     commission          NUMERIC(12, 4) NOT NULL DEFAULT 0,
     slippage            NUMERIC(12, 6) NOT NULL DEFAULT 0,
@@ -869,37 +1031,414 @@ CREATE TABLE risk_alerts (
 
 CREATE INDEX idx_risk_alerts_level ON risk_alerts(level);
 CREATE INDEX idx_risk_alerts_resolved ON risk_alerts(resolved);
+
+
+-- ============================================================
+-- EVENT LOG (append-only audit trail)
+-- ============================================================
+
+CREATE TABLE events (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_type          VARCHAR(100) NOT NULL,           -- e.g. "trade.executed"
+    branch_id           VARCHAR(100),                    -- NULL for fund-level events
+    source              VARCHAR(100) NOT NULL,           -- Module that produced the event
+    correlation_id      UUID,                            -- For tracing related events
+    payload             JSONB NOT NULL,                  -- Full event data (Pydantic model → JSON)
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_events_type ON events(event_type);
+CREATE INDEX idx_events_branch ON events(branch_id);
+CREATE INDEX idx_events_created ON events(created_at);
+CREATE INDEX idx_events_correlation ON events(correlation_id) WHERE correlation_id IS NOT NULL;
+
+-- Composite index for common query pattern: "recent events of type X for branch Y"
+CREATE INDEX idx_events_type_branch_created ON events(event_type, branch_id, created_at DESC);
 ```
 
 ---
 
-## 6. Portfolio Service API
+## 7. Module Layer Architecture
 
-Base URL: `http://portfolio-service:8001`
+This section defines how the three layers (API routes, service, repository) interact
+within each module and the rules for what logic belongs where.
+
+### 7.1 Layer Responsibilities
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  API Routes (api.py)            Thin entry points               │
+│  - Deserialize request          - No business logic             │
+│  - Call service method           - No direct DB access           │
+│  - Serialize response            - Input validation only         │
+├─────────────────────────────────────────────────────────────────┤
+│  Service Layer (service.py)     All business logic              │
+│  - Orchestrates workflow        - Calls repositories for data   │
+│  - Enforces business rules       - Logs events to event log      │
+│  - Computes derived values       - Calls other modules directly  │
+├─────────────────────────────────────────────────────────────────┤
+│  Repository Layer (repository.py)   Data access only            │
+│  - CRUD operations              - No business logic             │
+│  - Query construction            - No event logging              │
+│  - Pagination support            - No cross-module coordination  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+No event handler layer needed -- there is no Kafka. Modules call each other's
+service methods directly within the same process.
+
+### 7.2 Transaction Boundaries
+
+Service methods that modify state must execute within a single database transaction
+to ensure atomicity between mutable state updates and event log inserts. All
+repositories in the same call chain share the same `AsyncSession`, which is
+committed once at the boundary (the API route or the calling service method).
+
+```python
+# app/db/connection.py
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+engine = create_async_engine(settings.database_url)
+async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def get_session() -> AsyncSession:
+    """
+    Yields a single session per request. All repositories in the request
+    share this session, so their operations are part of the same transaction.
+    The session is committed on success, rolled back on exception.
+    """
+    async with async_session_factory() as session:
+        async with session.begin():
+            yield session
+            # session.begin() context manager commits on exit, rolls back on exception
+```
+
+**Key rules:**
+- Repositories receive the session via constructor injection (not via `Depends()` individually)
+- The session's `begin()` context manager handles commit/rollback
+- All repository calls within a single service method share the same session and transaction
+- This means `order_repo.create()`, `trade_repo.create()`, `event_log.append()`, and
+  `portfolio_service.handle_trade_executed()` all execute in the same transaction when
+  called from `TradeExecutionService.submit_order()`
+
+### 7.3 Entry Points: REST API and Direct Calls
+
+Each module can be invoked two ways: via HTTP (for external clients / dashboards)
+or via direct function call (from other modules in the same process). Both paths
+execute the same service method.
+
+```python
+# Example: Trade Execution Module
+
+# --- Entry point 1: REST API (for dashboards / external clients) ---
+# app/modules/trade_execution/api.py
+
+@router.post("/api/v1/orders", response_model=SubmitOrderResponse)
+async def submit_order(
+    req: SubmitOrderRequest,
+    service: TradeExecutionService = Depends(get_trade_execution_service),
+):
+    result = await service.submit_order(OrderRequest(**req.model_dump()))
+    return SubmitOrderResponse(
+        order_id=result.order_id,
+        status=result.status,
+        message=result.message,
+    )
+
+
+# --- Entry point 2: Direct call from another module ---
+# (e.g., a branch module calling trade execution after analysis)
+
+# In branch module's service.py:
+async def execute_trades(self, decisions: list[TradeDecision]):
+    for decision in decisions:
+        order_req = OrderRequest(
+            branch_id=self.branch_id,
+            instrument_id=decision.instrument_id,
+            symbol=decision.symbol,
+            side=decision.side,
+            quantity=decision.quantity,
+            confidence=decision.confidence,
+            reasoning=decision.reasoning,
+        )
+        # Direct function call -- same process, no HTTP overhead
+        result = await self.trade_execution_service.submit_order(order_req)
+
+
+# --- Shared business logic ---
+# app/modules/trade_execution/service.py
+
+class TradeExecutionService:
+    def __init__(
+        self,
+        order_repo: OrderRepository,
+        trade_repo: TradeRepository,
+        broker: BrokerAdapter,
+        event_log: EventLogRepository,
+        portfolio_service: "PortfolioService",  # Direct reference
+    ):
+        self.order_repo = order_repo
+        self.trade_repo = trade_repo
+        self.broker = broker
+        self.event_log = event_log
+        self.portfolio_service = portfolio_service
+
+    async def submit_order(self, req: OrderRequest) -> OrderResult:
+        # 1. Persist order
+        order = await self.order_repo.create(Order.from_request(req))
+
+        # 2. Log intent before execution (audit trail)
+        await self.event_log.append(
+            TradeRequestedEvent.from_order_request(req, order.id)
+        )
+
+        # 3. Route to broker adapter
+        result = await self.broker.submit_order(req)
+
+        # 4. Update order status
+        if result.success:
+            await self.order_repo.update_status(
+                order.id, OrderStatus.FILLED,
+                filled_quantity=req.quantity,
+                average_fill_price=result.trade.price,
+            )
+            await self.trade_repo.create(result.trade)
+
+            # Log event for audit trail (append-only, not for coordination)
+            await self.event_log.append(
+                TradeExecutedEvent.from_trade(result.trade)
+            )
+
+            # Notify portfolio module directly (same process)
+            await self.portfolio_service.handle_trade_executed(result.trade)
+        else:
+            await self.order_repo.update_status(
+                order.id, OrderStatus.REJECTED,
+                rejection_reason=result.rejection_reason,
+            )
+            await self.event_log.append(
+                TradeRejectedEvent.from_order(order, result.rejection_reason)
+            )
+
+        return result
+```
+
+### 7.4 Dependency Injection (Single Composition Root)
+
+All modules share a single `app/dependencies.py` that wires together repositories,
+adapters, and service instances. FastAPI's `Depends()` is used for route-level injection.
+
+**Lifecycle rules:**
+- **Repositories**: Created per-request (they hold a session reference)
+- **Services**: Created per-request (they hold repository references which are per-request)
+- **Adapters and stateless singletons** (e.g., `PaperTradingAdapter`, `DataPlatformService`):
+  Created once at startup and reused across all requests
+
+All repositories within a single request receive the **same** `AsyncSession` instance,
+ensuring they participate in the same database transaction (see Section 7.2).
+
+```python
+# app/dependencies.py  (single composition root for the entire app)
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.connection import get_session
+from app.modules.portfolio.repository import PostgresPortfolioRepository, PostgresPositionRepository
+from app.modules.portfolio.service import PortfolioService
+from app.modules.trade_execution.repository import PostgresOrderRepository, PostgresTradeRepository
+from app.modules.trade_execution.service import TradeExecutionService
+from app.modules.trade_execution.adapters.paper import PaperTradingAdapter
+from app.modules.data_platform.service import DataPlatformService
+from app.modules.event_log.repository import PostgresEventLogRepository
+
+
+# --- Singletons (created once at startup in app lifespan) ---
+# These are stateless or hold only configuration; safe to share across requests.
+
+_data_platform_service: DataPlatformService  # initialized in app lifespan
+_paper_broker: PaperTradingAdapter           # initialized in app lifespan
+
+
+def init_singletons(data_platform_service: DataPlatformService):
+    """Called once from app lifespan (main.py) after adapter registry is configured."""
+    global _data_platform_service, _paper_broker
+    _data_platform_service = data_platform_service
+    _paper_broker = PaperTradingAdapter(data_platform_service=data_platform_service)
+
+
+# --- Per-request dependencies ---
+# Each request gets one session; all repos share it for transactional consistency.
+
+async def get_portfolio_service(
+    session: AsyncSession = Depends(get_session),
+) -> PortfolioService:
+    return PortfolioService(
+        portfolio_repo=PostgresPortfolioRepository(session),
+        position_repo=PostgresPositionRepository(session),
+        event_log=PostgresEventLogRepository(session),
+    )
+
+
+async def get_trade_execution_service(
+    session: AsyncSession = Depends(get_session),
+) -> TradeExecutionService:
+    event_log = PostgresEventLogRepository(session)
+    portfolio_service = PortfolioService(
+        portfolio_repo=PostgresPortfolioRepository(session),
+        position_repo=PostgresPositionRepository(session),
+        event_log=event_log,
+    )
+    return TradeExecutionService(
+        order_repo=PostgresOrderRepository(session),
+        trade_repo=PostgresTradeRepository(session),
+        broker=_paper_broker,
+        event_log=event_log,
+        portfolio_service=portfolio_service,
+    )
+
+
+async def get_data_platform_service() -> DataPlatformService:
+    return _data_platform_service
+```
+
+---
+
+## 8. Shared API Schemas
+
+All services use common response wrappers for consistency. Defined in `common/schemas/`.
+
+### 8.1 Error Response
+
+Every service returns errors in this format. FastAPI exception handlers map domain
+exceptions to the appropriate HTTP status code + `ErrorResponse` body.
+
+```python
+# common/schemas/responses.py
+
+from pydantic import BaseModel
+
+
+class ErrorResponse(BaseModel):
+    """
+    Consistent error response across all services.
+
+    Examples:
+      {"error": "insufficient_cash", "message": "Branch has $5,000 cash but order requires $12,000", "details": {"available": 5000, "required": 12000}}
+      {"error": "instrument_not_found", "message": "No instrument with symbol XYZ", "details": null}
+      {"error": "risk_limit_exceeded", "message": "Order would exceed max position size", "details": {"limit": 0.05, "would_be": 0.08}}
+    """
+    error: str              # Machine-readable error code (snake_case)
+    message: str            # Human-readable explanation
+    details: dict | None = None  # Optional structured context
+
+
+# Standard HTTP status codes used:
+#   400 - Bad request (validation, business rule violation)
+#   404 - Resource not found
+#   409 - Conflict (e.g., duplicate order, stale state)
+#   422 - Unprocessable entity (valid JSON but invalid semantics)
+#   429 - Rate limited
+#   500 - Internal server error
+#   503 - Service unavailable (dependency down)
+```
+
+### 8.2 Pagination
+
+All list endpoints accept pagination parameters and return paginated responses.
+
+```python
+# common/schemas/pagination.py
+
+from pydantic import BaseModel, Field
+
+
+class PaginationParams(BaseModel):
+    """
+    Query parameters for paginated list endpoints.
+    Used as a FastAPI dependency.
+    """
+    limit: int = Field(default=50, ge=1, le=500, description="Max items to return")
+    offset: int = Field(default=0, ge=0, description="Number of items to skip")
+
+
+class PaginatedResponse(BaseModel):
+    """
+    Wrapper for paginated list responses.
+    Generic -- each endpoint specifies the item type in its own response model.
+    """
+    items: list           # list[T] -- typed in each endpoint's response model
+    total: int            # Total matching items (for computing total pages)
+    limit: int            # Echoed from request
+    offset: int           # Echoed from request
+    has_more: bool        # Convenience: offset + limit < total
+```
+
+### 8.3 Usage in Routes
+
+```python
+# Example: listing orders with pagination
+
+from common.schemas.pagination import PaginationParams, PaginatedResponse
+
+@router.get("/api/v1/orders", response_model=PaginatedResponse)
+async def list_orders(
+    branch_id: str | None = None,
+    status: OrderStatus | None = None,
+    since: datetime | None = None,
+    pagination: PaginationParams = Depends(),
+    service: TradeExecutionService = Depends(get_trade_execution_service),
+):
+    orders, total = await service.list_orders(
+        branch_id=branch_id,
+        status=status,
+        since=since,
+        limit=pagination.limit,
+        offset=pagination.offset,
+    )
+    return PaginatedResponse(
+        items=orders,
+        total=total,
+        limit=pagination.limit,
+        offset=pagination.offset,
+        has_more=(pagination.offset + pagination.limit) < total,
+    )
+```
+
+---
+
+## 9. Portfolio Module API
+
+All modules are served by a single FastAPI process. Route prefixes organize endpoints by module.
 
 ### Endpoints
 
+All endpoints are prefixed with `/api/v1`. Error responses use the shared `ErrorResponse` schema.
+List endpoints support pagination via `limit` and `offset` query parameters.
+
 ```
-GET    /health                                    Health check
+GET    /health                                    Health check (no version prefix)
 
-GET    /portfolios/{branch_id}                    Get portfolio summary for a branch
-GET    /portfolios/{branch_id}/positions          List all positions for a branch
-GET    /portfolios/{branch_id}/positions/{symbol} Get single position detail
+GET    /api/v1/portfolios/{branch_id}                    Get portfolio summary for a branch
+GET    /api/v1/portfolios/{branch_id}/positions          List positions (paginated)
+GET    /api/v1/portfolios/{branch_id}/positions/{symbol} Get single position detail
 
-POST   /portfolios                                Create a new portfolio for a branch
-PUT    /portfolios/{branch_id}/cash               Adjust cash (allocation changes)
+POST   /api/v1/portfolios                                Create a new portfolio for a branch
+PUT    /api/v1/portfolios/{branch_id}/cash               Adjust cash (allocation changes)
 
-GET    /portfolios/{branch_id}/snapshots          List historical snapshots
-POST   /portfolios/{branch_id}/snapshots          Trigger a snapshot now
+GET    /api/v1/portfolios/{branch_id}/snapshots          List historical snapshots (paginated)
+POST   /api/v1/portfolios/{branch_id}/snapshots          Trigger a snapshot now
 
-GET    /fund/summary                              Aggregate fund view (all branches)
-GET    /fund/snapshots                             Aggregate snapshot history
+GET    /api/v1/fund/summary                              Aggregate fund view (all branches)
+GET    /api/v1/fund/snapshots                             Aggregate snapshot history (paginated)
 ```
 
 ### Request/Response Schemas
 
 ```python
-# POST /portfolios
+# POST /api/v1/portfolios
 class CreatePortfolioRequest(BaseModel):
     branch_id: str
     branch_type: str
@@ -914,7 +1453,7 @@ class CreatePortfolioResponse(BaseModel):
     created_at: datetime
 
 
-# GET /portfolios/{branch_id}
+# GET /api/v1/portfolios/{branch_id}
 class PortfolioResponse(BaseModel):
     portfolio_id: str
     branch_id: str
@@ -937,9 +1476,9 @@ class PortfolioResponse(BaseModel):
 class PositionResponse(BaseModel):
     instrument_id: str
     symbol: str
-    long_quantity: int
+    long_quantity: float
     long_cost_basis: float
-    short_quantity: int
+    short_quantity: float
     short_cost_basis: float
     short_margin_used: float
     realized_pnl_long: float
@@ -950,13 +1489,37 @@ class PositionResponse(BaseModel):
     market_value: float | None = None
 
 
-# PUT /portfolios/{branch_id}/cash
+# GET /api/v1/portfolios/{branch_id}/positions?limit=50&offset=0
+# Response: PaginatedResponse with items: list[PositionResponse]
+
+
+# PUT /api/v1/portfolios/{branch_id}/cash
 class AdjustCashRequest(BaseModel):
     amount: float                        # Positive = deposit, negative = withdrawal
     reason: str                          # "allocation_increase", "allocation_decrease", "manual"
 
 
-# GET /fund/summary
+# GET /api/v1/portfolios/{branch_id}/snapshots?limit=30&offset=0
+# Response: PaginatedResponse with items: list[PortfolioSnapshotResponse]
+
+class PortfolioSnapshotResponse(BaseModel):
+    snapshot_id: str
+    portfolio_id: str
+    branch_id: str
+    cash: float
+    nav: float
+    total_long_exposure: float
+    total_short_exposure: float
+    gross_exposure: float
+    net_exposure: float
+    unrealized_pnl: float
+    realized_pnl: float
+    margin_used: float
+    position_count: int
+    snapshot_at: datetime
+
+
+# GET /api/v1/fund/summary
 class FundSummaryResponse(BaseModel):
     fund_id: str
     total_aum: float
@@ -979,49 +1542,52 @@ class BranchSummary(BaseModel):
     position_count: int
 ```
 
-### Event Handlers
+### Called By Other Modules
 
-The Portfolio Service subscribes to:
+The Portfolio module exposes service methods that other modules call directly:
 
-| Event | Topic | Action |
+| Caller | Method | Trigger |
 |---|---|---|
-| `TradeExecutedEvent` | `trade.executed` | Update position, recalculate cash/margin/PnL, emit `PortfolioUpdatedEvent` |
-| `AllocationDirectiveEvent` | `allocation.directive` | Update `allocated_capital` on branch, adjust cash if directed |
+| Trade Execution module | `portfolio_service.handle_trade_executed(trade)` | After a successful fill -- updates position, recalculates cash/margin/PnL, logs `PortfolioUpdatedEvent` |
+| Central Orchestrator | `portfolio_service.handle_allocation_directive(directive)` | After allocation decision -- updates `allocated_capital`, adjusts cash |
+
+No Kafka consumers or event handlers needed -- these are direct function calls within the same process.
 
 ---
 
-## 7. Trade Execution Service API
-
-Base URL: `http://trade-execution-service:8002`
+## 10. Trade Execution Module API
 
 ### Endpoints
 
+All endpoints are prefixed with `/api/v1`. Error responses use the shared `ErrorResponse` schema.
+List endpoints support pagination via `limit` and `offset` query parameters.
+
 ```
-GET    /health                                    Health check
+GET    /health                                             Health check (no version prefix)
 
-POST   /orders                                    Submit a new order (sync alternative to event)
-GET    /orders/{order_id}                         Get order status and details
-DELETE /orders/{order_id}                         Cancel an order
-GET    /orders?branch_id=&status=&since=          List orders with filters
+POST   /api/v1/orders                                      Submit a new order (sync alternative to event)
+GET    /api/v1/orders/{order_id}                           Get order status and details
+DELETE /api/v1/orders/{order_id}                           Cancel an order
+GET    /api/v1/orders?branch_id=&status=&since=&limit=&offset=  List orders (paginated)
 
-GET    /trades?branch_id=&since=&limit=           List executed trades
-GET    /trades/{trade_id}                         Get trade detail
+GET    /api/v1/trades?branch_id=&since=&limit=&offset=    List executed trades (paginated)
+GET    /api/v1/trades/{trade_id}                           Get trade detail
 
-GET    /config/mode                               Get current execution mode (paper/live)
-PUT    /config/mode                               Set execution mode
+GET    /api/v1/config/mode                                 Get current execution mode (paper/live)
+PUT    /api/v1/config/mode                                 Set execution mode
 ```
 
 ### Request/Response Schemas
 
 ```python
-# POST /orders
+# POST /api/v1/orders
 class SubmitOrderRequest(BaseModel):
     branch_id: str
     instrument_id: str
     symbol: str
     side: OrderSide
     order_type: OrderType = OrderType.MARKET
-    quantity: int
+    quantity: float
     limit_price: float | None = None
     stop_price: float | None = None
     time_in_force: TimeInForce = TimeInForce.DAY
@@ -1035,7 +1601,7 @@ class SubmitOrderResponse(BaseModel):
     message: str
 
 
-# GET /orders/{order_id}
+# GET /api/v1/orders/{order_id}
 class OrderResponse(BaseModel):
     order_id: str
     branch_id: str
@@ -1043,12 +1609,12 @@ class OrderResponse(BaseModel):
     symbol: str
     side: OrderSide
     order_type: OrderType
-    quantity: int
+    quantity: float
     limit_price: float | None
     stop_price: float | None
     time_in_force: TimeInForce
     status: OrderStatus
-    filled_quantity: int
+    filled_quantity: float
     average_fill_price: float
     commission: float
     rejection_reason: str | None
@@ -1057,17 +1623,37 @@ class OrderResponse(BaseModel):
     filled_at: datetime | None
 
 
-# PUT /config/mode
+# GET /api/v1/orders?branch_id=X&status=filled&limit=50&offset=0
+# Response: PaginatedResponse with items: list[OrderResponse]
+
+# GET /api/v1/trades?branch_id=X&since=2024-01-01&limit=50&offset=0
+# Response: PaginatedResponse with items: list[TradeResponse]
+
+class TradeResponse(BaseModel):
+    trade_id: str
+    order_id: str
+    branch_id: str
+    instrument_id: str
+    symbol: str
+    side: OrderSide
+    quantity: float
+    price: float
+    commission: float
+    slippage: float
+    execution_mode: ExecutionMode
+    executed_at: datetime
+
+
+# PUT /api/v1/config/mode
 class SetExecutionModeRequest(BaseModel):
     mode: ExecutionMode                  # "paper" or "live"
     branch_id: str | None = None         # None = global, else per-branch override
 ```
 
-### Event Handlers
+### Called By Other Modules
 
-| Event | Topic | Action |
-|---|---|---|
-| `TradeRequestedEvent` | `trade.requested` | Validate order, route to broker adapter, emit result |
+Branch modules call `trade_execution_service.submit_order(order_request)` directly.
+No Kafka consumer needed.
 
 ### Broker Adapter Interface
 
@@ -1128,7 +1714,7 @@ class BrokerAdapter(ABC):
 ### Paper Trading Adapter
 
 ```python
-# trade_execution_service/adapters/paper.py
+# app/modules/trade_execution/adapters/paper.py
 
 class PaperTradingAdapter(BrokerAdapter):
     """
@@ -1137,14 +1723,14 @@ class PaperTradingAdapter(BrokerAdapter):
     Behavior:
     - Market orders: Fill immediately at current price + configurable slippage
     - Limit orders: Fill if current price meets limit condition
-    - Uses Data Platform Service to fetch current prices
+    - Uses Data Platform module to fetch current prices
     - Configurable commission model (flat fee, per-share, percentage)
     - Configurable slippage model (fixed bps, random within range, volume-based)
     """
 
     def __init__(
         self,
-        data_platform_url: str,
+        data_platform_service: "DataPlatformService",  # Direct reference, not URL
         slippage_bps: float = 5.0,       # Default: 5 basis points slippage
         commission_per_trade: float = 0.0, # Default: zero commission
     ):
@@ -1152,7 +1738,7 @@ class PaperTradingAdapter(BrokerAdapter):
 
     async def submit_order(self, order: OrderRequest) -> OrderResult:
         """
-        1. Fetch current price from Data Platform Service
+        1. Fetch current price from Data Platform module (direct call)
         2. Apply slippage model to determine fill price
         3. Calculate commission
         4. Return immediate fill result (paper mode = no partial fills)
@@ -1165,53 +1751,56 @@ class PaperTradingAdapter(BrokerAdapter):
 
 ---
 
-## 8. Data Platform Service API
-
-Base URL: `http://data-platform-service:8003`
+## 11. Data Platform Module API
 
 ### Endpoints
 
+All endpoints are prefixed with `/api/v1`. Error responses use the shared `ErrorResponse` schema.
+List endpoints support pagination via `limit` and `offset` query parameters.
+Multi-word URL segments use kebab-case (e.g., `line-items`, `insider-trades`).
+
 ```
-GET    /health                                    Health check
+GET    /health                                             Health check (no version prefix)
 
 # Price data
-GET    /prices/{symbol}                           Get price bars
+GET    /api/v1/prices/{symbol}                             Get price bars
        ?start_date=&end_date=&interval=day
 
 # Fundamentals (equities)
-GET    /fundamentals/{symbol}/metrics             Financial metrics
-       ?period=ttm&limit=10
-GET    /fundamentals/{symbol}/line-items           Specific line items
-       ?items=net_income,capex&period=ttm&limit=10
-GET    /fundamentals/{symbol}/facts               Company facts
+GET    /api/v1/fundamentals/{symbol}/metrics               Financial metrics
+       ?period=ttm&limit=10&offset=0
+GET    /api/v1/fundamentals/{symbol}/line-items              Specific line items
+       ?items=net_income,capex&period=ttm&limit=10&offset=0
+GET    /api/v1/fundamentals/{symbol}/facts                 Company facts
 
-# News
-GET    /news                                      News articles
-       ?symbols=AAPL,MSFT&since=2024-01-01&limit=100
+# News (paginated)
+GET    /api/v1/news                                        News articles
+       ?symbols=AAPL,MSFT&since=2024-01-01&limit=100&offset=0
 
-# Insider data
-GET    /insider-trades/{symbol}                   Insider transactions
-       ?start_date=&end_date=&limit=1000
+# Insider data (paginated)
+GET    /api/v1/insider-trades/{symbol}                     Insider transactions
+       ?start_date=&end_date=&limit=100&offset=0
 
 # Macro indicators (bonds/rates, future use)
-GET    /macro/{indicator}                         Macro data (FRED, etc.)
+GET    /api/v1/macro/{indicator}                           Macro data (FRED, etc.)
        ?start_date=&end_date=
 
 # Market data (crypto, future use)
-GET    /crypto/{symbol}                           Crypto-specific data
+GET    /api/v1/crypto/{symbol}                             Crypto-specific data
        ?start_date=&end_date=
 
-# Metadata
-GET    /instruments/search                        Search instruments
-       ?query=&asset_class=&exchange=
-GET    /instruments/{symbol}                      Get instrument details
-GET    /sources                                   List available data sources and status
+# Metadata (paginated where applicable)
+GET    /api/v1/instruments/search                          Search instruments
+       ?query=&asset_class=&exchange=&limit=50&offset=0
+GET    /api/v1/instruments/{symbol}                        Get instrument details
+PUT    /api/v1/instruments                                 Upsert instrument (create or update by symbol+asset_class+exchange)
+GET    /api/v1/sources                                     List available data sources and status
 ```
 
 ### Response Schemas
 
 ```python
-# GET /prices/{symbol}
+# GET /api/v1/prices/{symbol}
 class PriceBar(BaseModel):
     timestamp: datetime
     open: float
@@ -1227,7 +1816,7 @@ class PriceResponse(BaseModel):
     source: str                          # Which adapter served this data
 
 
-# GET /fundamentals/{symbol}/metrics
+# GET /api/v1/fundamentals/{symbol}/metrics
 class FinancialMetric(BaseModel):
     """Same fields as existing FinancialMetrics model in src/data/models.py"""
     report_period: str
@@ -1242,14 +1831,14 @@ class MetricsResponse(BaseModel):
     source: str
 
 
-# GET /fundamentals/{symbol}/line-items
+# GET /api/v1/fundamentals/{symbol}/line-items
 class LineItemResponse(BaseModel):
     symbol: str
     items: list[dict]                    # Flexible schema (extra="allow")
     source: str
 
 
-# GET /news
+# GET /api/v1/news
 class NewsArticle(BaseModel):
     title: str
     author: str | None
@@ -1264,7 +1853,7 @@ class NewsResponse(BaseModel):
     source: str
 
 
-# GET /macro/{indicator}
+# GET /api/v1/macro/{indicator}
 class MacroDataPoint(BaseModel):
     date: str
     value: float
@@ -1275,6 +1864,32 @@ class MacroResponse(BaseModel):
     unit: str
     data: list[MacroDataPoint]
     source: str
+
+
+# PUT /api/v1/instruments
+class UpsertInstrumentRequest(BaseModel):
+    """
+    Create or update an instrument. Matched by (symbol, asset_class, exchange).
+    Used by data adapters when they encounter a new symbol, and by admin operations.
+    """
+    symbol: str
+    name: str
+    asset_class: str                     # AssetClass enum value
+    exchange: str | None = None
+    currency: str = "USD"
+    is_active: bool = True
+    metadata: dict | None = None         # Asset-class-specific fields
+
+class InstrumentResponse(BaseModel):
+    instrument_id: str
+    symbol: str
+    name: str
+    asset_class: str
+    exchange: str | None
+    currency: str
+    is_active: bool
+    metadata: dict | None
+    created_at: datetime
 ```
 
 ### Source Adapter Interfaces
@@ -1374,7 +1989,7 @@ class MacroAdapter(ABC):
 ### Adapter Routing and Fallback
 
 ```python
-# data_platform_service/service.py
+# app/modules/data_platform/service.py
 
 class DataPlatformService:
     """
@@ -1396,12 +2011,12 @@ class DataPlatformService:
 
     def __init__(self, adapter_registry: dict):
         self.registry = adapter_registry
-        self.cache = RedisCache(...)
+        self.cache = TTLCache(maxsize=1000, ttl=60)  # cachetools in-memory cache
         self.rate_limiter = RateLimiter(...)
 
     async def get_prices(self, symbol: str, asset_class: str, **kwargs) -> PriceResponse:
         cache_key = f"prices:{symbol}:{kwargs}"
-        cached = await self.cache.get(cache_key)
+        cached = self.cache.get(cache_key)
         if cached:
             return cached
 
@@ -1410,7 +2025,7 @@ class DataPlatformService:
             try:
                 await self.rate_limiter.acquire(adapter.name)
                 result = await adapter.get_prices(symbol, **kwargs)
-                await self.cache.set(cache_key, result, ttl=60)  # 1 min for prices
+                self.cache[cache_key] = result  # TTL handled by cachetools
                 return PriceResponse(symbol=symbol, bars=result, source=adapter.name)
             except Exception:
                 continue  # Try next adapter
@@ -1420,7 +2035,7 @@ class DataPlatformService:
 
 ---
 
-## 9. Infrastructure Configuration
+## 12. Infrastructure Configuration
 
 ### docker-compose.yml (local development)
 
@@ -1437,184 +2052,196 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infrastructure/db/init.sql:/docker-entrypoint-initdb.d/init.sql
-
-  kafka:
-    image: confluentinc/cp-kafka:7.6.0
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      CLUSTER_ID: "local-dev-cluster-001"
-    ports:
-      - "9092:9092"
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  # -- Services --
-
-  portfolio-service:
-    build:
-      context: .
-      dockerfile: services/portfolio-service/Dockerfile
-    environment:
-      DATABASE_URL: postgresql://hedgefund:localdev@postgres:5432/hedgefund
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-    ports:
-      - "8001:8001"
-    depends_on:
-      - postgres
-      - kafka
-
-  trade-execution-service:
-    build:
-      context: .
-      dockerfile: services/trade-execution-service/Dockerfile
-    environment:
-      DATABASE_URL: postgresql://hedgefund:localdev@postgres:5432/hedgefund
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      DATA_PLATFORM_URL: http://data-platform-service:8003
-      EXECUTION_MODE: paper
-    ports:
-      - "8002:8002"
-    depends_on:
-      - postgres
-      - kafka
-      - data-platform-service
-
-  data-platform-service:
-    build:
-      context: .
-      dockerfile: services/data-platform-service/Dockerfile
-    environment:
-      REDIS_URL: redis://redis:6379/0
-      FINANCIAL_DATASETS_API_KEY: ${FINANCIAL_DATASETS_API_KEY}
-    ports:
-      - "8003:8003"
-    depends_on:
-      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hedgefund"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:
 ```
 
-### Kafka Topic Initialization
+That's it. No Kafka, no Redis, no separate service containers. The FastAPI app runs
+directly on the host during development (`uvicorn app.main:app --reload`) and connects
+to PostgreSQL in Docker.
 
-```yaml
-# infrastructure/kafka/topics.yml
-# Apply via a startup script or kafka-topics CLI
+For containerized deployment, a single `Dockerfile` builds the entire app:
 
-topics:
-  - name: trade.requested
-    partitions: 6
-    replication_factor: 1
-    config:
-      retention.ms: 604800000           # 7 days
-
-  - name: trade.executed
-    partitions: 6
-    replication_factor: 1
-    config:
-      retention.ms: 2592000000          # 30 days
-
-  - name: trade.rejected
-    partitions: 6
-    replication_factor: 1
-    config:
-      retention.ms: 2592000000          # 30 days
-
-  - name: order.status_changed
-    partitions: 6
-    replication_factor: 1
-    config:
-      retention.ms: 604800000           # 7 days
-
-  - name: portfolio.updated
-    partitions: 6
-    replication_factor: 1
-    config:
-      retention.ms: 604800000           # 7 days
-
-  - name: portfolio.snapshot
-    partitions: 6
-    replication_factor: 1
-    config:
-      retention.ms: -1                  # Retain forever (historical record)
-
-  - name: allocation.directive
-    partitions: 1                       # Low volume, ordering matters
-    replication_factor: 1
-    config:
-      retention.ms: -1                  # Retain forever
-
-  - name: risk.alert
-    partitions: 3
-    replication_factor: 1
-    config:
-      retention.ms: 7776000000          # 90 days
-
-  - name: signal.generated
-    partitions: 6
-    replication_factor: 1
-    config:
-      retention.ms: 2592000000          # 30 days
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY pyproject.toml .
+RUN pip install .
+COPY app/ app/
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ---
 
-## 10. Service Communication Summary
+## 13. Module Communication Summary
+
+All communication between modules is via direct Python function calls within the same process.
+The event log is written to for audit purposes but is not used for inter-module communication.
 
 ```
-                            Sync (REST/gRPC)         Async (Kafka)
-                            ────────────────         ─────────────
-Branch Service
-  → Data Platform Service   GET /prices, etc.        -
-  → Trade Execution Service POST /orders (alt)       TradeRequestedEvent
-  → Portfolio Service       GET /portfolios          -
-  ← Trade Execution Service -                        TradeExecutedEvent, TradeRejectedEvent
-  ← Portfolio Service       -                        PortfolioUpdatedEvent
-  ← Central Orchestrator    -                        AllocationDirectiveEvent
+Caller                      Callee                        Method
+──────                      ──────                        ──────
+Branch Module
+  → Data Platform module    data_platform_service         .get_prices(), .get_metrics(), .get_news()
+  → Trade Execution module  trade_execution_service       .submit_order()
+  → Portfolio module        portfolio_service             .get_portfolio(), .get_positions()
 
-Trade Execution Service
-  → Data Platform Service   GET /prices (for paper)  -
-  → Portfolio Service       -                        -
-  ← Branch Services         -                        TradeRequestedEvent
-  → Portfolio Service       -                        TradeExecutedEvent
-
-Portfolio Service
-  → Data Platform Service   GET /prices (for NAV)    -
-  ← Trade Execution Service -                        TradeExecutedEvent
-  ← Central Orchestrator    -                        AllocationDirectiveEvent
-  → Central Orchestrator    -                        PortfolioUpdatedEvent, PortfolioSnapshotEvent
+Trade Execution module
+  → Data Platform module    data_platform_service         .get_prices() (for paper trading fill price)
+  → Portfolio module        portfolio_service             .handle_trade_executed()
 
 Central Orchestrator (Phase 3)
-  → Portfolio Service       GET /fund/summary        -
-  → Data Platform Service   GET /macro               -
-  ← Portfolio Service       -                        PortfolioSnapshotEvent
-  → Branch Services         -                        AllocationDirectiveEvent
-  → Risk Manager            -                        RiskAlertEvent
+  → Portfolio module        portfolio_service             .get_fund_summary(), .get_snapshots()
+  → Data Platform module    data_platform_service         .get_macro_indicator()
+  → Branch modules          branch_service                .handle_allocation_directive()
+  → Event Log module        event_log_service             .query() (for recent risk alerts)
 ```
+
+All modules also call `event_log_service.append(event)` to log events for auditability,
+but this is write-only -- modules do NOT read from the event log for real-time
+coordination (they call each other directly instead).
 
 ---
 
-## 11. Compatibility with Existing Repo
+## 14. Phase 1 Verification Tests
 
-The existing `src/` code is not modified. Branch services (Phase 2) will import agent
-logic from the existing codebase and wrap it in the new service structure:
+These are the tests that prove Phase 1 is working. Organized by what they verify,
+not by module — a passing test suite here means the shared infrastructure is ready
+for Phase 2 (Equities Branch).
 
-| Existing Component | Phase 1 Equivalent |
+### 14.1 Infrastructure
+
+| Test | Verifies |
+|------|----------|
+| App starts, `/health` returns 200 | FastAPI + DB connection + Alembic migrations applied |
+| All tables exist with correct columns | Schema migration ran cleanly |
+
+### 14.2 Portfolio Module
+
+| Test | Verifies |
+|------|----------|
+| Create portfolio for a branch, retrieve it | Basic CRUD, DB round-trip |
+| Create portfolio with initial cash, verify NAV = cash (no positions) | NAV calculation baseline |
+| Adjust cash up/down, verify new cash balance | `update_cash` works, negative withdrawals rejected if insufficient |
+| Take a snapshot, retrieve it from snapshot history | Snapshot creation and pagination |
+| Get fund summary with multiple branches | Aggregate view computes correctly across branches |
+
+### 14.3 Trade Execution Module (Paper Trading)
+
+| Test | Verifies |
+|------|----------|
+| Submit a BUY market order, get back a filled result | Paper adapter fetches price, applies slippage, returns fill |
+| Submit a SELL for a position you hold, verify fill | Sell-side execution works |
+| Submit a BUY with insufficient cash, get rejection | Order validation catches insufficient funds |
+| Submit a LIMIT order above current price (buy), verify rejection or pending | Limit order logic in paper adapter |
+| Verify order record persists with correct status and fill price | Order repository write + read |
+| Verify trade record persists with slippage and commission | Trade repository write + read |
+| List orders with filters (branch, status, since), verify pagination | Query filtering and pagination |
+
+### 14.4 Portfolio + Trade Execution Integration
+
+| Test | Verifies |
+|------|----------|
+| BUY 100 shares → position created with correct quantity and cost basis | `handle_trade_executed` creates position |
+| BUY 100 then SELL 50 → position quantity reduced, realized P&L computed | Partial close calculates P&L |
+| BUY 100 then SELL 100 → position removed (flat), realized P&L recorded | Full close cleans up position |
+| SHORT 100 → short position created, margin reserved | Short selling works, margin accounting |
+| SHORT 100 then COVER 100 → flat, margin released, P&L computed | Short cover lifecycle |
+| BUY → verify cash decreased by (fill_price * quantity + commission) | Cash accounting on buy |
+| SELL → verify cash increased by (fill_price * quantity - commission) | Cash accounting on sell |
+| After any trade → NAV, exposure, and P&L fields updated on portfolio | Aggregate recomputation |
+| After any trade → `PortfolioUpdatedEvent` in event log | Event logging on state change |
+| Fractional quantity (0.5 shares, 0.001 BTC) → correct position and P&L | NUMERIC(18,8) works end-to-end |
+
+### 14.5 Event Log
+
+| Test | Verifies |
+|------|----------|
+| Append event, query it back by type | Basic write + read |
+| Query events filtered by branch_id, event_type, since | Filtering works |
+| Submit order → `trade.requested` event logged before execution | Event ordering (intent before outcome) |
+| Successful fill → `trade.executed` event logged | Execution events |
+| Rejected order → `trade.rejected` event logged with reason | Rejection events |
+| Event payloads deserialize back to their Pydantic models | Schema consistency (JSON ↔ Pydantic) |
+
+### 14.6 Data Platform Module
+
+| Test | Verifies |
+|------|----------|
+| Get prices for a known equity ticker, receive OHLCV bars | FinancialDatasetsAdapter works |
+| Get financial metrics for a ticker | Fundamentals adapter works |
+| Get news articles | News adapter works |
+| Request with invalid symbol → meaningful error | Error handling, not a 500 |
+| Second request for same symbol within TTL → served from cache (no API call) | In-memory cache works |
+| Request after TTL expires → fresh API call | Cache expiration works |
+| Upsert instrument → created on first call, updated on second | Instrument creation/update |
+
+### 14.7 Transaction Atomicity
+
+| Test | Verifies |
+|------|----------|
+| Force an error after order creation but before trade creation → order rolled back | Single transaction, no partial state |
+| Force an error in `handle_trade_executed` → trade and order both rolled back | Cross-module atomicity within one session |
+| Successful trade → order, trade, position update, and event log all committed together | Happy path atomicity |
+
+### 14.8 End-to-End Smoke Test
+
+A single test that exercises the full Phase 1 stack top-to-bottom:
+
+```
+1. Start app (FastAPI + PostgreSQL)
+2. Create a fund and an equities branch
+3. Create a portfolio for the branch with $100,000 cash
+4. Upsert instrument AAPL
+5. Fetch AAPL price via Data Platform
+6. Submit BUY order for 10 shares of AAPL via Trade Execution
+7. Verify: order status = FILLED
+8. Verify: position exists with quantity=10, cost_basis ≈ fill_price * 10
+9. Verify: portfolio cash decreased, NAV ≈ $100,000 (minus slippage/commission)
+10. Verify: event log contains trade.requested + trade.executed events
+11. Take a portfolio snapshot
+12. Submit SELL order for 5 shares of AAPL
+13. Verify: position quantity = 5, realized P&L computed
+14. Verify: portfolio cash increased
+15. Fetch portfolio summary → all fields consistent
+16. Fetch fund summary → aggregates across the one branch
+```
+
+If this passes, Phase 1 is done and the infrastructure is ready for branch modules.
+
+### 14.9 Test Infrastructure
+
+| Concern | Approach |
+|---------|----------|
+| Database | Testcontainers (disposable PostgreSQL per test session) or a dedicated test database with per-test transaction rollback |
+| Data Platform | Mock adapters for unit/integration tests; real API calls only in a dedicated "live adapter" test suite (skipped in CI by default) |
+| Test client | `httpx.AsyncClient` with FastAPI's `TestClient` for API-level tests |
+| Fixtures | Factory functions for creating funds, branches, portfolios, instruments, and orders with sensible defaults |
+
+---
+
+## 15. Compatibility with Existing Repo
+
+This is a new repo (`ai-hedgefund-final`). The original repo lives at
+`/Users/franco_lu/desktop/ai-hedge-fund` and is kept as a reference for
+agent logic, data models, and API patterns. Nothing is imported from it
+during Phase 1 — it becomes relevant in Phase 2 when we adapt the existing
+agents into branch modules.
+
+**Reference mapping** (original repo → this repo's Phase 1 equivalents):
+
+| Original Repo (`ai-hedge-fund`) | This Repo (`ai-hedgefund-final`) |
 |---|---|
 | `src/data/models.py` (Price, FinancialMetrics, etc.) | `common/models/` + Data Platform response schemas |
 | `src/backtesting/types.py` (Action, PositionState) | `common/enums.py` (OrderSide) + `common/models/position.py` |
-| `src/backtesting/portfolio.py` (Portfolio class) | Portfolio Service (server-side state management) |
-| `src/backtesting/trader.py` (TradeExecutor) | Trade Execution Service |
-| `src/tools/api.py` (get_prices, etc.) | Data Platform Service + FinancialDatasetsAdapter |
-| `src/graph/state.py` (AgentState) | Kept as-is within branch services (Phase 2) |
+| `src/backtesting/portfolio.py` (Portfolio class) | Portfolio module (server-side state management) |
+| `src/backtesting/trader.py` (TradeExecutor) | Trade Execution module |
+| `src/tools/api.py` (get_prices, etc.) | Data Platform module + FinancialDatasetsAdapter |
+| `src/graph/state.py` (AgentState) | Adapted in Phase 2 within branch modules |
 | `app/backend/database/` (SQLite ORM) | PostgreSQL schema (this document) |
