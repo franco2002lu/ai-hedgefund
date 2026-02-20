@@ -9,13 +9,13 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.db.connection import engine
-from app.modules.portfolio.api import router as portfolio_router
+from app.dependencies import init_services
+from app.modules.data_platform.adapters.yahoo_finance import YahooFinanceAdapter
 from app.modules.data_platform.api import router as data_platform_router
-from app.modules.data_platform.api import set_data_platform_service
-from app.modules.data_platform.service import DataPlatformService
 from app.modules.data_platform.cache import DataCache
 from app.modules.data_platform.rate_limiter import RateLimiter
-from app.modules.data_platform.adapters.yahoo_finance import YahooFinanceAdapter
+from app.modules.data_platform.service import DataPlatformService
+from app.modules.portfolio.api import router as portfolio_router
 from app.modules.trade_execution.api import router as trade_execution_router
 
 
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
         cache=DataCache(),
         rate_limiter=RateLimiter(),
     )
-    set_data_platform_service(data_service)
+    init_services(data_service)
 
     yield
     # Shutdown: dispose engine

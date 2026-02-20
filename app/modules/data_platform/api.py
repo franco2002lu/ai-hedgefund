@@ -7,23 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_session
+from app.dependencies import get_data_platform_service
 from app.modules.data_platform.service import DataPlatformService, DataUnavailableError
 
 router = APIRouter(prefix="/api/v1", tags=["data-platform"])
-
-# The service singleton is set during app startup
-_data_platform_service: DataPlatformService | None = None
-
-
-def set_data_platform_service(service: DataPlatformService):
-    global _data_platform_service
-    _data_platform_service = service
-
-
-def get_data_service() -> DataPlatformService:
-    if _data_platform_service is None:
-        raise RuntimeError("DataPlatformService not initialized")
-    return _data_platform_service
 
 
 # --- Request/Response schemas ---
@@ -49,8 +36,8 @@ async def get_prices(
     end_date: date | None = None,
     interval: str = "1d",
     asset_class: str = "equity",
+    service: DataPlatformService = Depends(get_data_platform_service),
 ):
-    service = get_data_service()
     start = start_date or date(2024, 1, 1)
     end = end_date or date.today()
     try:
@@ -65,8 +52,8 @@ async def get_metrics(
     end_date: date | None = None,
     period: str = "ttm",
     limit: int = 10,
+    service: DataPlatformService = Depends(get_data_platform_service),
 ):
-    service = get_data_service()
     try:
         return await service.get_metrics(symbol, end_date, period, limit)
     except DataUnavailableError as e:
@@ -80,8 +67,8 @@ async def get_line_items(
     end_date: date | None = None,
     period: str = "ttm",
     limit: int = 10,
+    service: DataPlatformService = Depends(get_data_platform_service),
 ):
-    service = get_data_service()
     item_list = [i.strip() for i in items.split(",")]
     try:
         return await service.get_line_items(symbol, item_list, end_date, period, limit)
@@ -90,8 +77,10 @@ async def get_line_items(
 
 
 @router.get("/fundamentals/{symbol}/facts")
-async def get_company_facts(symbol: str):
-    service = get_data_service()
+async def get_company_facts(
+    symbol: str,
+    service: DataPlatformService = Depends(get_data_platform_service),
+):
     try:
         return await service.get_company_facts(symbol)
     except DataUnavailableError as e:
@@ -103,8 +92,8 @@ async def get_news(
     symbols: str | None = None,
     since: date | None = None,
     limit: int = 100,
+    service: DataPlatformService = Depends(get_data_platform_service),
 ):
-    service = get_data_service()
     sym_list = [s.strip() for s in symbols.split(",")] if symbols else None
     try:
         return await service.get_news(sym_list, since, limit)
@@ -116,8 +105,8 @@ async def get_news(
 async def upsert_instrument(
     req: UpsertInstrumentRequest,
     session: AsyncSession = Depends(get_session),
+    service: DataPlatformService = Depends(get_data_platform_service),
 ):
-    service = get_data_service()
     return await service.upsert_instrument(session, req.model_dump())
 
 

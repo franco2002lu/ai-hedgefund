@@ -4,16 +4,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.schemas.pagination import PaginatedResponse, PaginationParams
-from app.db.connection import get_session
-from app.modules.event_log.repository import PostgresEventLogRepository
-from app.modules.portfolio.repository import (
-    PostgresPortfolioRepository,
-    PostgresPositionRepository,
-    PostgresSnapshotRepository,
-)
+from app.dependencies import get_event_log_service, get_portfolio_service
+from app.modules.event_log.service import EventLogService
 from app.modules.portfolio.service import PortfolioService
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio"])
@@ -34,27 +28,14 @@ class AdjustCashRequest(BaseModel):
     reason: str
 
 
-# --- Dependency ---
-
-
-def _get_service(session: AsyncSession) -> PortfolioService:
-    return PortfolioService(
-        portfolio_repo=PostgresPortfolioRepository(session),
-        position_repo=PostgresPositionRepository(session),
-        snapshot_repo=PostgresSnapshotRepository(session),
-        event_log=PostgresEventLogRepository(session),
-    )
-
-
 # --- Routes ---
 
 
 @router.post("/portfolios")
 async def create_portfolio(
     req: CreatePortfolioRequest,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     summary = await service.create_portfolio(
         branch_id=req.branch_id,
         branch_type=req.branch_type,
@@ -73,9 +54,8 @@ async def create_portfolio(
 @router.get("/portfolios/{branch_id}")
 async def get_portfolio(
     branch_id: str,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     summary = await service.get_portfolio(branch_id)
     if summary is None:
         raise HTTPException(status_code=404, detail=f"No portfolio for branch {branch_id}")
@@ -85,9 +65,8 @@ async def get_portfolio(
 @router.get("/portfolios/{branch_id}/positions")
 async def list_positions(
     branch_id: str,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     try:
         positions = await service.get_positions(branch_id)
     except ValueError as e:
@@ -99,9 +78,8 @@ async def list_positions(
 async def get_position(
     branch_id: str,
     symbol: str,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     try:
         position = await service.get_position_by_symbol(branch_id, symbol)
     except ValueError as e:
@@ -115,9 +93,8 @@ async def get_position(
 async def adjust_cash(
     branch_id: str,
     req: AdjustCashRequest,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     try:
         summary = await service.adjust_cash(branch_id, req.amount, req.reason)
     except ValueError as e:
@@ -128,9 +105,8 @@ async def adjust_cash(
 @router.post("/portfolios/{branch_id}/snapshots")
 async def take_snapshot(
     branch_id: str,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     try:
         snapshot = await service.take_snapshot(branch_id)
     except ValueError as e:
@@ -143,9 +119,8 @@ async def list_snapshots(
     branch_id: str,
     limit: int = 30,
     offset: int = 0,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     snapshots, total = await service.list_snapshots(branch_id, limit, offset)
     return PaginatedResponse(
         items=[s.model_dump() for s in snapshots],
@@ -159,9 +134,8 @@ async def list_snapshots(
 @router.get("/fund/{fund_id}/summary")
 async def get_fund_summary(
     fund_id: str,
-    session: AsyncSession = Depends(get_session),
+    service: PortfolioService = Depends(get_portfolio_service),
 ):
-    service = _get_service(session)
     try:
         return await service.get_fund_summary(fund_id)
     except ValueError as e:
@@ -175,12 +149,9 @@ async def list_events(
     since: datetime | None = None,
     limit: int = 100,
     offset: int = 0,
-    session: AsyncSession = Depends(get_session),
+    event_service: EventLogService = Depends(get_event_log_service),
 ):
     """Query the event log (shared endpoint, lives here for convenience)."""
-    from app.modules.event_log.service import EventLogService
-
-    event_service = EventLogService(PostgresEventLogRepository(session))
     return await event_service.query(
         event_type=event_type,
         branch_id=branch_id,

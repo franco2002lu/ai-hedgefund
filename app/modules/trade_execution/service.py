@@ -179,6 +179,9 @@ class TradeExecutionService:
     ):
         return await self.order_repo.list_orders(branch_id, status, since, limit, offset)
 
+    async def get_trade(self, trade_id: str):
+        return await self.trade_repo.get_by_id(trade_id)
+
     async def list_trades(
         self,
         branch_id: str | None = None,
