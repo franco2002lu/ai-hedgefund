@@ -22,6 +22,7 @@ ENV/
 *.swp
 *.swo
 *~
+.cursor/
 
 # OS
 .DS_Store
@@ -38,6 +39,12 @@ infrastructure/pgdata/
 
 # Alembic
 *.pyc
+
+# Claude Code
+.claude/
+
+# Ruff
+.ruff_cache/
 
 # Logs
 *.log
