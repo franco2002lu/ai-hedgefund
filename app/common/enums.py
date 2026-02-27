@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class AssetClass(str, Enum):
+class AssetClass(StrEnum):
     EQUITY = "equity"
     CRYPTO = "crypto"
     BOND = "bond"
@@ -10,7 +10,7 @@ class AssetClass(str, Enum):
     OPTION = "option"
 
 
-class BranchType(str, Enum):
+class BranchType(StrEnum):
     EQUITIES = "equities"
     CRYPTO = "crypto"
     BONDS = "bonds"
@@ -18,21 +18,21 @@ class BranchType(str, Enum):
     QUANT = "quant"
 
 
-class OrderSide(str, Enum):
+class OrderSide(StrEnum):
     BUY = "buy"
     SELL = "sell"
     SHORT = "short"
     COVER = "cover"
 
 
-class OrderType(str, Enum):
+class OrderType(StrEnum):
     MARKET = "market"
     LIMIT = "limit"
     STOP = "stop"
     STOP_LIMIT = "stop_limit"
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     PENDING = "pending"
     SUBMITTED = "submitted"
     PARTIALLY_FILLED = "partially_filled"
@@ -42,25 +42,25 @@ class OrderStatus(str, Enum):
     EXPIRED = "expired"
 
 
-class TimeInForce(str, Enum):
+class TimeInForce(StrEnum):
     DAY = "day"
     GTC = "gtc"
     IOC = "ioc"
     FOK = "fok"
 
 
-class ExecutionMode(str, Enum):
+class ExecutionMode(StrEnum):
     PAPER = "paper"
     LIVE = "live"
 
 
-class RiskAlertLevel(str, Enum):
+class RiskAlertLevel(StrEnum):
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
 
 
-class SignalDirection(str, Enum):
+class SignalDirection(StrEnum):
     BULLISH = "bullish"
     BEARISH = "bearish"
     NEUTRAL = "neutral"

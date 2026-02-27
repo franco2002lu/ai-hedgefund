@@ -1,7 +1,7 @@
 """PostgreSQL repositories for Trade Execution module."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,16 +47,16 @@ class PostgresOrderRepository(OrderRepository):
             raise ValueError(f"Order {order_id} not found")
 
         model.status = status.value
-        model.updated_at = datetime.now(timezone.utc)
+        model.updated_at = datetime.now(UTC)
 
         for key, value in kwargs.items():
             if hasattr(model, key):
                 setattr(model, key, value)
 
         if status == OrderStatus.FILLED:
-            model.filled_at = datetime.now(timezone.utc)
+            model.filled_at = datetime.now(UTC)
         if status == OrderStatus.SUBMITTED:
-            model.submitted_at = datetime.now(timezone.utc)
+            model.submitted_at = datetime.now(UTC)
 
         await self.session.flush()
         return self._to_domain(model)

@@ -1,8 +1,9 @@
 """Unit tests for TradeExecutionService."""
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.common.enums import ExecutionMode, OrderSide, OrderStatus, OrderType, TimeInForce
 from app.common.interfaces.broker import OrderResult
@@ -12,10 +13,10 @@ from app.common.models.position import Position
 from app.common.models.trade import Trade
 from app.modules.trade_execution.service import TradeExecutionService
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_order_request(**overrides) -> OrderRequest:
     defaults = dict(
@@ -41,8 +42,8 @@ def _make_order(**overrides) -> Order:
         quantity=10.0,
         time_in_force=TimeInForce.DAY,
         status=OrderStatus.PENDING,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return Order(**defaults)
@@ -61,7 +62,7 @@ def _make_trade(**overrides) -> Trade:
         commission=0.0,
         slippage=0.075,
         execution_mode=ExecutionMode.PAPER,
-        executed_at=datetime.now(timezone.utc),
+        executed_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return Trade(**defaults)
@@ -84,7 +85,7 @@ def _make_portfolio(**overrides) -> PortfolioSummary:
         unrealized_pnl=0.0,
         realized_pnl=0.0,
         positions=[],
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return PortfolioSummary(**defaults)
@@ -115,6 +116,7 @@ def service(deps):
 # ---------------------------------------------------------------------------
 # submit_order — success path
 # ---------------------------------------------------------------------------
+
 
 class TestSubmitOrderSuccess:
     @pytest.mark.asyncio
@@ -207,15 +209,14 @@ class TestSubmitOrderSuccess:
 # submit_order — rejection paths
 # ---------------------------------------------------------------------------
 
+
 class TestSubmitOrderRejection:
     @pytest.mark.asyncio
     async def test_broker_rejection(self, service, deps):
         order_repo, trade_repo, broker, event_log, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
         order_repo.create.return_value = _make_order()
-        broker.submit_order.return_value = OrderResult(
-            success=False, rejection_reason="Insufficient liquidity"
-        )
+        broker.submit_order.return_value = OrderResult(success=False, rejection_reason="Insufficient liquidity")
 
         result = await service.submit_order(_make_order_request())
 
@@ -247,6 +248,7 @@ class TestSubmitOrderRejection:
 # _validate_order
 # ---------------------------------------------------------------------------
 
+
 class TestValidateOrder:
     @pytest.mark.asyncio
     async def test_buy_with_portfolio_passes(self, service, deps):
@@ -262,8 +264,12 @@ class TestValidateOrder:
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
         pos = Position(
-            id="p1", portfolio_id="port-1", instrument_id="inst-1", symbol="AAPL",
-            long_quantity=20.0, updated_at=datetime.now(timezone.utc),
+            id="p1",
+            portfolio_id="port-1",
+            instrument_id="inst-1",
+            symbol="AAPL",
+            long_quantity=20.0,
+            updated_at=datetime.now(UTC),
         )
         portfolio_service.get_position_by_symbol.return_value = pos
 
@@ -276,8 +282,12 @@ class TestValidateOrder:
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
         pos = Position(
-            id="p1", portfolio_id="port-1", instrument_id="inst-1", symbol="AAPL",
-            long_quantity=5.0, updated_at=datetime.now(timezone.utc),
+            id="p1",
+            portfolio_id="port-1",
+            instrument_id="inst-1",
+            symbol="AAPL",
+            long_quantity=5.0,
+            updated_at=datetime.now(UTC),
         )
         portfolio_service.get_position_by_symbol.return_value = pos
 
@@ -302,8 +312,12 @@ class TestValidateOrder:
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
         pos = Position(
-            id="p1", portfolio_id="port-1", instrument_id="inst-1", symbol="AAPL",
-            short_quantity=3.0, updated_at=datetime.now(timezone.utc),
+            id="p1",
+            portfolio_id="port-1",
+            instrument_id="inst-1",
+            symbol="AAPL",
+            short_quantity=3.0,
+            updated_at=datetime.now(UTC),
         )
         portfolio_service.get_position_by_symbol.return_value = pos
 

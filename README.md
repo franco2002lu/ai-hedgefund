@@ -41,7 +41,7 @@ alembic upgrade head
 
 ### 5. Seed test data
 
-The smoke tests expect a fund and branch with specific UUIDs:
+The smoke tests and equities pipeline expect a fund and branches with specific UUIDs:
 
 ```bash
 python -c "
@@ -58,8 +58,13 @@ async def seed():
         \"\"\"))
         await conn.execute(text(\"\"\"
             INSERT INTO branches (id, fund_id, name, branch_type, status, allocated_capital, execution_cadence, created_at)
-            VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111',
-                    'Equities Branch', 'equities', 'active', 0, 'daily', NOW())
+            VALUES
+              ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111',
+               'Equities Branch', 'equities', 'active', 0, 'daily', NOW()),
+              ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111',
+               'Equities Growth', 'equities', 'active', 0, 'daily', NOW()),
+              ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111',
+               'Equities Value', 'equities', 'active', 0, 'daily', NOW())
             ON CONFLICT (id) DO NOTHING
         \"\"\"))
     await engine.dispose()
@@ -188,6 +193,64 @@ Expected output:
 ============================================================
 ```
 
+### Checkpoint 5 — Equities Branch Pipeline
+
+Runs the LLM-powered screening + analysis pipeline. Requires `ANTHROPIC_API_KEY` in `.env` and the growth/value branches seeded (step 5).
+
+**1. Create a portfolio for the growth branch:**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/portfolios \
+  -H "Content-Type: application/json" \
+  -d '{"branch_id":"33333333-3333-3333-3333-333333333333","branch_type":"equities","initial_cash":1000000.0,"margin_requirement":0.5}'
+```
+
+**2. Trigger the growth pipeline:**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/equities/growth/run
+```
+
+This will: fetch the VOOG ETF universe, screen stocks through 11 filters, fan out to 3 LLM analyst agents (news, fundamentals, technical), aggregate scores via the portfolio manager, and execute paper trades. It may take 1-2 minutes depending on how many stocks pass screening.
+
+**3. Inspect results:**
+
+```bash
+# Screening runs (universe size, how many passed)
+curl http://localhost:8000/api/v1/equities/growth/screening-runs
+
+# Agent signals (each analyst's score per stock)
+curl http://localhost:8000/api/v1/equities/growth/signals
+
+# Portfolio decisions (composite scores + generated orders)
+curl http://localhost:8000/api/v1/equities/growth/decisions
+
+# Check the portfolio for positions created by the pipeline
+curl http://localhost:8000/api/v1/portfolios/33333333-3333-3333-3333-333333333333/positions
+```
+
+**4. (Optional) Run the value pipeline:**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/portfolios \
+  -H "Content-Type: application/json" \
+  -d '{"branch_id":"44444444-4444-4444-4444-444444444444","branch_type":"equities","initial_cash":1000000.0,"margin_requirement":0.5}'
+
+curl -X POST http://localhost:8000/api/v1/equities/value/run
+```
+
+**5. View/update pipeline configuration:**
+
+```bash
+# View current config (screening thresholds, LLM models, portfolio weights)
+curl http://localhost:8000/api/v1/equities/config
+
+# Update config (e.g., use a cheaper model, reduce holdings)
+curl -X PUT http://localhost:8000/api/v1/equities/config \
+  -H "Content-Type: application/json" \
+  -d '{"portfolio":{"target_holdings":10},"agents":{"news_analyst":{"model":"claude-haiku-4-5-20251001"}}}'
+```
+
 ## Project Structure
 
 ```
@@ -244,3 +307,9 @@ plans/
 | GET | `/api/v1/orders` | List orders |
 | GET | `/api/v1/trades/{trade_id}` | Get trade |
 | GET | `/api/v1/trades` | List trades |
+| POST | `/api/v1/equities/{branch_name}/run` | Trigger equities pipeline |
+| GET | `/api/v1/equities/{branch_name}/signals` | List agent signals |
+| GET | `/api/v1/equities/{branch_name}/screening-runs` | List screening runs |
+| GET | `/api/v1/equities/{branch_name}/decisions` | List portfolio decisions |
+| GET | `/api/v1/equities/config` | Get equities config |
+| PUT | `/api/v1/equities/config` | Update equities config |

@@ -1,7 +1,7 @@
 """Paper trading adapter — simulates trade execution."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.common.enums import ExecutionMode, OrderSide, OrderType
 from app.common.interfaces.broker import AccountInfo, BrokerAdapter, OrderResult
@@ -74,7 +74,7 @@ class PaperTradingAdapter(BrokerAdapter):
             commission=self.commission,
             slippage=slippage,
             execution_mode=ExecutionMode.PAPER,
-            executed_at=datetime.now(timezone.utc),
+            executed_at=datetime.now(UTC),
         )
 
         return OrderResult(

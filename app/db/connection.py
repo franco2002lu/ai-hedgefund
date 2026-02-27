@@ -27,6 +27,5 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     share this session, so their operations are part of the same transaction.
     The session is committed on success, rolled back on exception.
     """
-    async with async_session_factory() as session:
-        async with session.begin():
-            yield session
+    async with async_session_factory() as session, session.begin():
+        yield session

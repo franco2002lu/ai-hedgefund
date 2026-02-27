@@ -1,8 +1,7 @@
 """Yahoo Finance adapter — primary data source for Phase 1."""
 
 import asyncio
-from datetime import date, datetime, timezone
-from functools import partial
+from datetime import UTC, date, datetime, timedelta
 
 import yfinance as yf
 
@@ -40,14 +39,16 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
 
             bars = []
             for idx, row in df.iterrows():
-                bars.append(PriceBar(
-                    timestamp=idx.date() if hasattr(idx, 'date') else idx,
-                    open=round(row["Open"], 4),
-                    high=round(row["High"], 4),
-                    low=round(row["Low"], 4),
-                    close=round(row["Close"], 4),
-                    volume=int(row["Volume"]),
-                ))
+                bars.append(
+                    PriceBar(
+                        timestamp=idx.date() if hasattr(idx, "date") else idx,
+                        open=round(row["Open"], 4),
+                        high=round(row["High"], 4),
+                        low=round(row["Low"], 4),
+                        close=round(row["Close"], 4),
+                        volume=int(row["Volume"]),
+                    )
+                )
             return bars
 
         loop = asyncio.get_event_loop()
@@ -55,10 +56,11 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
 
     async def get_current_price(self, symbol: str) -> float | None:
         """Get the latest available price for a symbol."""
+
         def _fetch():
             ticker = yf.Ticker(symbol)
             info = ticker.fast_info
-            return float(info.last_price) if hasattr(info, 'last_price') and info.last_price else None
+            return float(info.last_price) if hasattr(info, "last_price") and info.last_price else None
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _fetch)
@@ -82,16 +84,18 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
                 return []
 
             # Extract key financial metrics from yfinance info dict
+            # Includes both snake_case (for LLM agents) and camelCase (for screener filters)
             metrics = {
                 "symbol": symbol,
                 "report_period": end_date.isoformat(),
                 "period": period,
                 "currency": info.get("currency", "USD"),
+                # --- Core fundamentals (snake_case for agents) ---
                 "market_cap": info.get("marketCap"),
                 "enterprise_value": info.get("enterpriseValue"),
                 "pe_ratio": info.get("trailingPE"),
                 "forward_pe": info.get("forwardPE"),
-                "peg_ratio": info.get("pegRatio"),
+                "peg_ratio": info.get("pegRatio", info.get("trailingPegRatio")),
                 "price_to_book": info.get("priceToBook"),
                 "price_to_sales": info.get("priceToSalesTrailing12Months"),
                 "revenue": info.get("totalRevenue"),
@@ -102,7 +106,7 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
                 "earnings_growth": info.get("earningsGrowth"),
                 "return_on_equity": info.get("returnOnEquity"),
                 "return_on_assets": info.get("returnOnAssets"),
-                "debt_to_equity": info.get("debtToEquity"),
+                "debt_to_equity": info.get("debtToEquity", 0) / 100.0 if info.get("debtToEquity") is not None else None,
                 "current_ratio": info.get("currentRatio"),
                 "free_cash_flow": info.get("freeCashflow"),
                 "operating_cash_flow": info.get("operatingCashflow"),
@@ -110,7 +114,54 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
                 "beta": info.get("beta"),
                 "52_week_high": info.get("fiftyTwoWeekHigh"),
                 "52_week_low": info.get("fiftyTwoWeekLow"),
+                # --- Screener keys (camelCase, matching filter lookups) ---
+                "marketCap": info.get("marketCap"),
+                "averageDailyVolume10Day": info.get("averageDailyVolume10Day", info.get("averageVolume10days")),
+                "debtToEquity": info.get("debtToEquity", 0) / 100.0 if info.get("debtToEquity") is not None else None,
+                "pegRatio": info.get("pegRatio", info.get("trailingPegRatio")),
+                "peRatio": info.get("trailingPE"),
+                "pbRatio": info.get("priceToBook"),
+                "returnOnEquity": info.get("returnOnEquity"),
+                "dividendYield": info.get("dividendYield"),
+                "revenueGrowthYoy": info.get("revenueGrowth"),
+                "earningsGrowthYoy": info.get("earningsGrowth"),
+                "currentPrice": info.get("currentPrice", info.get("regularMarketPrice")),
+                "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
+                "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
             }
+
+            # Derived: daysSinceLastEarnings from earningsTimestamp
+            earnings_ts = info.get("earningsTimestamp")
+            if earnings_ts:
+                try:
+                    earnings_dt = datetime.fromtimestamp(earnings_ts, tz=UTC)
+                    metrics["daysSinceLastEarnings"] = (datetime.now(UTC) - earnings_dt).days
+                except (OSError, ValueError):
+                    pass
+
+            # Derived: fcfYield = freeCashFlow / marketCap
+            fcf = info.get("freeCashflow")
+            mcap = info.get("marketCap")
+            if fcf is not None and mcap and mcap > 0:
+                metrics["fcfYield"] = fcf / mcap
+
+            # Derived: lastEarningsSurprisePct from earningsQuarterlyGrowth (best proxy)
+            surprise = info.get("earningsQuarterlyGrowth")
+            if surprise is not None:
+                metrics["lastEarningsSurprisePct"] = surprise
+
+            # Derived: return6m approximation from 200-day average vs current price
+            current = info.get("currentPrice", info.get("regularMarketPrice"))
+            avg_200d = info.get("twoHundredDayAverage")
+            if current and avg_200d and avg_200d > 0:
+                metrics["return6m"] = (current - avg_200d) / avg_200d
+
+            # Derived: volatility90d from beta (scale beta to annualized vol estimate)
+            # Market vol ~15-20%; stock vol ≈ beta * market_vol
+            beta_val = info.get("beta")
+            if beta_val is not None:
+                metrics["volatility90d"] = abs(beta_val) * 0.18
+
             # Remove None values
             return [{k: v for k, v in metrics.items() if v is not None}]
 
@@ -147,12 +198,16 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
                         for row_label in df.index:
                             if item_lower in str(row_label).lower():
                                 for col in df.columns[:limit]:
-                                    results.append({
-                                        "item": str(row_label),
-                                        "source": source_name,
-                                        "period": col.isoformat() if hasattr(col, 'isoformat') else str(col),
-                                        "value": float(df.loc[row_label, col]) if not df.loc[row_label, col] != df.loc[row_label, col] else None,
-                                    })
+                                    results.append(
+                                        {
+                                            "item": str(row_label),
+                                            "source": source_name,
+                                            "period": col.isoformat() if hasattr(col, "isoformat") else str(col),
+                                            "value": float(df.loc[row_label, col])
+                                            if df.loc[row_label, col] == df.loc[row_label, col]
+                                            else None,
+                                        }
+                                    )
                                 found = True
                                 break
                     if found:
@@ -208,21 +263,23 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
                         try:
                             published = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
                         except (ValueError, TypeError):
-                            published = datetime.now(timezone.utc)
+                            published = datetime.now(UTC)
                     else:
-                        published = datetime.now(timezone.utc)
+                        published = datetime.now(UTC)
 
                     if since and published.date() < since:
                         continue
 
-                    articles.append(NewsArticle(
-                        title=content.get("title", ""),
-                        author=content.get("provider", {}).get("displayName"),
-                        source="yahoo_finance",
-                        published_at=published,
-                        url=content.get("canonicalUrl", {}).get("url", ""),
-                        symbols=[symbol],
-                    ))
+                    articles.append(
+                        NewsArticle(
+                            title=content.get("title", ""),
+                            author=content.get("provider", {}).get("displayName"),
+                            source="yahoo_finance",
+                            published_at=published,
+                            url=content.get("canonicalUrl", {}).get("url", ""),
+                            symbols=[symbol],
+                        )
+                    )
 
             return articles[:limit]
 

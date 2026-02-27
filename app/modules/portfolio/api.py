@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.common.schemas.pagination import PaginatedResponse, PaginationParams
+from app.common.schemas.pagination import PaginatedResponse
 from app.dependencies import get_event_log_service, get_portfolio_service
 from app.modules.event_log.service import EventLogService
 from app.modules.portfolio.service import PortfolioService
@@ -70,7 +70,7 @@ async def list_positions(
     try:
         positions = await service.get_positions(branch_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return [p.model_dump() for p in positions]
 
 
@@ -83,7 +83,7 @@ async def get_position(
     try:
         position = await service.get_position_by_symbol(branch_id, symbol)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     if position is None:
         raise HTTPException(status_code=404, detail=f"No position for {symbol}")
     return position.model_dump()
@@ -98,7 +98,7 @@ async def adjust_cash(
     try:
         summary = await service.adjust_cash(branch_id, req.amount, req.reason)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return summary.model_dump()
 
 
@@ -110,7 +110,7 @@ async def take_snapshot(
     try:
         snapshot = await service.take_snapshot(branch_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return snapshot.model_dump()
 
 
@@ -139,7 +139,7 @@ async def get_fund_summary(
     try:
         return await service.get_fund_summary(fund_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/events")

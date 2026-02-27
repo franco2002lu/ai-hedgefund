@@ -1,7 +1,7 @@
 """Trade Execution service — order routing, validation, and lifecycle management."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.common.enums import ExecutionMode, OrderSide, OrderStatus
 from app.common.events.trade import (
@@ -9,7 +9,7 @@ from app.common.events.trade import (
     TradeRejectedEvent,
     TradeRequestedEvent,
 )
-from app.common.interfaces.broker import BrokerAdapter, OrderResult
+from app.common.interfaces.broker import BrokerAdapter
 from app.common.interfaces.repositories import EventLogRepository
 from app.common.models.order import Order, OrderRequest
 from app.modules.portfolio.service import PortfolioService
@@ -65,8 +65,8 @@ class TradeExecutionService:
             confidence=req.confidence,
             reasoning=req.reasoning,
             agent_signals=req.agent_signals,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         order = await self.order_repo.create(order)
 
@@ -203,17 +203,13 @@ class TradeExecutionService:
             pass
 
         elif req.side == OrderSide.SELL:
-            position = await self.portfolio_service.get_position_by_symbol(
-                req.branch_id, req.symbol
-            )
+            position = await self.portfolio_service.get_position_by_symbol(req.branch_id, req.symbol)
             if position is None or position.long_quantity < req.quantity:
                 held = position.long_quantity if position else 0
                 return f"Insufficient position: hold {held} {req.symbol}, tried to sell {req.quantity}"
 
         elif req.side == OrderSide.COVER:
-            position = await self.portfolio_service.get_position_by_symbol(
-                req.branch_id, req.symbol
-            )
+            position = await self.portfolio_service.get_position_by_symbol(req.branch_id, req.symbol)
             if position is None or position.short_quantity < req.quantity:
                 held = position.short_quantity if position else 0
                 return f"Insufficient short position: hold {held} {req.symbol}, tried to cover {req.quantity}"

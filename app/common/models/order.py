@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.common.enums import OrderSide, OrderType, OrderStatus, TimeInForce
+from app.common.enums import OrderSide, OrderStatus, OrderType, TimeInForce
 
 
 class OrderRequest(BaseModel):

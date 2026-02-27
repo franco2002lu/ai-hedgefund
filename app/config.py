@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     app_name: str = "AI Hedge Fund"
     debug: bool = False
 
-    model_config = {"env_prefix": "HEDGE_", "env_file": ".env"}
+    model_config = {"env_prefix": "HEDGE_", "env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

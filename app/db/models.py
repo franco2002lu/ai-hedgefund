@@ -4,7 +4,7 @@ Maps directly to the PostgreSQL schema defined in the architecture doc.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -26,7 +26,7 @@ class Base(DeclarativeBase):
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def new_uuid() -> uuid.UUID:
@@ -84,6 +84,9 @@ class InstrumentModel(Base):
     asset_class: Mapped[str] = mapped_column(String(50), nullable=False)
     exchange: Mapped[str | None] = mapped_column(String(100))
     currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD")
+    sector: Mapped[str | None] = mapped_column(String(100))
+    industry: Mapped[str | None] = mapped_column(String(200))
+    country: Mapped[str | None] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
@@ -125,12 +128,8 @@ class PositionModel(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    portfolio_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("portfolios.id"), nullable=False
-    )
-    instrument_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("instruments.id"), nullable=False
-    )
+    portfolio_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("portfolios.id"), nullable=False)
+    instrument_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("instruments.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(50), nullable=False)
     long_quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False, default=0)
     long_cost_basis: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
@@ -160,9 +159,7 @@ class OrderModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     branch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False)
-    instrument_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("instruments.id"), nullable=False
-    )
+    instrument_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("instruments.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(50), nullable=False)
     side: Mapped[str] = mapped_column(String(20), nullable=False)
     order_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -198,9 +195,7 @@ class TradeModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False)
     branch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False)
-    instrument_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("instruments.id"), nullable=False
-    )
+    instrument_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("instruments.id"), nullable=False)
     symbol: Mapped[str] = mapped_column(String(50), nullable=False)
     side: Mapped[str] = mapped_column(String(20), nullable=False)
     quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
@@ -227,9 +222,7 @@ class PortfolioSnapshotModel(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    portfolio_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("portfolios.id"), nullable=False
-    )
+    portfolio_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("portfolios.id"), nullable=False)
     branch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False)
     cash: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
     nav: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
@@ -280,6 +273,65 @@ class RiskAlertModel(Base):
     resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ============================================================
+# EQUITIES BRANCH (screening, signals, decisions)
+# ============================================================
+
+
+class ScreeningRunModel(Base):
+    __tablename__ = "screening_runs"
+    __table_args__ = (Index("idx_screening_runs_branch", "branch_id", "run_date"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    branch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False)
+    branch_name: Mapped[str] = mapped_column(String(20), nullable=False)
+    run_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    universe_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    passed_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    config_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    passed_symbols: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    agent_signals: Mapped[list["AgentSignalModel"]] = relationship(back_populates="screening_run")
+    portfolio_decisions: Mapped[list["PortfolioDecisionModel"]] = relationship(back_populates="screening_run")
+
+
+class AgentSignalModel(Base):
+    __tablename__ = "agent_signals"
+    __table_args__ = (Index("idx_agent_signals_run", "screening_run_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    screening_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("screening_runs.id"), nullable=False
+    )
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    analyst_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    bullish_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    screening_run: Mapped["ScreeningRunModel"] = relationship(back_populates="agent_signals")
+
+
+class PortfolioDecisionModel(Base):
+    __tablename__ = "portfolio_decisions"
+    __table_args__ = (Index("idx_portfolio_decisions_branch", "branch_id", "decided_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    screening_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("screening_runs.id"), nullable=False
+    )
+    branch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False)
+    branch_name: Mapped[str] = mapped_column(String(20), nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    target_holdings: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    current_holdings: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    orders_generated: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    composite_scores: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    screening_run: Mapped["ScreeningRunModel"] = relationship(back_populates="portfolio_decisions")
 
 
 # ============================================================

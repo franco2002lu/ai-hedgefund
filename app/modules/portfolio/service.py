@@ -1,13 +1,13 @@
 """Portfolio service — business logic for portfolio management."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from app.common.events.portfolio import PortfolioUpdatedEvent, PortfolioSnapshotEvent
+from app.common.enums import OrderSide
+from app.common.events.portfolio import PortfolioSnapshotEvent, PortfolioUpdatedEvent
 from app.common.interfaces.repositories import EventLogRepository
-from app.common.models.portfolio import PortfolioSummary, PortfolioSnapshot
+from app.common.models.portfolio import PortfolioSnapshot, PortfolioSummary
 from app.common.models.position import Position
 from app.common.models.trade import Trade
-from app.common.enums import OrderSide
 from app.modules.portfolio.repository import (
     PostgresPortfolioRepository,
     PostgresPositionRepository,
@@ -133,7 +133,7 @@ class PortfolioService:
                 portfolio_id=summary.id,
                 instrument_id=trade.instrument_id,
                 symbol=trade.symbol,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
 
         trade_cost = trade.price * trade.quantity + trade.commission
@@ -146,10 +146,7 @@ class PortfolioService:
 
         elif trade.side == OrderSide.SELL:
             if position.long_quantity < trade.quantity:
-                raise ValueError(
-                    f"Cannot sell {trade.quantity} of {trade.symbol}: "
-                    f"only hold {position.long_quantity}"
-                )
+                raise ValueError(f"Cannot sell {trade.quantity} of {trade.symbol}: only hold {position.long_quantity}")
             # Calculate realized P&L (average cost basis)
             avg_cost = position.long_cost_basis / position.long_quantity if position.long_quantity > 0 else 0
             realized = (trade.price - avg_cost) * trade.quantity - trade.commission
@@ -168,14 +165,17 @@ class PortfolioService:
         elif trade.side == OrderSide.COVER:
             if position.short_quantity < trade.quantity:
                 raise ValueError(
-                    f"Cannot cover {trade.quantity} of {trade.symbol}: "
-                    f"only short {position.short_quantity}"
+                    f"Cannot cover {trade.quantity} of {trade.symbol}: only short {position.short_quantity}"
                 )
             avg_short_price = position.short_cost_basis / position.short_quantity if position.short_quantity > 0 else 0
             realized = (avg_short_price - trade.price) * trade.quantity - trade.commission
             position.realized_pnl_short += realized
             position.short_cost_basis -= avg_short_price * trade.quantity
-            margin_release = position.short_margin_used * (trade.quantity / position.short_quantity) if position.short_quantity > 0 else 0
+            margin_release = (
+                position.short_margin_used * (trade.quantity / position.short_quantity)
+                if position.short_quantity > 0
+                else 0
+            )
             position.short_margin_used -= margin_release
             position.short_quantity -= trade.quantity
             cash_delta = -trade_cost
@@ -183,7 +183,7 @@ class PortfolioService:
             raise ValueError(f"Unknown trade side: {trade.side}")
 
         # Upsert position
-        position.updated_at = datetime.now(timezone.utc)
+        position.updated_at = datetime.now(UTC)
         await self.position_repo.upsert(position)
 
         # Clean up flat positions

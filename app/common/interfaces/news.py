@@ -22,5 +22,4 @@ class NewsAdapter(ABC):
         query: str | None = None,
         since: date | None = None,
         limit: int = 100,
-    ) -> list[NewsArticle]:
-        ...
+    ) -> list[NewsArticle]: ...

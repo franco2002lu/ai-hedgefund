@@ -13,7 +13,7 @@ class DataCache:
 
     def __init__(self):
         self._prices = TTLCache(maxsize=500, ttl=settings.cache_prices_ttl)
-        self._fundamentals = TTLCache(maxsize=200, ttl=settings.cache_fundamentals_ttl)
+        self._fundamentals = TTLCache(maxsize=500, ttl=settings.cache_fundamentals_ttl)
         self._news = TTLCache(maxsize=100, ttl=settings.cache_news_ttl)
         self._general = TTLCache(maxsize=500, ttl=300)
 
@@ -26,10 +26,9 @@ class DataCache:
         cache[key] = value
 
     def _get_cache(self, category: str) -> TTLCache:
-        if category == "prices":
-            return self._prices
-        elif category == "fundamentals":
-            return self._fundamentals
-        elif category == "news":
-            return self._news
-        return self._general
+        caches = {
+            "prices": self._prices,
+            "fundamentals": self._fundamentals,
+            "news": self._news,
+        }
+        return caches.get(category, self._general)

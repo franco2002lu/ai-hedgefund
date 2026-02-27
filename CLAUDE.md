@@ -22,10 +22,11 @@ pytest tests/unit/equities/test_screener.py -q  # single file
 pytest tests/unit/ -q -k "test_buy_order"       # single test by name
 pytest tests/ --ignore=tests/integration -q     # unit + non-e2e tests
 
-# Integration/E2E (require running server + DB)
+# Integration/E2E (require running server + DB — see "Running Integration Tests" below)
 python tests/test_checkpoint2.py                # portfolio + event log
 python tests/test_e2e_smoke.py                  # full 17-step trade lifecycle
-pytest tests/integration/ -m e2e                # equities e2e
+pytest tests/integration/ -m integration -v     # analyst agent tests (real LLM calls)
+pytest tests/integration/ -m e2e -v             # equities e2e pipeline
 
 # Lint and format (ruff)
 ruff check app/ tests/                          # lint
@@ -85,7 +86,7 @@ PostgreSQL 16 (async via `asyncpg`), SQLAlchemy 2.0 ORM. All models in `app/db/m
 
 ### Configuration
 
-`app/config.py` uses Pydantic Settings. All env vars prefixed with `HEDGE_` (e.g., `HEDGE_DATABASE_URL`). Defaults work with Docker Compose setup. Equities-specific config in `app/modules/equities/config.py`.
+`app/config.py` uses Pydantic Settings. All env vars prefixed with `HEDGE_` (e.g., `HEDGE_DATABASE_URL`). Defaults work with Docker Compose setup. Equities-specific config in `app/modules/equities/config.py`. Non-prefixed env vars (e.g., `ANTHROPIC_API_KEY`) are loaded into `os.environ` via `load_dotenv()` in `app/main.py` at startup.
 
 ### Architecture Docs
 
@@ -105,6 +106,7 @@ Design decisions and specs live in `plans/architecture/`:
 - `app/common/interfaces/repositories.py` — abstract repository contracts
 - `app/modules/equities/service.py` — equities pipeline orchestrator
 - `app/modules/equities/agents/graph.py` — LangGraph workflow definition
+- `app/modules/equities/agents/llm_client.py` — Anthropic SDK wrapper for analyst agents
 - `app/modules/equities/config.py` — screening, agent, and portfolio config
 - `tests/conftest.py` — shared test fixtures (`_make_universe_stock`, `_make_stock_signal`, `_make_composite_score`)
 
@@ -119,11 +121,80 @@ Design decisions and specs live in `plans/architecture/`:
 - **API routes**: static paths (e.g., `/config`) must be declared before dynamic `/{param}` paths in the same router to avoid FastAPI path conflicts
 - Test markers: `@pytest.mark.integration` and `@pytest.mark.e2e` for tests requiring live services; `asyncio_mode = "auto"` in pytest config
 
+## Running Integration Tests
+
+Integration and E2E tests make real HTTP calls to `localhost:8000` and require a running server with a seeded database. Follow these steps exactly.
+
+### Prerequisites
+
+1. **Docker DB running**: `docker compose -f infrastructure/docker-compose.yml up -d`
+2. **`.env` file exists** with `ANTHROPIC_API_KEY` set — `pytest-dotenv` auto-loads it via `env_files = [".env"]` in `pyproject.toml`, so no manual `export` needed
+3. **`pip install -e ".[dev]"`** — ensures `pytest-dotenv` and other test deps are installed
+
+### DB Reset Procedure (required before E2E tests)
+
+E2E tests (`test_e2e_smoke.py`, `test_checkpoint2.py`, `test_e2e_equities.py`) create portfolios with fixed branch IDs. Re-running against a dirty DB causes `UniqueViolationError`. Reset with:
+
+```bash
+# 1. Connect and drop schema
+psql -h localhost -p 5433 -U hedge_user -d hedge_fund -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+
+# 2. Re-apply migrations
+alembic upgrade head
+
+# 3. Re-seed fund + branch rows (required for FK constraints)
+psql -h localhost -p 5433 -U hedge_user -d hedge_fund <<'SQL'
+INSERT INTO funds (id, name) VALUES ('11111111-1111-1111-1111-111111111111', 'Test Fund');
+INSERT INTO branches (id, fund_id, name, branch_type)
+VALUES
+  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'US Equities', 'equities'),
+  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Equities Growth', 'equities'),
+  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Equities Value', 'equities');
+SQL
+
+# 4. Restart the server (picks up fresh DB state)
+# Kill existing uvicorn, then:
+uvicorn app.main:app --port 8000
+```
+
+### Test Suites and Run Order
+
+These suites **cannot all share the same DB state** — `test_e2e_smoke.py` and `test_checkpoint2.py` both use branch `22222222...` and create a portfolio for it. Run them in separate DB cycles or pick one per cycle.
+
+| Suite | Command | What it tests | DB state needed |
+|-------|---------|---------------|-----------------|
+| Unit tests | `pytest tests/unit/ -q` | All business logic (no DB/server) | None |
+| Analyst integration | `pytest tests/integration/ -m integration -v` | Real LLM calls via Anthropic API | Server + seeded DB + `ANTHROPIC_API_KEY` |
+| Equities E2E | `pytest tests/integration/ -m e2e -v` | Full pipeline: universe → screening → signals → trades | Server + clean seeded DB + `ANTHROPIC_API_KEY` |
+| Checkpoint 2 | `python tests/test_checkpoint2.py` | Portfolio + event log CRUD | Server + clean seeded DB |
+| E2E Smoke | `python tests/test_e2e_smoke.py` | Full 17-step trade lifecycle | Server + clean seeded DB |
+
+**Recommended run order for a full verification cycle:**
+
+```bash
+# 1. Unit tests (always safe, no deps)
+pytest tests/unit/ -q
+
+# 2. Reset DB, start server, then run integration + equities E2E
+#    (these use branch 33333333... so they don't conflict with each other)
+pytest tests/integration/ -m integration -v
+pytest tests/integration/ -m e2e -v
+
+# 3. Then pick ONE of checkpoint2 or smoke test (both use branch 22222222...)
+python tests/test_checkpoint2.py
+# OR (requires DB reset between them)
+python tests/test_e2e_smoke.py
+```
+
+### Known Integration Test Behaviors
+
+- **`real_llm_client` fixture is function-scoped** (`tests/integration/conftest.py`) — `AsyncAnthropic` binds httpx connections to the active event loop. With `asyncio_mode = "auto"`, each test gets a new loop, so a session-scoped client crashes with `RuntimeError: Event loop is closed`. The function-scoped fixture creates a fresh client per test.
+- **E2E equities test tolerates 0 orders** — Yahoo Finance rate-limiting can cause `get_current_price()` to return `None`, preventing the portfolio manager from computing share quantities. Steps 10-12 (trade execution, positions, cash) are conditional on `len(orders) > 0`. The pipeline itself still succeeds.
+- **Analyst integration tests need `ANTHROPIC_API_KEY`** — without it, the `AnthropicAnalystClient.__init__` calls `pytest.skip()`, causing all 19 analyst tests to be skipped silently. Check `pytest -v` output for `SKIPPED` markers.
+
 ## Gotchas
 
-- **E2E/integration tests need a live server** — `tests/test_e2e_smoke.py`, `tests/test_checkpoint2.py`, and `tests/integration/` make real HTTP calls to `localhost:8000`. Unit tests (`tests/unit/`) run standalone.
-- **E2E smoke test requires a clean DB** — must `DROP SCHEMA public CASCADE`, re-migrate, and re-seed before running `test_e2e_smoke.py` (see README for seed script)
-- **DB FKs require seeded data** — `ScreeningRunModel.branch_id` and `PortfolioDecisionModel.branch_id` FK to `branches` table. Integration tests need fund + branch rows seeded first.
+- **E2E/integration tests need a live server + clean DB** — see "Running Integration Tests" section above for the full DB reset procedure, run order, and known behaviors.
 - **Screening filters handle missing data with None** — `LeverageFilter` and `PEGFilter` default to `None` and reject stocks with missing data (not 0.0 default). New filters should follow this pattern.
 - **EquitiesBranchService is a singleton but uses per-request DB deps** — the service is created once, but `run_pipeline()` accepts optional `trade_execution_service`, `portfolio_service`, `event_log_repo`, and `session` injected per-request from the API layer.
 - **`alembic.ini` has a hardcoded DB URL** — it doesn't read from `.env`; update it manually if your connection string differs.

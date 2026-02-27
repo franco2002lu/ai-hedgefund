@@ -2,14 +2,13 @@
 
 from datetime import date
 
-from app.common.interfaces.price_data import PriceBar
-from app.common.interfaces.news import NewsArticle
 from app.modules.data_platform.cache import DataCache
 from app.modules.data_platform.rate_limiter import RateLimiter
 
 
 class DataUnavailableError(Exception):
     """Raised when no adapter can serve the requested data."""
+
     pass
 
 
@@ -178,9 +177,27 @@ class DataPlatformService:
 
         raise DataUnavailableError("No adapter could serve news")
 
+    @staticmethod
+    def _instrument_to_dict(instrument) -> dict:
+        return {
+            "instrument_id": str(instrument.id),
+            "symbol": instrument.symbol,
+            "name": instrument.name,
+            "asset_class": instrument.asset_class,
+            "exchange": instrument.exchange,
+            "currency": instrument.currency,
+            "sector": instrument.sector,
+            "industry": instrument.industry,
+            "country": instrument.country,
+            "is_active": instrument.is_active,
+            "metadata": instrument.metadata_,
+            "created_at": instrument.created_at.isoformat(),
+        }
+
     async def upsert_instrument(self, session, instrument_data: dict) -> dict:
         """Create or update an instrument in the database."""
         from sqlalchemy import select
+
         from app.db.models import InstrumentModel
 
         stmt = select(InstrumentModel).where(
@@ -193,21 +210,11 @@ class DataPlatformService:
         if existing:
             for key, value in instrument_data.items():
                 if key == "metadata":
-                    setattr(existing, "metadata_", value)
+                    existing.metadata_ = value
                 elif hasattr(existing, key):
                     setattr(existing, key, value)
             await session.flush()
-            return {
-                "instrument_id": str(existing.id),
-                "symbol": existing.symbol,
-                "name": existing.name,
-                "asset_class": existing.asset_class,
-                "exchange": existing.exchange,
-                "currency": existing.currency,
-                "is_active": existing.is_active,
-                "metadata": existing.metadata_,
-                "created_at": existing.created_at.isoformat(),
-            }
+            return self._instrument_to_dict(existing)
         else:
             instrument = InstrumentModel(
                 symbol=instrument_data["symbol"],
@@ -215,19 +222,12 @@ class DataPlatformService:
                 asset_class=instrument_data["asset_class"],
                 exchange=instrument_data.get("exchange"),
                 currency=instrument_data.get("currency", "USD"),
+                sector=instrument_data.get("sector"),
+                industry=instrument_data.get("industry"),
+                country=instrument_data.get("country"),
                 is_active=instrument_data.get("is_active", True),
                 metadata_=instrument_data.get("metadata"),
             )
             session.add(instrument)
             await session.flush()
-            return {
-                "instrument_id": str(instrument.id),
-                "symbol": instrument.symbol,
-                "name": instrument.name,
-                "asset_class": instrument.asset_class,
-                "exchange": instrument.exchange,
-                "currency": instrument.currency,
-                "is_active": instrument.is_active,
-                "metadata": instrument.metadata_,
-                "created_at": instrument.created_at.isoformat(),
-            }
+            return self._instrument_to_dict(instrument)

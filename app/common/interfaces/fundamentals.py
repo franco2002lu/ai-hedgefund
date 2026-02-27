@@ -10,8 +10,7 @@ class FundamentalsAdapter(ABC):
         end_date: date,
         period: str = "ttm",
         limit: int = 10,
-    ) -> list[dict]:
-        ...
+    ) -> list[dict]: ...
 
     @abstractmethod
     async def search_line_items(
@@ -21,9 +20,7 @@ class FundamentalsAdapter(ABC):
         end_date: date,
         period: str = "ttm",
         limit: int = 10,
-    ) -> list[dict]:
-        ...
+    ) -> list[dict]: ...
 
     @abstractmethod
-    async def get_company_facts(self, symbol: str) -> dict:
-        ...
+    async def get_company_facts(self, symbol: str) -> dict: ...

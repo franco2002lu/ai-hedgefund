@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.common.enums import OrderSide, ExecutionMode
+from app.common.enums import ExecutionMode, OrderSide
 
 
 class Trade(BaseModel):

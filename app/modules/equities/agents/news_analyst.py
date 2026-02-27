@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+import asyncio
+
+from app.modules.equities.config import AnalystLLMConfig
+from app.modules.equities.models import StockSignal, UniverseStock
+
+
+class NewsAnalyst:
+    """Assesses recent news sentiment, catalysts, and risks."""
+
+    def __init__(
+        self,
+        config: AnalystLLMConfig,
+        data_service=None,
+        llm_client=None,
+    ) -> None:
+        self.config = config
+        self.data_service = data_service
+        self.llm_client = llm_client
+
+    async def analyze(self, stock: UniverseStock) -> StockSignal:
+        news_data = await self.data_service.get_news(symbols=[stock.symbol])
+        articles = news_data.get("articles", [])
+        headlines = "\n".join(f"- {a.get('title', 'No title')}" for a in articles[:20]) or "No recent news available."
+        prompt = (
+            f"Analyze recent news for {stock.company_name} ({stock.symbol}).\n"
+            f"Sector: {stock.sector or 'Unknown'}\n\n"
+            f"Recent headlines:\n{headlines}\n\n"
+            "Provide: bullish_score (1-10), confidence (1-10), summary (1-2 sentences)."
+        )
+        result = await self.llm_client.invoke(prompt)
+        if isinstance(result, StockSignal):
+            return result
+        return StockSignal(
+            symbol=stock.symbol,
+            analyst_type="news",
+            bullish_score=result.get("bullish_score", 5),
+            confidence=result.get("confidence", 5),
+            summary=result.get("summary", "No analysis available."),
+        )
+
+    async def analyze_batch(
+        self,
+        stocks: list[UniverseStock],
+        max_concurrent: int = 10,
+    ) -> list[StockSignal]:
+        if not stocks:
+            return []
+        sem = asyncio.Semaphore(max_concurrent)
+
+        async def _limited(s: UniverseStock) -> StockSignal:
+            async with sem:
+                return await self.analyze(s)
+
+        return list(await asyncio.gather(*(_limited(s) for s in stocks)))

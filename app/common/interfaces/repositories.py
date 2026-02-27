@@ -1,76 +1,63 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from app.common.enums import OrderStatus
 from app.common.events.base import BaseEvent
 from app.common.models.order import Order
-from app.common.models.portfolio import PortfolioSummary, PortfolioSnapshot
+from app.common.models.portfolio import PortfolioSnapshot, PortfolioSummary
 from app.common.models.position import Position
 from app.common.models.trade import Trade
-from app.common.enums import OrderStatus
 
 
 class PortfolioRepository(ABC):
     @abstractmethod
-    async def get_by_branch(self, branch_id: str) -> PortfolioSummary | None:
-        ...
+    async def get_by_branch(self, branch_id: str) -> PortfolioSummary | None: ...
 
     @abstractmethod
     async def create(
         self, branch_id: str, branch_type: str, initial_cash: float, margin_requirement: float
-    ) -> PortfolioSummary:
-        ...
+    ) -> PortfolioSummary: ...
 
     @abstractmethod
-    async def update_cash(self, branch_id: str, amount: float, reason: str) -> PortfolioSummary:
-        ...
+    async def update_cash(self, branch_id: str, amount: float, reason: str) -> PortfolioSummary: ...
 
     @abstractmethod
-    async def get_fund_summary(self, fund_id: str) -> dict:
-        ...
+    async def get_fund_summary(self, fund_id: str) -> dict: ...
 
 
 class PositionRepository(ABC):
     @abstractmethod
-    async def get_by_portfolio(self, portfolio_id: str) -> list[Position]:
-        ...
+    async def get_by_portfolio(self, portfolio_id: str) -> list[Position]: ...
 
     @abstractmethod
-    async def get_by_symbol(self, portfolio_id: str, symbol: str) -> Position | None:
-        ...
+    async def get_by_symbol(self, portfolio_id: str, symbol: str) -> Position | None: ...
 
     @abstractmethod
-    async def upsert(self, position: Position) -> Position:
-        ...
+    async def upsert(self, position: Position) -> Position: ...
 
     @abstractmethod
-    async def delete_if_flat(self, portfolio_id: str, instrument_id: str) -> bool:
-        ...
+    async def delete_if_flat(self, portfolio_id: str, instrument_id: str) -> bool: ...
 
 
 class SnapshotRepository(ABC):
     @abstractmethod
-    async def create(self, portfolio_id: str, branch_id: str) -> PortfolioSnapshot:
-        ...
+    async def create(self, portfolio_id: str, branch_id: str) -> PortfolioSnapshot: ...
 
     @abstractmethod
     async def list_by_branch(
         self, branch_id: str, limit: int = 30, offset: int = 0
-    ) -> tuple[list[PortfolioSnapshot], int]:
-        ...
+    ) -> tuple[list[PortfolioSnapshot], int]: ...
 
 
 class OrderRepository(ABC):
     @abstractmethod
-    async def create(self, order: Order) -> Order:
-        ...
+    async def create(self, order: Order) -> Order: ...
 
     @abstractmethod
-    async def get_by_id(self, order_id: str) -> Order | None:
-        ...
+    async def get_by_id(self, order_id: str) -> Order | None: ...
 
     @abstractmethod
-    async def update_status(self, order_id: str, status: OrderStatus, **kwargs) -> Order:
-        ...
+    async def update_status(self, order_id: str, status: OrderStatus, **kwargs) -> Order: ...
 
     @abstractmethod
     async def list_orders(
@@ -80,18 +67,15 @@ class OrderRepository(ABC):
         since: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[Order], int]:
-        ...
+    ) -> tuple[list[Order], int]: ...
 
 
 class TradeRepository(ABC):
     @abstractmethod
-    async def create(self, trade: Trade) -> Trade:
-        ...
+    async def create(self, trade: Trade) -> Trade: ...
 
     @abstractmethod
-    async def get_by_id(self, trade_id: str) -> Trade | None:
-        ...
+    async def get_by_id(self, trade_id: str) -> Trade | None: ...
 
     @abstractmethod
     async def list_trades(
@@ -100,14 +84,12 @@ class TradeRepository(ABC):
         since: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[Trade], int]:
-        ...
+    ) -> tuple[list[Trade], int]: ...
 
 
 class EventLogRepository(ABC):
     @abstractmethod
-    async def append(self, event: BaseEvent) -> None:
-        ...
+    async def append(self, event: BaseEvent) -> None: ...
 
     @abstractmethod
     async def query(
@@ -117,5 +99,4 @@ class EventLogRepository(ABC):
         since: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[dict]:
-        ...
+    ) -> list[dict]: ...

@@ -1,8 +1,9 @@
 """Unit tests for PortfolioService business logic."""
 
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
+
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
 
 from app.common.enums import ExecutionMode, OrderSide
 from app.common.models.portfolio import PortfolioSummary
@@ -10,10 +11,10 @@ from app.common.models.position import Position
 from app.common.models.trade import Trade
 from app.modules.portfolio.service import PortfolioService
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def _make_portfolio(**overrides) -> PortfolioSummary:
     defaults = dict(
@@ -32,7 +33,7 @@ def _make_portfolio(**overrides) -> PortfolioSummary:
         unrealized_pnl=0.0,
         realized_pnl=0.0,
         positions=[],
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return PortfolioSummary(**defaults)
@@ -51,7 +52,7 @@ def _make_position(**overrides) -> Position:
         short_margin_used=0.0,
         realized_pnl_long=0.0,
         realized_pnl_short=0.0,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return Position(**defaults)
@@ -70,7 +71,7 @@ def _make_trade(side: OrderSide = OrderSide.BUY, **overrides) -> Trade:
         commission=0.0,
         slippage=0.0,
         execution_mode=ExecutionMode.PAPER,
-        executed_at=datetime.now(timezone.utc),
+        executed_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return Trade(**defaults)
@@ -99,6 +100,7 @@ def service(mocks):
 # ---------------------------------------------------------------------------
 # handle_trade_executed — BUY
 # ---------------------------------------------------------------------------
+
 
 class TestHandleBuy:
     @pytest.mark.asyncio
@@ -147,6 +149,7 @@ class TestHandleBuy:
 # ---------------------------------------------------------------------------
 # handle_trade_executed — SELL
 # ---------------------------------------------------------------------------
+
 
 class TestHandleSell:
     @pytest.mark.asyncio
@@ -220,6 +223,7 @@ class TestHandleSell:
 # handle_trade_executed — SHORT
 # ---------------------------------------------------------------------------
 
+
 class TestHandleShort:
     @pytest.mark.asyncio
     async def test_short_opens_position(self, service, mocks):
@@ -246,6 +250,7 @@ class TestHandleShort:
 # ---------------------------------------------------------------------------
 # handle_trade_executed — COVER
 # ---------------------------------------------------------------------------
+
 
 class TestHandleCover:
     @pytest.mark.asyncio
@@ -288,6 +293,7 @@ class TestHandleCover:
 # handle_trade_executed — edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestHandleTradeEdgeCases:
     @pytest.mark.asyncio
     async def test_no_portfolio_raises(self, service, mocks):
@@ -321,6 +327,7 @@ class TestHandleTradeEdgeCases:
 # ---------------------------------------------------------------------------
 # adjust_cash
 # ---------------------------------------------------------------------------
+
 
 class TestAdjustCash:
     @pytest.mark.asyncio

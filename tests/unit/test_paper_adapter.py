@@ -1,7 +1,8 @@
 """Unit tests for PaperTradingAdapter."""
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.common.enums import OrderSide, OrderType
 from app.common.models.order import OrderRequest
@@ -38,6 +39,7 @@ def adapter(data_service):
 # ---------------------------------------------------------------------------
 # Market orders — slippage
 # ---------------------------------------------------------------------------
+
 
 class TestMarketOrders:
     @pytest.mark.asyncio
@@ -92,6 +94,7 @@ class TestMarketOrders:
 # Limit orders
 # ---------------------------------------------------------------------------
 
+
 class TestLimitOrders:
     @pytest.mark.asyncio
     async def test_limit_buy_rejected_when_price_above_limit(self, adapter, data_service):
@@ -141,6 +144,7 @@ class TestLimitOrders:
 # Price unavailable
 # ---------------------------------------------------------------------------
 
+
 class TestPriceUnavailable:
     @pytest.mark.asyncio
     async def test_no_price_returns_rejection(self, adapter, data_service):
@@ -155,6 +159,7 @@ class TestPriceUnavailable:
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+
 
 class TestConfiguration:
     @pytest.mark.asyncio

@@ -43,7 +43,7 @@ async def get_prices(
     try:
         return await service.get_prices(symbol, start, end, interval, asset_class)
     except DataUnavailableError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/fundamentals/{symbol}/metrics")
@@ -57,7 +57,7 @@ async def get_metrics(
     try:
         return await service.get_metrics(symbol, end_date, period, limit)
     except DataUnavailableError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/fundamentals/{symbol}/line-items")
@@ -73,7 +73,7 @@ async def get_line_items(
     try:
         return await service.get_line_items(symbol, item_list, end_date, period, limit)
     except DataUnavailableError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/fundamentals/{symbol}/facts")
@@ -84,7 +84,7 @@ async def get_company_facts(
     try:
         return await service.get_company_facts(symbol)
     except DataUnavailableError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/news")
@@ -98,7 +98,7 @@ async def get_news(
     try:
         return await service.get_news(sym_list, since, limit)
     except DataUnavailableError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.put("/instruments")
@@ -116,6 +116,7 @@ async def get_instrument(
     session: AsyncSession = Depends(get_session),
 ):
     from sqlalchemy import select
+
     from app.db.models import InstrumentModel
 
     stmt = select(InstrumentModel).where(InstrumentModel.symbol == symbol)

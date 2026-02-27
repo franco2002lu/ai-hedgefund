@@ -1,7 +1,7 @@
 """PostgreSQL repositories for Portfolio module."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,14 +68,16 @@ class PostgresPortfolioRepository(PortfolioRepository):
 
         new_cash = float(portfolio.cash) + amount
         if new_cash < 0:
-            raise ValueError(
-                f"Insufficient cash: have {float(portfolio.cash)}, "
-                f"tried to withdraw {abs(amount)}"
-            )
+            raise ValueError(f"Insufficient cash: have {float(portfolio.cash)}, tried to withdraw {abs(amount)}")
 
         portfolio.cash = new_cash
-        portfolio.nav = new_cash + float(portfolio.total_long_exposure) - float(portfolio.total_short_exposure) + float(portfolio.unrealized_pnl)
-        portfolio.updated_at = datetime.now(timezone.utc)
+        portfolio.nav = (
+            new_cash
+            + float(portfolio.total_long_exposure)
+            - float(portfolio.total_short_exposure)
+            + float(portfolio.unrealized_pnl)
+        )
+        portfolio.updated_at = datetime.now(UTC)
         await self.session.flush()
 
         branch = await self.session.get(BranchModel, uuid.UUID(branch_id))
@@ -91,7 +93,7 @@ class PostgresPortfolioRepository(PortfolioRepository):
 
         for key, value in fields.items():
             setattr(portfolio, key, value)
-        portfolio.updated_at = datetime.now(timezone.utc)
+        portfolio.updated_at = datetime.now(UTC)
         await self.session.flush()
 
     async def get_fund_summary(self, fund_id: str) -> dict:
@@ -126,17 +128,19 @@ class PostgresPortfolioRepository(PortfolioRepository):
             pos_result = await self.session.execute(pos_stmt)
             pos_count = pos_result.scalar()
 
-            branches.append({
-                "branch_id": str(branch.id),
-                "branch_type": branch.branch_type,
-                "status": branch.status,
-                "allocated_capital": float(branch.allocated_capital),
-                "nav": nav,
-                "cash": cash,
-                "unrealized_pnl": float(portfolio.unrealized_pnl),
-                "realized_pnl": float(portfolio.realized_pnl),
-                "position_count": pos_count,
-            })
+            branches.append(
+                {
+                    "branch_id": str(branch.id),
+                    "branch_type": branch.branch_type,
+                    "status": branch.status,
+                    "allocated_capital": float(branch.allocated_capital),
+                    "nav": nav,
+                    "cash": cash,
+                    "unrealized_pnl": float(portfolio.unrealized_pnl),
+                    "realized_pnl": float(portfolio.realized_pnl),
+                    "position_count": pos_count,
+                }
+            )
 
         return {
             "fund_id": str(fund.id),
@@ -205,7 +209,7 @@ class PostgresPositionRepository(PositionRepository):
             existing.short_margin_used = position.short_margin_used
             existing.realized_pnl_long = position.realized_pnl_long
             existing.realized_pnl_short = position.realized_pnl_short
-            existing.updated_at = datetime.now(timezone.utc)
+            existing.updated_at = datetime.now(UTC)
             await self.session.flush()
             return self._to_domain(existing)
         else:

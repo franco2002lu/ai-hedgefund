@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel
 
-from app.common.models.order import OrderRequest, Order
+from app.common.models.order import Order, OrderRequest
 from app.common.models.trade import Trade
 
 
@@ -22,21 +22,16 @@ class AccountInfo(BaseModel):
 
 class BrokerAdapter(ABC):
     @abstractmethod
-    async def submit_order(self, order: OrderRequest) -> OrderResult:
-        ...
+    async def submit_order(self, order: OrderRequest) -> OrderResult: ...
 
     @abstractmethod
-    async def cancel_order(self, order_id: str) -> bool:
-        ...
+    async def cancel_order(self, order_id: str) -> bool: ...
 
     @abstractmethod
-    async def get_order_status(self, order_id: str) -> Order:
-        ...
+    async def get_order_status(self, order_id: str) -> Order: ...
 
     @abstractmethod
-    async def get_account_info(self) -> AccountInfo:
-        ...
+    async def get_account_info(self) -> AccountInfo: ...
 
     @abstractmethod
-    def supports_asset_class(self, asset_class: str) -> bool:
-        ...
+    def supports_asset_class(self, asset_class: str) -> bool: ...

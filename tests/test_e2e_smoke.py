@@ -22,31 +22,40 @@ async def main():
         print("1.  App healthy")
 
         # 2-3. Fund + branch already seeded. Create portfolio with $100K.
-        r = await c.post("/api/v1/portfolios", json={
-            "branch_id": BRANCH_ID,
-            "branch_type": "equities",
-            "initial_cash": 100000.0,
-            "margin_requirement": 0.5,
-        })
+        r = await c.post(
+            "/api/v1/portfolios",
+            json={
+                "branch_id": BRANCH_ID,
+                "branch_type": "equities",
+                "initial_cash": 100000.0,
+                "margin_requirement": 0.5,
+            },
+        )
         assert r.status_code == 200
-        print(f"2-3. Portfolio created with $100K cash")
+        print("2-3. Portfolio created with $100K cash")
 
         # 4. Upsert instrument AAPL
-        r = await c.put("/api/v1/instruments", json={
-            "symbol": "AAPL",
-            "name": "Apple Inc.",
-            "asset_class": "equity",
-            "exchange": "NASDAQ",
-        })
+        r = await c.put(
+            "/api/v1/instruments",
+            json={
+                "symbol": "AAPL",
+                "name": "Apple Inc.",
+                "asset_class": "equity",
+                "exchange": "NASDAQ",
+            },
+        )
         assert r.status_code == 200
         instrument_id = r.json()["instrument_id"]
         print(f"4.  Instrument AAPL upserted: {instrument_id}")
 
         # 5. Fetch AAPL price
-        r = await c.get("/api/v1/prices/AAPL", params={
-            "start_date": "2025-01-01",
-            "end_date": "2025-01-10",
-        })
+        r = await c.get(
+            "/api/v1/prices/AAPL",
+            params={
+                "start_date": "2025-01-01",
+                "end_date": "2025-01-10",
+            },
+        )
         assert r.status_code == 200
         bars = r.json()["bars"]
         assert len(bars) > 0
@@ -54,29 +63,32 @@ async def main():
         print(f"5.  AAPL price fetched: {len(bars)} bars, latest close=${latest_price}")
 
         # 6. Submit BUY order for 10 shares of AAPL
-        r = await c.post("/api/v1/orders", json={
-            "branch_id": BRANCH_ID,
-            "instrument_id": instrument_id,
-            "symbol": "AAPL",
-            "side": "buy",
-            "order_type": "market",
-            "quantity": 10.0,
-            "confidence": 85.0,
-            "reasoning": "Strong fundamentals, good entry point",
-        })
+        r = await c.post(
+            "/api/v1/orders",
+            json={
+                "branch_id": BRANCH_ID,
+                "instrument_id": instrument_id,
+                "symbol": "AAPL",
+                "side": "buy",
+                "order_type": "market",
+                "quantity": 10.0,
+                "confidence": 85.0,
+                "reasoning": "Strong fundamentals, good entry point",
+            },
+        )
         assert r.status_code == 200, f"BUY failed: {r.text}"
         buy_result = r.json()
         assert buy_result["success"] is True
         fill_price = buy_result["fill_price"]
         order_id = buy_result["order_id"]
-        trade_id = buy_result["trade_id"]
+        _ = buy_result["trade_id"]  # verify key exists
         print(f"6.  BUY 10 AAPL filled @ ${fill_price:.2f}")
 
         # 7. Verify order status = FILLED
         r = await c.get(f"/api/v1/orders/{order_id}")
         assert r.status_code == 200
         assert r.json()["status"] == "filled"
-        print(f"7.  Order status = filled")
+        print("7.  Order status = filled")
 
         # 8. Verify position exists
         r = await c.get(f"/api/v1/portfolios/{BRANCH_ID}/positions/AAPL")
@@ -109,14 +121,17 @@ async def main():
         print(f"11. Snapshot taken: nav=${r.json()['nav']:.2f}")
 
         # 12. Submit SELL order for 5 shares
-        r = await c.post("/api/v1/orders", json={
-            "branch_id": BRANCH_ID,
-            "instrument_id": instrument_id,
-            "symbol": "AAPL",
-            "side": "sell",
-            "order_type": "market",
-            "quantity": 5.0,
-        })
+        r = await c.post(
+            "/api/v1/orders",
+            json={
+                "branch_id": BRANCH_ID,
+                "instrument_id": instrument_id,
+                "symbol": "AAPL",
+                "side": "sell",
+                "order_type": "market",
+                "quantity": 5.0,
+            },
+        )
         assert r.status_code == 200, f"SELL failed: {r.text}"
         sell_result = r.json()
         assert sell_result["success"] is True
@@ -138,8 +153,10 @@ async def main():
 
         # 15. Fetch portfolio summary — all fields consistent
         assert portfolio_after["total_long_exposure"] > 0
-        print(f"15. Portfolio summary: long_exp=${portfolio_after['total_long_exposure']:.2f}, "
-              f"realized_pnl=${portfolio_after['realized_pnl']:.2f}")
+        print(
+            f"15. Portfolio summary: long_exp=${portfolio_after['total_long_exposure']:.2f}, "
+            f"realized_pnl=${portfolio_after['realized_pnl']:.2f}"
+        )
 
         # 16. Fund summary
         r = await c.get(f"/api/v1/fund/{FUND_ID}/summary")

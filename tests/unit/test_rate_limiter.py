@@ -1,7 +1,8 @@
 """Unit tests for RateLimiter."""
 
-import pytest
 import time
+
+import pytest
 
 from app.modules.data_platform.rate_limiter import RateLimiter
 

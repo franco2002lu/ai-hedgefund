@@ -17,12 +17,15 @@ async def main():
         print("1. Health check OK")
 
         # 2. Create portfolio
-        r = await client.post("/api/v1/portfolios", json={
-            "branch_id": BRANCH_ID,
-            "branch_type": "equities",
-            "initial_cash": 100000.0,
-            "margin_requirement": 0.5,
-        })
+        r = await client.post(
+            "/api/v1/portfolios",
+            json={
+                "branch_id": BRANCH_ID,
+                "branch_type": "equities",
+                "initial_cash": 100000.0,
+                "margin_requirement": 0.5,
+            },
+        )
         assert r.status_code == 200, f"Create portfolio failed: {r.text}"
         data = r.json()
         assert data["cash"] == 100000.0
@@ -38,20 +41,26 @@ async def main():
         print(f"3. Portfolio retrieved: cash={data['cash']}, nav={data['nav']}")
 
         # 4. Adjust cash +5000
-        r = await client.put(f"/api/v1/portfolios/{BRANCH_ID}/cash", json={
-            "amount": 5000.0,
-            "reason": "allocation_increase",
-        })
+        r = await client.put(
+            f"/api/v1/portfolios/{BRANCH_ID}/cash",
+            json={
+                "amount": 5000.0,
+                "reason": "allocation_increase",
+            },
+        )
         assert r.status_code == 200, f"Adjust cash failed: {r.text}"
         data = r.json()
         assert data["cash"] == 105000.0
         print(f"4. Cash adjusted: cash={data['cash']}")
 
         # 5. Reject negative overdraft
-        r = await client.put(f"/api/v1/portfolios/{BRANCH_ID}/cash", json={
-            "amount": -200000.0,
-            "reason": "test_overdraft",
-        })
+        r = await client.put(
+            f"/api/v1/portfolios/{BRANCH_ID}/cash",
+            json={
+                "amount": -200000.0,
+                "reason": "test_overdraft",
+            },
+        )
         assert r.status_code == 400, f"Expected 400, got {r.status_code}: {r.text}"
         print("5. Overdraft correctly rejected")
 

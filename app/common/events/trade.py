@@ -1,5 +1,5 @@
+from app.common.enums import ExecutionMode, OrderSide, OrderStatus, OrderType, TimeInForce
 from app.common.events.base import BaseEvent
-from app.common.enums import OrderSide, OrderType, OrderStatus, TimeInForce, ExecutionMode
 
 
 class TradeRequestedEvent(BaseEvent):

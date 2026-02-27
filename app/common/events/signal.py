@@ -1,5 +1,5 @@
-from app.common.events.base import BaseEvent
 from app.common.enums import SignalDirection
+from app.common.events.base import BaseEvent
 
 
 class SignalGeneratedEvent(BaseEvent):
