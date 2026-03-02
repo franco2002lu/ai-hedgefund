@@ -85,7 +85,6 @@ def _make_analyst(
 
 
 class TestFundamentalsAnalyst:
-    @pytest.mark.asyncio
     async def test_returns_valid_stock_signal(self):
         analyst, _, _, _ = _make_analyst()
         stock = _make_stock()
@@ -98,7 +97,6 @@ class TestFundamentalsAnalyst:
         assert signal.confidence == 7
         assert signal.summary == "Strong fundamentals"
 
-    @pytest.mark.asyncio
     async def test_analyst_type_is_fundamentals(self):
         analyst, _, _, _ = _make_analyst()
         stock = _make_stock(symbol="TSLA", company_name="Tesla Inc.")
@@ -106,7 +104,6 @@ class TestFundamentalsAnalyst:
 
         assert signal.analyst_type == "fundamentals"
 
-    @pytest.mark.asyncio
     async def test_calls_data_service_for_metrics(self):
         analyst, data_service, _, _ = _make_analyst()
         stock = _make_stock(symbol="GOOG")
@@ -114,7 +111,6 @@ class TestFundamentalsAnalyst:
 
         data_service.get_metrics.assert_awaited_once_with("GOOG")
 
-    @pytest.mark.asyncio
     async def test_calls_sec_edgar_for_earnings(self):
         analyst, _, sec_edgar, _ = _make_analyst()
         stock = _make_stock(symbol="AMZN")
@@ -122,7 +118,6 @@ class TestFundamentalsAnalyst:
 
         sec_edgar.get_earnings_data.assert_awaited_once_with("AMZN")
 
-    @pytest.mark.asyncio
     async def test_handles_malformed_llm_response(self):
         """LLM returns a dict missing required fields -> defaults are used."""
         malformed = {"confidence": 6}  # missing bullish_score and summary
@@ -134,7 +129,6 @@ class TestFundamentalsAnalyst:
         assert signal.confidence == 6
         assert signal.summary == "No analysis available."  # default
 
-    @pytest.mark.asyncio
     async def test_handles_llm_timeout(self):
         analyst, _, _, _ = _make_analyst(llm_side_effect=TimeoutError("LLM timed out"))
         stock = _make_stock()
@@ -142,7 +136,6 @@ class TestFundamentalsAnalyst:
         with pytest.raises(TimeoutError):
             await analyst.analyze(stock)
 
-    @pytest.mark.asyncio
     async def test_handles_missing_edgar_data(self):
         """sec_edgar returns empty list; analyst still produces signal from Yahoo data."""
         analyst, _, _, _ = _make_analyst(earnings=[])

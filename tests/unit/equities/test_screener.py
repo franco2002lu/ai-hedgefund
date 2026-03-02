@@ -2,8 +2,6 @@
 
 from unittest.mock import AsyncMock
 
-import pytest
-
 from app.modules.equities.models import UniverseStock
 from app.modules.equities.universe.screener import Screener, ScreeningFilter
 
@@ -28,7 +26,6 @@ class _MockFilter(ScreeningFilter):
 
 
 class TestScreenerPipeline:
-    @pytest.mark.asyncio
     async def test_filters_compose_correctly(self):
         """Two filters compose: first keeps A,B; second keeps B only."""
         stocks = [_make_stock("A"), _make_stock("B"), _make_stock("C")]
@@ -53,7 +50,6 @@ class TestScreenerPipeline:
         mock_apply1.assert_awaited_once()
         mock_apply2.assert_awaited_once()
 
-    @pytest.mark.asyncio
     async def test_empty_universe_returns_empty(self):
         async def passthrough(stks, ds):
             return stks
@@ -63,7 +59,6 @@ class TestScreenerPipeline:
         result = await screener.screen([], AsyncMock())
         assert result == []
 
-    @pytest.mark.asyncio
     async def test_all_filtered_returns_empty(self):
         stocks = [_make_stock("A"), _make_stock("B")]
 
@@ -75,7 +70,6 @@ class TestScreenerPipeline:
         result = await screener.screen(stocks, AsyncMock())
         assert result == []
 
-    @pytest.mark.asyncio
     async def test_single_filter_pipeline(self):
         stocks = [_make_stock("A"), _make_stock("B"), _make_stock("C")]
 
@@ -90,7 +84,6 @@ class TestScreenerPipeline:
         assert result[0].symbol == "A"
         assert result[1].symbol == "B"
 
-    @pytest.mark.asyncio
     async def test_no_filters_returns_all(self):
         stocks = [_make_stock("A"), _make_stock("B"), _make_stock("C")]
         screener = Screener(filters=[])

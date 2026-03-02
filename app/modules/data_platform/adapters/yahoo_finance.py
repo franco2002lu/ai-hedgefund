@@ -1,7 +1,7 @@
 """Yahoo Finance adapter — primary data source for Phase 1."""
 
 import asyncio
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 
 import yfinance as yf
 

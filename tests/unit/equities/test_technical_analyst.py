@@ -67,7 +67,6 @@ def _make_analyst(
 
 
 class TestTechnicalAnalyst:
-    @pytest.mark.asyncio
     async def test_returns_valid_stock_signal(self):
         analyst, _, _ = _make_analyst()
         stock = _make_stock()
@@ -80,7 +79,6 @@ class TestTechnicalAnalyst:
         assert signal.confidence == 7
         assert signal.summary == "Uptrend with strong momentum"
 
-    @pytest.mark.asyncio
     async def test_analyst_type_is_technical(self):
         analyst, _, _ = _make_analyst()
         stock = _make_stock(symbol="NVDA", company_name="NVIDIA Corp.")
@@ -88,7 +86,6 @@ class TestTechnicalAnalyst:
 
         assert signal.analyst_type == "technical"
 
-    @pytest.mark.asyncio
     async def test_calls_data_service_for_prices(self):
         analyst, data_service, _ = _make_analyst()
         stock = _make_stock(symbol="META")
@@ -98,7 +95,6 @@ class TestTechnicalAnalyst:
         call_args = data_service.get_prices.call_args
         assert call_args[0][0] == "META"  # first positional arg is the symbol
 
-    @pytest.mark.asyncio
     async def test_handles_malformed_llm_response(self):
         """LLM returns a dict missing required fields -> defaults are used."""
         malformed = {"summary": "Some analysis"}  # missing scores
@@ -110,7 +106,6 @@ class TestTechnicalAnalyst:
         assert signal.confidence == 5  # default
         assert signal.summary == "Some analysis"
 
-    @pytest.mark.asyncio
     async def test_handles_llm_timeout(self):
         analyst, _, _ = _make_analyst(llm_side_effect=TimeoutError("LLM timed out"))
         stock = _make_stock()
@@ -118,7 +113,6 @@ class TestTechnicalAnalyst:
         with pytest.raises(TimeoutError):
             await analyst.analyze(stock)
 
-    @pytest.mark.asyncio
     async def test_handles_insufficient_price_history(self):
         """data_service returns few/no bars; analyst still produces a signal."""
         analyst, _, _ = _make_analyst(price_data={"bars": []})

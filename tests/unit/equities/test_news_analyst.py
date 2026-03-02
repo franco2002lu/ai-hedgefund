@@ -67,7 +67,6 @@ def _make_analyst(
 
 
 class TestNewsAnalyst:
-    @pytest.mark.asyncio
     async def test_returns_valid_stock_signal(self):
         analyst, _, _ = _make_analyst()
         stock = _make_stock()
@@ -80,7 +79,6 @@ class TestNewsAnalyst:
         assert signal.confidence == 8
         assert signal.summary == "Positive news sentiment"
 
-    @pytest.mark.asyncio
     async def test_analyst_type_is_news(self):
         analyst, _, _ = _make_analyst()
         stock = _make_stock(symbol="MSFT", company_name="Microsoft Corp.")
@@ -88,7 +86,6 @@ class TestNewsAnalyst:
 
         assert signal.analyst_type == "news"
 
-    @pytest.mark.asyncio
     async def test_bullish_score_within_range(self):
         for score in [1, 5, 10]:
             analyst, _, _ = _make_analyst(
@@ -97,7 +94,6 @@ class TestNewsAnalyst:
             signal = await analyst.analyze(_make_stock())
             assert 1 <= signal.bullish_score <= 10
 
-    @pytest.mark.asyncio
     async def test_confidence_within_range(self):
         for conf in [1, 5, 10]:
             analyst, _, _ = _make_analyst(
@@ -106,7 +102,6 @@ class TestNewsAnalyst:
             signal = await analyst.analyze(_make_stock())
             assert 1 <= signal.confidence <= 10
 
-    @pytest.mark.asyncio
     async def test_calls_data_service_for_news(self):
         analyst, data_service, _ = _make_analyst()
         stock = _make_stock(symbol="GOOG")
@@ -114,7 +109,6 @@ class TestNewsAnalyst:
 
         data_service.get_news.assert_awaited_once_with(symbols=["GOOG"])
 
-    @pytest.mark.asyncio
     async def test_handles_malformed_llm_response(self):
         """LLM returns a dict missing required fields -> defaults are used."""
         malformed = {"bullish_score": 3}  # missing confidence and summary
@@ -127,7 +121,6 @@ class TestNewsAnalyst:
         assert signal.confidence == 5
         assert signal.summary == "No analysis available."
 
-    @pytest.mark.asyncio
     async def test_handles_llm_timeout(self):
         analyst, _, _ = _make_analyst(llm_side_effect=TimeoutError("LLM timed out"))
         stock = _make_stock()
@@ -135,7 +128,6 @@ class TestNewsAnalyst:
         with pytest.raises(TimeoutError):
             await analyst.analyze(stock)
 
-    @pytest.mark.asyncio
     async def test_handles_llm_api_failure(self):
         analyst, _, _ = _make_analyst(llm_side_effect=Exception("API error"))
         stock = _make_stock()

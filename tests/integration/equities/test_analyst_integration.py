@@ -45,7 +45,6 @@ def _validate_signal(signal: StockSignal, expected_symbol: str, expected_analyst
 class TestNewsAnalystIntegration:
     """Test NewsAnalyst with real LLM and real market data from Yahoo Finance."""
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("stock", TEST_STOCKS, ids=lambda s: s.symbol)
     async def test_returns_valid_signal_for_each_stock(self, stock, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
@@ -56,7 +55,6 @@ class TestNewsAnalystIntegration:
         signal = await analyst.analyze(stock)
         _validate_signal(signal, stock.symbol, "news")
 
-    @pytest.mark.asyncio
     async def test_scores_within_valid_range(self, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
             config=AnalystLLMConfig(),
@@ -68,7 +66,6 @@ class TestNewsAnalystIntegration:
             assert 1 <= signal.bullish_score <= 10, f"{stock.symbol}: bullish_score {signal.bullish_score} out of range"
             assert 1 <= signal.confidence <= 10, f"{stock.symbol}: confidence {signal.confidence} out of range"
 
-    @pytest.mark.asyncio
     async def test_summary_is_nonempty(self, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
             config=AnalystLLMConfig(),
@@ -78,7 +75,6 @@ class TestNewsAnalystIntegration:
         signal = await analyst.analyze(TEST_STOCKS[0])
         assert len(signal.summary.strip()) > 0, "Summary should be a non-empty string"
 
-    @pytest.mark.asyncio
     async def test_batch_analysis_returns_all_signals(self, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
             config=AnalystLLMConfig(),
@@ -99,7 +95,6 @@ class TestNewsAnalystIntegration:
 class TestFundamentalsAnalystIntegration:
     """Test FundamentalsAnalyst with real LLM, Yahoo Finance, and SEC EDGAR stub."""
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("stock", TEST_STOCKS, ids=lambda s: s.symbol)
     async def test_returns_valid_signal_for_each_stock(
         self,
@@ -117,7 +112,6 @@ class TestFundamentalsAnalystIntegration:
         signal = await analyst.analyze(stock)
         _validate_signal(signal, stock.symbol, "fundamentals")
 
-    @pytest.mark.asyncio
     async def test_scores_within_valid_range(
         self,
         real_data_service,
@@ -135,7 +129,6 @@ class TestFundamentalsAnalystIntegration:
             assert 1 <= signal.bullish_score <= 10, f"{stock.symbol}: bullish_score {signal.bullish_score} out of range"
             assert 1 <= signal.confidence <= 10, f"{stock.symbol}: confidence {signal.confidence} out of range"
 
-    @pytest.mark.asyncio
     async def test_summary_references_financials(
         self,
         real_data_service,
@@ -161,7 +154,6 @@ class TestFundamentalsAnalystIntegration:
 class TestTechnicalAnalystIntegration:
     """Test TechnicalAnalyst with real LLM and real price data from Yahoo Finance."""
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize("stock", TEST_STOCKS, ids=lambda s: s.symbol)
     async def test_returns_valid_signal_for_each_stock(self, stock, real_data_service, real_llm_client):
         analyst = TechnicalAnalyst(
@@ -172,7 +164,6 @@ class TestTechnicalAnalystIntegration:
         signal = await analyst.analyze(stock)
         _validate_signal(signal, stock.symbol, "technical")
 
-    @pytest.mark.asyncio
     async def test_scores_within_valid_range(self, real_data_service, real_llm_client):
         analyst = TechnicalAnalyst(
             config=AnalystLLMConfig(),
@@ -184,7 +175,6 @@ class TestTechnicalAnalystIntegration:
             assert 1 <= signal.bullish_score <= 10, f"{stock.symbol}: bullish_score {signal.bullish_score} out of range"
             assert 1 <= signal.confidence <= 10, f"{stock.symbol}: confidence {signal.confidence} out of range"
 
-    @pytest.mark.asyncio
     async def test_batch_analysis_returns_all_signals(self, real_data_service, real_llm_client):
         analyst = TechnicalAnalyst(
             config=AnalystLLMConfig(),

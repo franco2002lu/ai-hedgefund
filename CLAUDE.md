@@ -23,10 +23,8 @@ pytest tests/unit/ -q -k "test_buy_order"       # single test by name
 pytest tests/ --ignore=tests/integration -q     # unit + non-e2e tests
 
 # Integration/E2E (require running server + DB — see "Running Integration Tests" below)
-python tests/test_checkpoint2.py                # portfolio + event log
-python tests/test_e2e_smoke.py                  # full 17-step trade lifecycle
 pytest tests/integration/ -m integration -v     # analyst agent tests (real LLM calls)
-pytest tests/integration/ -m e2e -v             # equities e2e pipeline
+pytest tests/integration/ -m e2e -v             # all e2e tests (equities pipeline, checkpoint2, smoke)
 
 # Lint and format (ruff)
 ruff check app/ tests/                          # lint
@@ -137,20 +135,23 @@ E2E tests (`test_e2e_smoke.py`, `test_checkpoint2.py`, `test_e2e_equities.py`) c
 
 ```bash
 # 1. Connect and drop schema
-psql -h localhost -p 5433 -U hedge_user -d hedge_fund -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker exec infrastructure-postgres-1 psql -U hedgefund -d hedgefund -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
 # 2. Re-apply migrations
 alembic upgrade head
 
 # 3. Re-seed fund + branch rows (required for FK constraints)
-psql -h localhost -p 5433 -U hedge_user -d hedge_fund <<'SQL'
-INSERT INTO funds (id, name) VALUES ('11111111-1111-1111-1111-111111111111', 'Test Fund');
-INSERT INTO branches (id, fund_id, name, branch_type)
+docker exec infrastructure-postgres-1 psql -U hedgefund -d hedgefund -c "
+BEGIN;
+INSERT INTO funds (id, name, total_aum, execution_mode, created_at)
+VALUES ('11111111-1111-1111-1111-111111111111', 'Test Fund', 0.00, 'paper', NOW());
+INSERT INTO branches (id, fund_id, name, branch_type, status, allocated_capital, execution_cadence, created_at)
 VALUES
-  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'US Equities', 'equities'),
-  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Equities Growth', 'equities'),
-  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Equities Value', 'equities');
-SQL
+  ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'US Equities', 'equities', 'active', 0.00, 'daily', NOW()),
+  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Equities Growth', 'equities', 'active', 0.00, 'daily', NOW()),
+  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Equities Value', 'equities', 'active', 0.00, 'daily', NOW());
+COMMIT;
+"
 
 # 4. Restart the server (picks up fresh DB state)
 # Kill existing uvicorn, then:
@@ -166,8 +167,8 @@ These suites **cannot all share the same DB state** — `test_e2e_smoke.py` and 
 | Unit tests | `pytest tests/unit/ -q` | All business logic (no DB/server) | None |
 | Analyst integration | `pytest tests/integration/ -m integration -v` | Real LLM calls via Anthropic API | Server + seeded DB + `ANTHROPIC_API_KEY` |
 | Equities E2E | `pytest tests/integration/ -m e2e -v` | Full pipeline: universe → screening → signals → trades | Server + clean seeded DB + `ANTHROPIC_API_KEY` |
-| Checkpoint 2 | `python tests/test_checkpoint2.py` | Portfolio + event log CRUD | Server + clean seeded DB |
-| E2E Smoke | `python tests/test_e2e_smoke.py` | Full 17-step trade lifecycle | Server + clean seeded DB |
+| Checkpoint 2 | `pytest tests/integration/test_checkpoint2.py -m e2e -v` | Portfolio + event log CRUD | Server + clean seeded DB |
+| E2E Smoke | `pytest tests/integration/test_e2e_smoke.py -m e2e -v` | Full 17-step trade lifecycle | Server + clean seeded DB |
 
 **Recommended run order for a full verification cycle:**
 
@@ -181,9 +182,9 @@ pytest tests/integration/ -m integration -v
 pytest tests/integration/ -m e2e -v
 
 # 3. Then pick ONE of checkpoint2 or smoke test (both use branch 22222222...)
-python tests/test_checkpoint2.py
+pytest tests/integration/test_checkpoint2.py -m e2e -v
 # OR (requires DB reset between them)
-python tests/test_e2e_smoke.py
+pytest tests/integration/test_e2e_smoke.py -m e2e -v
 ```
 
 ### Known Integration Test Behaviors

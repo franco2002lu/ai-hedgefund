@@ -2,13 +2,10 @@
 
 import time
 
-import pytest
-
 from app.modules.data_platform.rate_limiter import RateLimiter
 
 
 class TestRateLimiter:
-    @pytest.mark.asyncio
     async def test_first_request_passes_immediately(self):
         limiter = RateLimiter(requests_per_second=5.0)
 
@@ -19,7 +16,6 @@ class TestRateLimiter:
         # Should complete with negligible delay
         assert elapsed < 0.1
 
-    @pytest.mark.asyncio
     async def test_sources_are_independent(self):
         limiter = RateLimiter(requests_per_second=2.0)
 
@@ -34,7 +30,6 @@ class TestRateLimiter:
 
         assert elapsed < 0.1
 
-    @pytest.mark.asyncio
     async def test_burst_within_capacity(self):
         limiter = RateLimiter(requests_per_second=10.0)
 

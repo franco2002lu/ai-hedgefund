@@ -12,7 +12,7 @@ from app.config import settings
 
 # Load .env into os.environ so non-HEDGE_ vars (e.g. ANTHROPIC_API_KEY) are available
 load_dotenv()
-from app.db.connection import engine
+from app.db.connection import engine  # noqa: E402
 from app.dependencies import init_services
 from app.modules.data_platform.adapters.yahoo_finance import YahooFinanceAdapter
 from app.modules.data_platform.api import router as data_platform_router

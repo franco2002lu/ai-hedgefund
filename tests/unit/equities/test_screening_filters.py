@@ -59,7 +59,6 @@ def _metrics_response(symbol: str, metrics_dict: dict) -> dict:
 class TestLiquidityFilter:
     """LiquidityFilter checks averageDailyVolume10Day >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_stock_above_threshold(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("AAPL", {"averageDailyVolume10Day": 1_000_000})
@@ -68,7 +67,6 @@ class TestLiquidityFilter:
         assert len(result) == 1
         assert result[0].symbol == "AAPL"
 
-    @pytest.mark.asyncio
     async def test_rejects_stock_below_threshold(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("THIN", {"averageDailyVolume10Day": 100_000})
@@ -76,7 +74,6 @@ class TestLiquidityFilter:
         result = await f.apply([_make_stock("THIN")], data_service)
         assert len(result) == 0
 
-    @pytest.mark.asyncio
     async def test_name_property(self):
         assert LiquidityFilter().name == "LiquidityFilter"
 
@@ -84,7 +81,6 @@ class TestLiquidityFilter:
 class TestMarketCapFilter:
     """MarketCapFilter checks marketCap >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_large_cap(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("AAPL", {"marketCap": 3e12})
@@ -93,7 +89,6 @@ class TestMarketCapFilter:
         assert len(result) == 1
         assert result[0].symbol == "AAPL"
 
-    @pytest.mark.asyncio
     async def test_rejects_small_cap(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("TINY", {"marketCap": 500e6})
@@ -101,7 +96,6 @@ class TestMarketCapFilter:
         result = await f.apply([_make_stock("TINY")], data_service)
         assert len(result) == 0
 
-    @pytest.mark.asyncio
     async def test_boundary_at_threshold(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("EDGE", {"marketCap": 2e9})
@@ -114,7 +108,6 @@ class TestMarketCapFilter:
 class TestEarningsRecencyFilter:
     """EarningsRecencyFilter checks daysSinceLastEarnings <= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_recent_earnings(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("FRESH", {"daysSinceLastEarnings": 60})
@@ -122,7 +115,6 @@ class TestEarningsRecencyFilter:
         result = await f.apply([_make_stock("FRESH")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_stale_earnings(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("STALE", {"daysSinceLastEarnings": 150})
@@ -130,7 +122,6 @@ class TestEarningsRecencyFilter:
         result = await f.apply([_make_stock("STALE")], data_service)
         assert len(result) == 0
 
-    @pytest.mark.asyncio
     async def test_handles_no_earnings_data(self):
         """When earnings date is absent the stock must be rejected."""
         data_service = AsyncMock()
@@ -143,7 +134,6 @@ class TestEarningsRecencyFilter:
 class TestVolatilityFilter:
     """VolatilityFilter rejects the top N-percentile most volatile stocks."""
 
-    @pytest.mark.asyncio
     async def test_passes_normal_volatility(self):
         """A stock NOT in the top 5% should pass."""
         data_service = AsyncMock()
@@ -160,7 +150,6 @@ class TestVolatilityFilter:
         symbols = {s.symbol for s in result}
         assert "CALM" in symbols
 
-    @pytest.mark.asyncio
     async def test_rejects_top_percentile(self):
         """With 20 stocks, the top 5% (1 stock) should be rejected."""
         data_service = AsyncMock()
@@ -183,7 +172,6 @@ class TestVolatilityFilter:
         assert "S00" in result_symbols
         assert "S10" in result_symbols
 
-    @pytest.mark.asyncio
     async def test_needs_multiple_stocks_for_percentile(self):
         """A single stock always passes -- cannot compute meaningful percentile."""
         data_service = AsyncMock()
@@ -197,7 +185,6 @@ class TestVolatilityFilter:
 class TestLeverageFilter:
     """LeverageFilter checks debtToEquity <= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_moderate_leverage(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("SAFE", {"debtToEquity": 2.0})
@@ -205,7 +192,6 @@ class TestLeverageFilter:
         result = await f.apply([_make_stock("SAFE")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_high_leverage(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("RISKY", {"debtToEquity": 10.0})
@@ -213,7 +199,6 @@ class TestLeverageFilter:
         result = await f.apply([_make_stock("RISKY")], data_service)
         assert len(result) == 0
 
-    @pytest.mark.asyncio
     async def test_handles_missing_data(self):
         """When debtToEquity is absent the stock should be rejected.
 
@@ -236,7 +221,6 @@ class TestLeverageFilter:
 class TestRevenueGrowthFilter:
     """RevenueGrowthFilter checks revenueGrowthYoy >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_high_growth(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("FAST", {"revenueGrowthYoy": 0.20})
@@ -244,7 +228,6 @@ class TestRevenueGrowthFilter:
         result = await f.apply([_make_stock("FAST")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_low_growth(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("SLOW", {"revenueGrowthYoy": 0.02})
@@ -252,7 +235,6 @@ class TestRevenueGrowthFilter:
         result = await f.apply([_make_stock("SLOW")], data_service)
         assert len(result) == 0
 
-    @pytest.mark.asyncio
     async def test_rejects_negative_growth(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("SHRK", {"revenueGrowthYoy": -0.10})
@@ -264,7 +246,6 @@ class TestRevenueGrowthFilter:
 class TestEarningsGrowthFilter:
     """EarningsGrowthFilter checks earningsGrowthYoy >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_positive_growth(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("EARN", {"earningsGrowthYoy": 0.15})
@@ -272,7 +253,6 @@ class TestEarningsGrowthFilter:
         result = await f.apply([_make_stock("EARN")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_negative_growth(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("LOSE", {"earningsGrowthYoy": -0.05})
@@ -284,7 +264,6 @@ class TestEarningsGrowthFilter:
 class TestGrossMarginTrendFilter:
     """GrossMarginTrendFilter rejects stocks with >= N declining margin quarters."""
 
-    @pytest.mark.asyncio
     async def test_passes_improving_margins(self):
         """margins=[0.30, 0.32, 0.34, 0.35] => 0 declining quarters => passes."""
         data_service = AsyncMock()
@@ -293,7 +272,6 @@ class TestGrossMarginTrendFilter:
         result = await f.apply([_make_stock("GOOD")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_declining_margins(self):
         """margins=[0.35, 0.33, 0.30, 0.28] => 3 declining quarters (>=2) => rejected."""
         data_service = AsyncMock()
@@ -306,7 +284,6 @@ class TestGrossMarginTrendFilter:
 class TestEarningsSurpriseFilter:
     """EarningsSurpriseFilter checks lastEarningsSurprisePct >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_beat(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("BEAT", {"lastEarningsSurprisePct": 0.05})
@@ -314,7 +291,6 @@ class TestEarningsSurpriseFilter:
         result = await f.apply([_make_stock("BEAT")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_passes_small_miss_within_threshold(self):
         """A miss of -3% is above the -5% threshold => passes."""
         data_service = AsyncMock()
@@ -323,7 +299,6 @@ class TestEarningsSurpriseFilter:
         result = await f.apply([_make_stock("NEAR")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_large_miss(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("MISS", {"lastEarningsSurprisePct": -0.10})
@@ -335,7 +310,6 @@ class TestEarningsSurpriseFilter:
 class TestMomentumFilter:
     """MomentumFilter checks return6m >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_positive_momentum(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("UP", {"return6m": 0.15})
@@ -343,7 +317,6 @@ class TestMomentumFilter:
         result = await f.apply([_make_stock("UP")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_passes_small_decline_within_threshold(self):
         """A 6m return of -5% is above the -10% threshold => passes."""
         data_service = AsyncMock()
@@ -352,7 +325,6 @@ class TestMomentumFilter:
         result = await f.apply([_make_stock("DIP")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_severe_decline(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("CRASH", {"return6m": -0.30})
@@ -364,7 +336,6 @@ class TestMomentumFilter:
 class TestPEGFilter:
     """PEGFilter checks pegRatio <= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_reasonable_peg(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("FAIR", {"pegRatio": 1.5})
@@ -373,7 +344,6 @@ class TestPEGFilter:
         assert len(result) == 1
         assert result[0].symbol == "FAIR"
 
-    @pytest.mark.asyncio
     async def test_rejects_extreme_peg(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("EXPEN", {"pegRatio": 5.0})
@@ -381,7 +351,6 @@ class TestPEGFilter:
         result = await f.apply([_make_stock("EXPEN")], data_service)
         assert len(result) == 0
 
-    @pytest.mark.asyncio
     async def test_handles_negative_growth(self):
         """When growth <= 0 the PEG ratio is undefined / meaningless => rejected.
 
@@ -405,7 +374,6 @@ class TestPEGFilter:
 class TestPEFilter:
     """PEFilter uses percentile-based cutoff across the universe."""
 
-    @pytest.mark.asyncio
     async def test_passes_below_percentile(self):
         """Stock with PE in the bottom 50% of a 10-stock universe should pass."""
         data_service = AsyncMock()
@@ -427,7 +395,6 @@ class TestPEFilter:
         # V1 (PE=10) also cheap, must pass
         assert "V1" in result_symbols
 
-    @pytest.mark.asyncio
     async def test_rejects_above_percentile(self):
         """Stock with PE in the top 20% of a 10-stock universe should be rejected."""
         data_service = AsyncMock()
@@ -447,7 +414,6 @@ class TestPEFilter:
         # V9 (PE=50) is the most expensive -- must be rejected
         assert "V9" not in result_symbols
 
-    @pytest.mark.asyncio
     async def test_percentile_from_universe(self):
         """Must create 10 stocks to compute percentile -- verifies universe-relative logic."""
         data_service = AsyncMock()
@@ -475,7 +441,6 @@ class TestPEFilter:
 class TestPBFilter:
     """PBFilter uses percentile-based cutoff across the universe (same as PE)."""
 
-    @pytest.mark.asyncio
     async def test_passes_below_percentile(self):
         data_service = AsyncMock()
         symbols = [f"B{i}" for i in range(10)]
@@ -494,7 +459,6 @@ class TestPBFilter:
         assert "B0" in result_symbols
         assert "B1" in result_symbols
 
-    @pytest.mark.asyncio
     async def test_rejects_above_percentile(self):
         data_service = AsyncMock()
         symbols = [f"B{i}" for i in range(10)]
@@ -516,7 +480,6 @@ class TestPBFilter:
 class TestFCFYieldFilter:
     """FCFYieldFilter checks fcfYield >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_high_yield(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("CASH", {"fcfYield": 0.05})
@@ -525,7 +488,6 @@ class TestFCFYieldFilter:
         assert len(result) == 1
         assert result[0].symbol == "CASH"
 
-    @pytest.mark.asyncio
     async def test_rejects_low_yield(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("BURN", {"fcfYield": 0.01})
@@ -537,7 +499,6 @@ class TestFCFYieldFilter:
 class TestDividendYieldFilter:
     """DividendYieldFilter checks dividendYield >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_above_minimum(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("DIVS", {"dividendYield": 0.02})
@@ -545,7 +506,6 @@ class TestDividendYieldFilter:
         result = await f.apply([_make_stock("DIVS")], data_service)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
     async def test_rejects_zero_dividend(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("NODIV", {"dividendYield": 0.0})
@@ -557,7 +517,6 @@ class TestDividendYieldFilter:
 class TestROEFilter:
     """ROEFilter checks returnOnEquity >= threshold."""
 
-    @pytest.mark.asyncio
     async def test_passes_high_roe(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("GOOD", {"returnOnEquity": 0.15})
@@ -566,7 +525,6 @@ class TestROEFilter:
         assert len(result) == 1
         assert result[0].symbol == "GOOD"
 
-    @pytest.mark.asyncio
     async def test_rejects_low_roe(self):
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("POOR", {"returnOnEquity": 0.03})
@@ -578,7 +536,6 @@ class TestROEFilter:
 class TestPriceRangeFilter:
     """PriceRangeFilter checks currentPrice position within 52-week range."""
 
-    @pytest.mark.asyncio
     async def test_passes_in_lower_range(self):
         """Price at 40% of 52-week range should pass (threshold=70%)."""
         data_service = AsyncMock()
@@ -598,7 +555,6 @@ class TestPriceRangeFilter:
         pct = (140.0 - 100.0) / (200.0 - 100.0) * 100.0
         assert pct == pytest.approx(40.0)
 
-    @pytest.mark.asyncio
     async def test_rejects_near_52w_high(self):
         """Price at 95% of 52-week range should be rejected (threshold=70%)."""
         data_service = AsyncMock()

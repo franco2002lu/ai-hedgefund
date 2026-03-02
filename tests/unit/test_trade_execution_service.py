@@ -119,7 +119,6 @@ def service(deps):
 
 
 class TestSubmitOrderSuccess:
-    @pytest.mark.asyncio
     async def test_successful_buy_returns_fill_info(self, service, deps):
         order_repo, trade_repo, broker, event_log, portfolio_service = deps
 
@@ -146,7 +145,6 @@ class TestSubmitOrderSuccess:
         assert result["order_id"] == "order-1"
         assert result["trade_id"] == "trade-1"
 
-    @pytest.mark.asyncio
     async def test_success_updates_order_to_filled(self, service, deps):
         order_repo, trade_repo, broker, event_log, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -161,7 +159,6 @@ class TestSubmitOrderSuccess:
         call_args = order_repo.update_status.call_args
         assert call_args[0][1] == OrderStatus.FILLED
 
-    @pytest.mark.asyncio
     async def test_success_persists_trade(self, service, deps):
         order_repo, trade_repo, broker, event_log, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -174,7 +171,6 @@ class TestSubmitOrderSuccess:
 
         trade_repo.create.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_success_calls_portfolio_handle(self, service, deps):
         order_repo, trade_repo, broker, event_log, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -187,7 +183,6 @@ class TestSubmitOrderSuccess:
 
         portfolio_service.handle_trade_executed.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_success_logs_two_events(self, service, deps):
         """TradeRequestedEvent + TradeExecutedEvent."""
         order_repo, trade_repo, broker, event_log, portfolio_service = deps
@@ -211,7 +206,6 @@ class TestSubmitOrderSuccess:
 
 
 class TestSubmitOrderRejection:
-    @pytest.mark.asyncio
     async def test_broker_rejection(self, service, deps):
         order_repo, trade_repo, broker, event_log, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -232,7 +226,6 @@ class TestSubmitOrderRejection:
         event_types = [call[0][0].event_type for call in event_log.append.call_args_list]
         assert "trade.rejected" in event_types
 
-    @pytest.mark.asyncio
     async def test_validation_failure_no_portfolio(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = None
@@ -250,7 +243,6 @@ class TestSubmitOrderRejection:
 
 
 class TestValidateOrder:
-    @pytest.mark.asyncio
     async def test_buy_with_portfolio_passes(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -259,7 +251,6 @@ class TestValidateOrder:
         result = await service._validate_order(req)
         assert result is None
 
-    @pytest.mark.asyncio
     async def test_sell_sufficient_position_passes(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -277,7 +268,6 @@ class TestValidateOrder:
         result = await service._validate_order(req)
         assert result is None
 
-    @pytest.mark.asyncio
     async def test_sell_insufficient_position_fails(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -296,7 +286,6 @@ class TestValidateOrder:
         assert result is not None
         assert "Insufficient position" in result
 
-    @pytest.mark.asyncio
     async def test_sell_no_position_fails(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -307,7 +296,6 @@ class TestValidateOrder:
         assert result is not None
         assert "Insufficient position" in result
 
-    @pytest.mark.asyncio
     async def test_cover_insufficient_short_fails(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -326,7 +314,6 @@ class TestValidateOrder:
         assert result is not None
         assert "Insufficient short position" in result
 
-    @pytest.mark.asyncio
     async def test_no_portfolio_fails(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = None

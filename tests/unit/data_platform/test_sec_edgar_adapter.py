@@ -110,19 +110,16 @@ class TestQuarterlyEarningsModel:
 
 
 class TestGetRecentFilings:
-    @pytest.mark.asyncio
     async def test_stub_raises_not_implemented(self):
         adapter = SECEdgarAdapter()
         with pytest.raises(NotImplementedError):
             await adapter.get_recent_filings("AAPL")
 
-    @pytest.mark.asyncio
     async def test_accepts_filing_types_param(self):
         adapter = SECEdgarAdapter()
         with pytest.raises(NotImplementedError):
             await adapter.get_recent_filings("AAPL", filing_types=["10-K", "10-Q"], limit=4)
 
-    @pytest.mark.asyncio
     async def test_accepts_custom_limit(self):
         adapter = SECEdgarAdapter()
         with pytest.raises(NotImplementedError):
@@ -130,19 +127,16 @@ class TestGetRecentFilings:
 
 
 class TestGetEarningsData:
-    @pytest.mark.asyncio
     async def test_stub_raises_not_implemented(self):
         adapter = SECEdgarAdapter()
         with pytest.raises(NotImplementedError):
             await adapter.get_earnings_data("AAPL")
 
-    @pytest.mark.asyncio
     async def test_respects_quarters_param(self):
         adapter = SECEdgarAdapter()
         with pytest.raises(NotImplementedError):
             await adapter.get_earnings_data("AAPL", quarters=8)
 
-    @pytest.mark.asyncio
     async def test_default_quarters_is_four(self):
         """Verify the default param value by inspecting the signature."""
         import inspect

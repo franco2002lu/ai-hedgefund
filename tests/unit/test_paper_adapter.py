@@ -42,7 +42,6 @@ def adapter(data_service):
 
 
 class TestMarketOrders:
-    @pytest.mark.asyncio
     async def test_buy_slippage_increases_price(self, adapter, data_service):
         data_service.get_current_price.return_value = 100.0
 
@@ -53,7 +52,6 @@ class TestMarketOrders:
         assert result.trade.price == pytest.approx(100.10, abs=0.01)
         assert result.trade.commission == 1.50
 
-    @pytest.mark.asyncio
     async def test_sell_slippage_decreases_price(self, adapter, data_service):
         data_service.get_current_price.return_value = 100.0
 
@@ -63,7 +61,6 @@ class TestMarketOrders:
         # 100 * (1 - 10/10000) = 99.90
         assert result.trade.price == pytest.approx(99.90, abs=0.01)
 
-    @pytest.mark.asyncio
     async def test_short_slippage_decreases_price(self, adapter, data_service):
         data_service.get_current_price.return_value = 100.0
 
@@ -72,7 +69,6 @@ class TestMarketOrders:
         assert result.success is True
         assert result.trade.price == pytest.approx(99.90, abs=0.01)
 
-    @pytest.mark.asyncio
     async def test_cover_slippage_increases_price(self, adapter, data_service):
         data_service.get_current_price.return_value = 100.0
 
@@ -81,7 +77,6 @@ class TestMarketOrders:
         assert result.success is True
         assert result.trade.price == pytest.approx(100.10, abs=0.01)
 
-    @pytest.mark.asyncio
     async def test_slippage_value_recorded(self, adapter, data_service):
         data_service.get_current_price.return_value = 100.0
 
@@ -96,7 +91,6 @@ class TestMarketOrders:
 
 
 class TestLimitOrders:
-    @pytest.mark.asyncio
     async def test_limit_buy_rejected_when_price_above_limit(self, adapter, data_service):
         data_service.get_current_price.return_value = 105.0
 
@@ -110,7 +104,6 @@ class TestLimitOrders:
         assert result.success is False
         assert "Limit price" in result.rejection_reason
 
-    @pytest.mark.asyncio
     async def test_limit_buy_accepted_fills_at_limit(self, adapter, data_service):
         data_service.get_current_price.return_value = 99.0
 
@@ -125,7 +118,6 @@ class TestLimitOrders:
         # Slippage price = 99 * 1.001 = 99.099, limit = 100 → fill at min = 99.099
         assert result.trade.price <= 100.0
 
-    @pytest.mark.asyncio
     async def test_limit_sell_rejected_when_price_below_limit(self, adapter, data_service):
         data_service.get_current_price.return_value = 95.0
 
@@ -146,7 +138,6 @@ class TestLimitOrders:
 
 
 class TestPriceUnavailable:
-    @pytest.mark.asyncio
     async def test_no_price_returns_rejection(self, adapter, data_service):
         data_service.get_current_price.return_value = None
 
@@ -162,7 +153,6 @@ class TestPriceUnavailable:
 
 
 class TestConfiguration:
-    @pytest.mark.asyncio
     async def test_zero_slippage(self, data_service):
         adapter = PaperTradingAdapter(data_service, slippage_bps=0.0, commission_per_trade=0.0)
         data_service.get_current_price.return_value = 100.0
@@ -173,7 +163,6 @@ class TestConfiguration:
         assert result.trade.slippage == 0.0
         assert result.trade.commission == 0.0
 
-    @pytest.mark.asyncio
     async def test_trade_has_correct_metadata(self, adapter, data_service):
         data_service.get_current_price.return_value = 100.0
 

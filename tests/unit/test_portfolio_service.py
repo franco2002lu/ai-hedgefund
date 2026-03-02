@@ -103,7 +103,6 @@ def service(mocks):
 
 
 class TestHandleBuy:
-    @pytest.mark.asyncio
     async def test_buy_new_position(self, service, mocks):
         portfolio_repo, position_repo, _, event_log = mocks
         portfolio = _make_portfolio()
@@ -129,7 +128,6 @@ class TestHandleBuy:
         event = event_log.append.call_args[0][0]
         assert event.trigger == "trade_executed"
 
-    @pytest.mark.asyncio
     async def test_buy_adds_to_existing_position(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio_repo.get_by_branch.return_value = _make_portfolio()
@@ -152,7 +150,6 @@ class TestHandleBuy:
 
 
 class TestHandleSell:
-    @pytest.mark.asyncio
     async def test_sell_partial_close(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio_repo.get_by_branch.return_value = _make_portfolio()
@@ -175,7 +172,6 @@ class TestHandleSell:
         update_call = portfolio_repo.update_portfolio_fields.call_args
         assert update_call.kwargs["cash"] == pytest.approx(100_800.0)
 
-    @pytest.mark.asyncio
     async def test_sell_full_close_deletes_position(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio_repo.get_by_branch.return_value = _make_portfolio()
@@ -191,7 +187,6 @@ class TestHandleSell:
         assert upserted.long_quantity == 0.0
         position_repo.delete_if_flat.assert_called_once_with("port-1", "inst-1")
 
-    @pytest.mark.asyncio
     async def test_sell_insufficient_position_raises(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio_repo.get_by_branch.return_value = _make_portfolio()
@@ -202,7 +197,6 @@ class TestHandleSell:
         with pytest.raises(ValueError, match="Cannot sell"):
             await service.handle_trade_executed(trade)
 
-    @pytest.mark.asyncio
     async def test_sell_with_commission_reduces_pnl(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio_repo.get_by_branch.return_value = _make_portfolio()
@@ -225,7 +219,6 @@ class TestHandleSell:
 
 
 class TestHandleShort:
-    @pytest.mark.asyncio
     async def test_short_opens_position(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio = _make_portfolio(margin_requirement=0.5)
@@ -253,7 +246,6 @@ class TestHandleShort:
 
 
 class TestHandleCover:
-    @pytest.mark.asyncio
     async def test_cover_closes_short(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio = _make_portfolio(margin_requirement=0.5)
@@ -277,7 +269,6 @@ class TestHandleCover:
         # Margin released: 1000 * (5/10) = 500
         assert upserted.short_margin_used == pytest.approx(500.0)
 
-    @pytest.mark.asyncio
     async def test_cover_insufficient_short_raises(self, service, mocks):
         portfolio_repo, position_repo, _, _ = mocks
         portfolio_repo.get_by_branch.return_value = _make_portfolio()
@@ -295,7 +286,6 @@ class TestHandleCover:
 
 
 class TestHandleTradeEdgeCases:
-    @pytest.mark.asyncio
     async def test_no_portfolio_raises(self, service, mocks):
         portfolio_repo, _, _, _ = mocks
         portfolio_repo.get_by_branch.return_value = None
@@ -304,7 +294,6 @@ class TestHandleTradeEdgeCases:
         with pytest.raises(ValueError, match="No portfolio"):
             await service.handle_trade_executed(trade)
 
-    @pytest.mark.asyncio
     async def test_portfolio_aggregates_recalculated(self, service, mocks):
         """After a buy, the portfolio fields should include the new position's exposure."""
         portfolio_repo, position_repo, _, _ = mocks
@@ -330,7 +319,6 @@ class TestHandleTradeEdgeCases:
 
 
 class TestAdjustCash:
-    @pytest.mark.asyncio
     async def test_positive_adjustment(self, service, mocks):
         portfolio_repo, _, _, event_log = mocks
         updated = _make_portfolio(cash=105_000.0, nav=105_000.0)
@@ -340,7 +328,6 @@ class TestAdjustCash:
         assert result.cash == 105_000.0
         event_log.append.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_overdraft_propagates_repo_error(self, service, mocks):
         portfolio_repo, _, _, _ = mocks
         portfolio_repo.update_cash.side_effect = ValueError("Insufficient cash")
