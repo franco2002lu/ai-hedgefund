@@ -14,6 +14,7 @@ from app.config import settings
 load_dotenv()
 from app.db.connection import engine  # noqa: E402
 from app.dependencies import init_services
+from app.modules.backtest.api import router as backtest_router
 from app.modules.data_platform.adapters.yahoo_finance import YahooFinanceAdapter
 from app.modules.data_platform.api import router as data_platform_router
 from app.modules.data_platform.cache import DataCache
@@ -52,6 +53,15 @@ async def lifespan(app: FastAPI):
     )
     init_services(data_service)
 
+    # Crash recovery: mark any backtests stuck in "running" as "failed"
+    from app.modules.backtest.api import recover_stale_backtests
+
+    recovered = await recover_stale_backtests()
+    if recovered:
+        import logging
+
+        logging.getLogger(__name__).info("Recovered %d stale backtest(s)", recovered)
+
     yield
     # Shutdown: dispose engine
     await engine.dispose()
@@ -68,6 +78,7 @@ app.include_router(portfolio_router)
 app.include_router(data_platform_router)
 app.include_router(trade_execution_router)
 app.include_router(equities_router)
+app.include_router(backtest_router, prefix="/api/v1/backtest", tags=["backtest"])
 
 
 @app.get("/health")

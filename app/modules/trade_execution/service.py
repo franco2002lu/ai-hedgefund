@@ -10,20 +10,20 @@ from app.common.events.trade import (
     TradeRequestedEvent,
 )
 from app.common.interfaces.broker import BrokerAdapter
-from app.common.interfaces.repositories import EventLogRepository
+from app.common.interfaces.repositories import (
+    EventLogRepository,
+    OrderRepository,
+    TradeRepository,
+)
 from app.common.models.order import Order, OrderRequest
 from app.modules.portfolio.service import PortfolioService
-from app.modules.trade_execution.repository import (
-    PostgresOrderRepository,
-    PostgresTradeRepository,
-)
 
 
 class TradeExecutionService:
     def __init__(
         self,
-        order_repo: PostgresOrderRepository,
-        trade_repo: PostgresTradeRepository,
+        order_repo: OrderRepository,
+        trade_repo: TradeRepository,
         broker: BrokerAdapter,
         event_log: EventLogRepository,
         portfolio_service: PortfolioService,

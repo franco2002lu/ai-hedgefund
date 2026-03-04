@@ -24,6 +24,9 @@ class PortfolioRepository(ABC):
     @abstractmethod
     async def get_fund_summary(self, fund_id: str) -> dict: ...
 
+    @abstractmethod
+    async def update_portfolio_fields(self, branch_id: str, **fields) -> None: ...
+
 
 class PositionRepository(ABC):
     @abstractmethod
@@ -85,6 +88,22 @@ class TradeRepository(ABC):
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[Trade], int]: ...
+
+
+class BacktestRepository(ABC):
+    @abstractmethod
+    async def save_result(self, result) -> None: ...
+
+    @abstractmethod
+    async def get_result(self, backtest_id: str): ...
+
+    @abstractmethod
+    async def list_runs(
+        self, status: str | None = None, limit: int = 20, offset: int = 0
+    ) -> tuple[list, int]: ...
+
+    @abstractmethod
+    async def mark_stale_runs_failed(self) -> int: ...
 
 
 class EventLogRepository(ABC):

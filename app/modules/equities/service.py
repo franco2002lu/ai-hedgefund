@@ -110,6 +110,7 @@ class EquitiesBranchService:
         portfolio_service: PortfolioService | None = None,
         event_log_repo: EventLogRepository | None = None,
         session: AsyncSession | None = None,
+        instrument_ids: dict[str, str] | None = None,
     ) -> RunResult:
         """Run the full pipeline: universe -> screen -> analyze -> rebalance -> execute."""
         tes = trade_execution_service or self.trade_execution_service
@@ -138,8 +139,8 @@ class EquitiesBranchService:
         # all FK to instruments.id. We pre-fetch the universe (warming the 90-day
         # cache) and upsert each stock so _execute_trade can use real DB UUIDs.
         # Company facts (sector, industry, etc.) are cached from hydration.
-        instrument_ids: dict[str, str] = {}
-        if session and self.data_service:
+        _instrument_ids: dict[str, str] = instrument_ids or {}
+        if not _instrument_ids and session and self.data_service:
             try:
                 branch_key = "growth" if "growth" in branch_name else "value"
                 universe_stocks = await self.universe_provider.get_holdings(branch_key)
@@ -175,17 +176,17 @@ class EquitiesBranchService:
                         logger.debug("Company facts unavailable for %s", stock.symbol)
 
                     upsert_result = await self.data_service.upsert_instrument(session, instrument_data)
-                    instrument_ids[stock.symbol] = upsert_result["instrument_id"]
+                    _instrument_ids[stock.symbol] = upsert_result["instrument_id"]
                 # Also upsert instruments for current positions (needed for SELL orders
                 # when a stock has been removed from the ETF but is still held).
                 for symbol in current_positions:
-                    if symbol not in instrument_ids:
+                    if symbol not in _instrument_ids:
                         upsert_result = await self.data_service.upsert_instrument(
                             session,
                             {"symbol": symbol, "name": symbol, "asset_class": "equity"},
                         )
-                        instrument_ids[symbol] = upsert_result["instrument_id"]
-                logger.info("Upserted %d instruments for branch %s", len(instrument_ids), branch_name)
+                        _instrument_ids[symbol] = upsert_result["instrument_id"]
+                logger.info("Upserted %d instruments for branch %s", len(_instrument_ids), branch_name)
             except Exception:
                 logger.warning(
                     "Instrument upsert failed for branch %s; instrument_ids is empty, "
@@ -200,7 +201,7 @@ class EquitiesBranchService:
 
             async def _execute_trade(order: RebalanceOrder) -> dict | None:
                 try:
-                    instr_id = instrument_ids.get(order.symbol)
+                    instr_id = _instrument_ids.get(order.symbol)
                     if not instr_id:
                         logger.warning("No instrument_id for %s — skipping order", order.symbol)
                         return None

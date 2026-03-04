@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from app.modules.equities.config import AnalystLLMConfig
 from app.modules.equities.models import StockSignal, UniverseStock
 
+logger = logging.getLogger(__name__)
+
 
 class NewsAnalyst:
     """Assesses recent news sentiment, catalysts, and risks."""
+
+    ANALYST_TYPE = "news"
 
     def __init__(
         self,
@@ -51,6 +56,21 @@ class NewsAnalyst:
 
         async def _limited(s: UniverseStock) -> StockSignal:
             async with sem:
-                return await self.analyze(s)
+                try:
+                    return await self.analyze(s)
+                except Exception:
+                    logger.warning(
+                        "%s: analyze failed for %s",
+                        self.__class__.__name__,
+                        s.symbol,
+                        exc_info=True,
+                    )
+                    return StockSignal(
+                        symbol=s.symbol,
+                        analyst_type=self.ANALYST_TYPE,
+                        bullish_score=5,
+                        confidence=1,
+                        summary="Analysis failed — neutral fallback signal.",
+                    )
 
         return list(await asyncio.gather(*(_limited(s) for s in stocks)))

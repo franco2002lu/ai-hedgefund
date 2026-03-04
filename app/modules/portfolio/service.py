@@ -4,23 +4,23 @@ from datetime import UTC, datetime
 
 from app.common.enums import OrderSide
 from app.common.events.portfolio import PortfolioSnapshotEvent, PortfolioUpdatedEvent
-from app.common.interfaces.repositories import EventLogRepository
+from app.common.interfaces.repositories import (
+    EventLogRepository,
+    PortfolioRepository,
+    PositionRepository,
+    SnapshotRepository,
+)
 from app.common.models.portfolio import PortfolioSnapshot, PortfolioSummary
 from app.common.models.position import Position
 from app.common.models.trade import Trade
-from app.modules.portfolio.repository import (
-    PostgresPortfolioRepository,
-    PostgresPositionRepository,
-    PostgresSnapshotRepository,
-)
 
 
 class PortfolioService:
     def __init__(
         self,
-        portfolio_repo: PostgresPortfolioRepository,
-        position_repo: PostgresPositionRepository,
-        snapshot_repo: PostgresSnapshotRepository,
+        portfolio_repo: PortfolioRepository,
+        position_repo: PositionRepository,
+        snapshot_repo: SnapshotRepository,
         event_log: EventLogRepository,
     ):
         self.portfolio_repo = portfolio_repo

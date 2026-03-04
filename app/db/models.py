@@ -4,10 +4,11 @@ Maps directly to the PostgreSQL schema defined in the architecture doc.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -356,3 +357,111 @@ class EventModel(Base):
     correlation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+# ============================================================
+# BACKTEST (results persistence)
+# ============================================================
+
+
+class BacktestRunModel(Base):
+    __tablename__ = "backtest_runs"
+    __table_args__ = (
+        Index("idx_backtest_runs_status", "status"),
+        Index("idx_backtest_runs_created", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    equities_config: Mapped[dict | None] = mapped_column(JSONB)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_seconds: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    metrics: Mapped[dict | None] = mapped_column(JSONB)
+    benchmark: Mapped[dict | None] = mapped_column(JSONB)
+    rebalance_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_pipeline_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    progress: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    snapshots: Mapped[list["BacktestSnapshotModel"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+    trades: Mapped[list["BacktestTradeModel"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+    rebalance_details: Mapped[list["BacktestRebalanceDetailModel"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class BacktestSnapshotModel(Base):
+    __tablename__ = "backtest_snapshots"
+    __table_args__ = (
+        Index("idx_backtest_snapshots_run", "backtest_run_id"),
+        Index("idx_backtest_snapshots_date", "snapshot_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    backtest_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("backtest_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    nav: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
+    cash: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
+    total_long_exposure: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
+    total_short_exposure: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
+    unrealized_pnl: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
+    realized_pnl: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
+    position_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    positions: Mapped[dict | None] = mapped_column(JSONB)
+    daily_return: Mapped[float] = mapped_column(Numeric(12, 8), nullable=False)
+    cumulative_return: Mapped[float] = mapped_column(Numeric(12, 8), nullable=False)
+
+    run: Mapped["BacktestRunModel"] = relationship(back_populates="snapshots")
+
+
+class BacktestTradeModel(Base):
+    __tablename__ = "backtest_trades"
+    __table_args__ = (
+        Index("idx_backtest_trades_run", "backtest_run_id"),
+        Index("idx_backtest_trades_date", "trade_date"),
+        Index("idx_backtest_trades_symbol", "symbol"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    backtest_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("backtest_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    symbol: Mapped[str] = mapped_column(String(50), nullable=False)
+    side: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
+    price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
+    commission: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False, default=0)
+    slippage: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False, default=0)
+    reason: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    run: Mapped["BacktestRunModel"] = relationship(back_populates="trades")
+
+
+class BacktestRebalanceDetailModel(Base):
+    __tablename__ = "backtest_rebalance_details"
+    __table_args__ = (
+        Index("idx_backtest_rebalance_run", "backtest_run_id"),
+        Index("idx_backtest_rebalance_date", "rebalance_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    backtest_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("backtest_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    rebalance_date: Mapped[date] = mapped_column(Date, nullable=False)
+    screened_symbols: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    signals: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    composite_scores: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    orders_generated: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    run: Mapped["BacktestRunModel"] = relationship(back_populates="rebalance_details")
