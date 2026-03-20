@@ -26,6 +26,12 @@ pytest tests/ --ignore=tests/integration -q     # unit + non-e2e tests
 pytest tests/integration/ -m integration -v     # analyst agent tests (real LLM calls)
 pytest tests/integration/ -m e2e -v             # all e2e tests (equities pipeline, checkpoint2, smoke)
 
+# Backtesting (no DB/server needed, uses Yahoo Finance for data)
+python run_backtest.py                          # both growth + value branches
+python run_backtest.py growth                   # growth only
+python run_backtest.py value                    # value only
+pytest tests/unit/backtest/ -q                  # backtest unit tests
+
 # Lint and format (ruff)
 ruff check app/ tests/                          # lint
 ruff check app/ tests/ --fix                    # lint with auto-fix
@@ -68,6 +74,9 @@ Each module in `app/modules/` follows: `api.py` (FastAPI router) → `service.py
 **Branch module** (Phase 2):
 - `equities/` — LLM-powered screening + analysis pipeline (see below)
 
+**Backtest module** (Phase 3):
+- `backtest/` — historical simulation engine with adapter substitution pattern (see below)
+
 ### Equities Branch Pipeline
 
 `equities/service.py` orchestrates: **Universe** → **Screening** → **Multi-Agent Analysis** → **Portfolio Manager** → **Trade Execution**
@@ -77,6 +86,16 @@ Each module in `app/modules/` follows: `api.py` (FastAPI router) → `service.py
 - 3 LLM analyst agents (`news_analyst.py`, `fundamentals_analyst.py`, `technical_analyst.py`) run as a LangGraph fan-out/fan-in in `agents/graph.py`
 - `agents/portfolio_manager.py` aggregates signals into composite scores and generates rebalance orders
 - Per-request services (trade execution, portfolio, event log, DB session) are injected at `run_pipeline()` call time from the API endpoint, not at singleton init
+
+### Backtest Engine
+
+`backtest/engine.py` runs an event-driven simulation loop: **advance clock → mark-to-market → run pipeline on rebalance days → record snapshots**.
+
+- **Adapter substitution**: `BacktestContext` swaps live dependencies for historical ones — `HistoricalDataAdapter` replaces `YahooFinanceAdapter`, `BacktestBrokerAdapter` replaces `PaperTradingAdapter`, `InMemory*Repository` classes replace Postgres repos
+- **Quantitative analysts** (`backtest/quantitative_analysts.py`) replace LLM agents with deterministic scoring based on cached fundamentals, technicals, and simulated news sentiment
+- **Data pre-caching**: `BacktestContext` fetches all OHLCV + fundamentals data upfront from Yahoo Finance before simulation starts; the simulation loop itself makes zero live API calls
+- **Analytics** (`backtest/analytics.py`) computes 16+ metrics: Sharpe, Sortino, Calmar, max drawdown, win rate, profit factor, plus benchmark comparison (alpha, beta, information ratio)
+- **Test universes**: `data/universes/test_{branch}_universe.csv` (20 stocks each) reduce Yahoo API calls from ~285 to ~47. `run_backtest.py` uses `branch_name="test_{branch}"` to auto-load these
 
 ### Database
 
@@ -92,6 +111,7 @@ Design decisions and specs live in `plans/architecture/`:
 - `HIGH-LEVEL-ARCH.md` — system overview, module responsibilities
 - `PHASE1-SHARED-INFRASTRUCTURE.md` — DB schema, repo interfaces, service contracts
 - `PHASE2-EQUITIES-BRANCH.md` — equities pipeline deep-dive, filter specs, agent orchestration
+- `BACKTESTING-INFRASTRUCTURE.md` — backtest engine design, adapter substitution, analytics
 
 ## Key Files
 
@@ -106,6 +126,15 @@ Design decisions and specs live in `plans/architecture/`:
 - `app/modules/equities/agents/graph.py` — LangGraph workflow definition
 - `app/modules/equities/agents/llm_client.py` — Anthropic SDK wrapper for analyst agents
 - `app/modules/equities/config.py` — screening, agent, and portfolio config
+- `app/modules/backtest/engine.py` — backtest simulation loop
+- `app/modules/backtest/context.py` — DI factory, swaps live adapters for historical/in-memory
+- `app/modules/backtest/quantitative_analysts.py` — deterministic analyst replacements for backtesting
+- `app/modules/backtest/state.py` — in-memory repository implementations
+- `app/modules/backtest/analytics.py` — performance metrics and benchmark comparison
+- `app/modules/backtest/config.py` — `BacktestConfig`, `RebalanceFrequency`
+- `run_backtest.py` — CLI script to run backtests with test universes
+- `data/universes/test_growth_universe.csv` — 20-stock growth test universe
+- `data/universes/test_value_universe.csv` — 20-stock value test universe
 - `tests/conftest.py` — shared test fixtures (`_make_universe_stock`, `_make_stock_signal`, `_make_composite_score`)
 
 ## Conventions
@@ -118,6 +147,7 @@ Design decisions and specs live in `plans/architecture/`:
 - **Linting**: ruff enforces `E/W/F/I/UP/B/SIM` rules. `B008` (Depends in defaults) is ignored for FastAPI. Alembic migrations are excluded from line-length checks
 - **API routes**: static paths (e.g., `/config`) must be declared before dynamic `/{param}` paths in the same router to avoid FastAPI path conflicts
 - Test markers: `@pytest.mark.integration` and `@pytest.mark.e2e` for tests requiring live services; `asyncio_mode = "auto"` in pytest config
+- **Universe CSV naming**: `data/universes/{branch_name}_universe.csv`. Prefix trick: `branch_name="test_growth"` loads `test_growth_universe.csv`, keeping test and production universes separate
 
 ## Running Integration Tests
 
@@ -199,3 +229,8 @@ pytest tests/integration/test_e2e_smoke.py -m e2e -v
 - **Screening filters handle missing data with None** — `LeverageFilter` and `PEGFilter` default to `None` and reject stocks with missing data (not 0.0 default). New filters should follow this pattern.
 - **EquitiesBranchService is a singleton but uses per-request DB deps** — the service is created once, but `run_pipeline()` accepts optional `trade_execution_service`, `portfolio_service`, `event_log_repo`, and `session` injected per-request from the API layer.
 - **`alembic.ini` has a hardcoded DB URL** — it doesn't read from `.env`; update it manually if your connection string differs.
+- **Yahoo Finance rate limiting** — ~285 API calls for a full 138-stock universe can trigger rate limits (1-24 hour bans). Use test universes (20 stocks, ~47 calls) via `run_backtest.py` to avoid this. If rate-limited, wait 15-30 minutes.
+- **Backtest data pre-caching is all-or-nothing** — `BacktestContext` fetches all fundamentals/OHLCV upfront. If any `get_metrics()` call fails silently (e.g., missing `end_date` arg), the screener's `LiquidityFilter` drops all stocks to 0 because `averageDailyVolume10Day` is never cached.
+- **`DataPlatformService.get_metrics()` wraps adapter output** — returns `{"metrics": [...], "symbol": ..., "source": ...}` (a dict), not a raw list. Code consuming metrics must extract via `result.get("metrics", [])`.
+- **In-memory position repo generates UUIDs** — `PortfolioService.handle_trade_executed()` creates positions with `id=""` (expects DB to assign). `InMemoryPositionRepository.upsert()` generates a UUID when id is empty to avoid dict key collisions.
+- **Analyst `analyze_batch()` must accept `**kwargs`** — `graph.py` calls `analyst.analyze_batch(stocks, max_concurrent=N)`. Any new analyst class (including quantitative replacements) must have `analyze_batch(self, stocks, **kwargs)` or the pipeline will crash with `TypeError`.
