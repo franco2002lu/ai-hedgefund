@@ -14,6 +14,26 @@ from app.modules.equities.models import StockSignal, UniverseStock
 logger = logging.getLogger(__name__)
 
 
+def _extract_closes(result) -> list[float]:
+    """Extract close prices from DataPlatformService.get_prices() result.
+
+    Handles both the dict wrapper ({"bars": [{"close": ...}, ...]})
+    returned by DataPlatformService and raw lists of PriceBar objects
+    (from direct adapters or test mocks).
+    """
+    if isinstance(result, dict):
+        bars = result.get("bars", [])
+    else:
+        bars = result if result else []
+    closes: list[float] = []
+    for bar in bars:
+        if isinstance(bar, dict):
+            closes.append(bar["close"])
+        else:
+            closes.append(bar.close)
+    return closes
+
+
 def _neutral_fallback(symbol: str, analyst_type: str, reason: str) -> StockSignal:
     """Return a neutral signal with minimal confidence on unexpected errors."""
     return StockSignal(
@@ -42,9 +62,10 @@ class QuantitativeNewsAnalyst:
     async def _analyze_impl(self, stock: UniverseStock) -> StockSignal:
         end_date = self.time_provider.today()
         start_date = end_date - timedelta(days=30)
-        prices = await self.data_service.get_prices(stock.symbol, start_date, end_date)
+        result = await self.data_service.get_prices(stock.symbol, start_date, end_date)
+        closes = _extract_closes(result)
 
-        if not prices or len(prices) <= 1:
+        if not closes or len(closes) <= 1:
             return StockSignal(
                 symbol=stock.symbol,
                 analyst_type="news",
@@ -53,8 +74,8 @@ class QuantitativeNewsAnalyst:
                 summary="Insufficient price data for momentum calculation",
             )
 
-        first_close = prices[0].close
-        last_close = prices[-1].close
+        first_close = closes[0]
+        last_close = closes[-1]
         change = (last_close - first_close) / first_close
 
         if change > 0.03:
@@ -164,9 +185,10 @@ class QuantitativeTechnicalAnalyst:
     async def _analyze_impl(self, stock: UniverseStock) -> StockSignal:
         end_date = self.time_provider.today()
         start_date = end_date - timedelta(days=int(252 * 1.5))
-        prices = await self.data_service.get_prices(stock.symbol, start_date, end_date)
+        result = await self.data_service.get_prices(stock.symbol, start_date, end_date)
+        closes = _extract_closes(result)
 
-        if not prices:
+        if not closes:
             return StockSignal(
                 symbol=stock.symbol,
                 analyst_type="technical",
@@ -175,7 +197,6 @@ class QuantitativeTechnicalAnalyst:
                 summary="No price data available",
             )
 
-        closes = [p.close for p in prices]
         base = 5.0
 
         # 6-month return (using ~126 bars if available)

@@ -5,6 +5,7 @@ import logging
 
 from app.common.interfaces.time import TimeProvider
 from app.modules.backtest.time_provider import LiveTimeProvider
+from app.modules.equities.agents.context_formatters import format_fundamentals_context
 from app.modules.equities.config import AnalystLLMConfig
 from app.modules.equities.models import StockSignal, UniverseStock
 
@@ -43,17 +44,17 @@ class FundamentalsAnalyst:
                 earnings = await self.sec_edgar.get_earnings_data(stock.symbol)
             except (NotImplementedError, Exception):
                 earnings = []
-        metrics_str = str(metrics[0]) if metrics else "No metrics available."
-        earnings_str = (
-            "\n".join(f"- {e.fiscal_quarter}: EPS={e.eps}, Revenue={e.revenue}" for e in earnings[:4])
-            or "No earnings data available."
+        context = format_fundamentals_context(
+            symbol=stock.symbol,
+            company_name=stock.company_name,
+            sector=stock.sector,
+            metrics=metrics[0] if metrics else {},
+            earnings=earnings[:4],
         )
         prompt = (
-            f"Analyze fundamentals for {stock.company_name} ({stock.symbol}).\n"
-            f"Sector: {stock.sector or 'Unknown'}\n\n"
-            f"Key metrics:\n{metrics_str}\n\n"
-            f"Recent earnings:\n{earnings_str}\n\n"
-            "Provide: bullish_score (1-10), confidence (1-10), summary (1-2 sentences)."
+            f"{context}\n\n"
+            "Based on the data above, provide: bullish_score (1-10), confidence (1-10), "
+            "summary (1-2 sentences)."
         )
         result = await self.llm_client.invoke(prompt)
         if isinstance(result, StockSignal):

@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from app.common.interfaces.time import TimeProvider
 from app.modules.backtest.time_provider import LiveTimeProvider
+from app.modules.equities.agents.context_formatters import format_technical_context
 from app.modules.equities.config import AnalystLLMConfig
 from app.modules.equities.models import StockSignal, UniverseStock
 
@@ -38,22 +39,16 @@ class TechnicalAnalyst:
             end_date,
         )
         bars = price_data.get("bars", [])
-        if bars:
-            recent = bars[-5:]
-            price_summary = "\n".join(
-                f"- Close: {b.get('close', 'N/A')}, Volume: {b.get('volume', 'N/A')}" for b in recent
-            )
-            first_close = bars[0].get("close", 0)
-            last_close = bars[-1].get("close", 0)
-            total_return = (last_close - first_close) / first_close * 100 if first_close else 0
-        else:
-            price_summary = "No price data available."
-            total_return = 0
+        context = format_technical_context(
+            symbol=stock.symbol,
+            company_name=stock.company_name,
+            bars=bars,
+            as_of_date=end_date,
+        )
         prompt = (
-            f"Analyze technical indicators for {stock.company_name} ({stock.symbol}).\n\n"
-            f"Recent price action:\n{price_summary}\n\n"
-            f"12-month return: {total_return:.1f}%\nTotal bars: {len(bars)}\n\n"
-            "Provide: bullish_score (1-10), confidence (1-10), summary (1-2 sentences)."
+            f"{context}\n\n"
+            "Based on the data above, provide: bullish_score (1-10), confidence (1-10), "
+            "summary (1-2 sentences)."
         )
         result = await self.llm_client.invoke(prompt)
         if isinstance(result, StockSignal):

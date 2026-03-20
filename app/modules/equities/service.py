@@ -130,7 +130,15 @@ class EquitiesBranchService:
                     nav = float(portfolio.nav) if portfolio.nav else 1_000_000.0
                     for pos in portfolio.positions:
                         if pos.long_quantity > 0 and nav > 0:
-                            current_positions[pos.symbol] = pos.long_cost_basis / nav
+                            # Use market value (price × qty) instead of cost basis
+                            # so weights reflect current allocation, not historical cost
+                            price = None
+                            if self.data_service:
+                                price = await self.data_service.get_current_price(pos.symbol)
+                            if price:
+                                current_positions[pos.symbol] = (price * float(pos.long_quantity)) / nav
+                            else:
+                                current_positions[pos.symbol] = pos.long_cost_basis / nav
             except Exception:
                 logger.warning("Could not read portfolio for %s, using defaults", branch_id)
 

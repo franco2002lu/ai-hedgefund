@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from app.modules.equities.agents.context_formatters import format_news_context
 from app.modules.equities.config import AnalystLLMConfig
 from app.modules.equities.models import StockSignal, UniverseStock
 
@@ -27,12 +28,16 @@ class NewsAnalyst:
     async def analyze(self, stock: UniverseStock) -> StockSignal:
         news_data = await self.data_service.get_news(symbols=[stock.symbol])
         articles = news_data.get("articles", [])
-        headlines = "\n".join(f"- {a.get('title', 'No title')}" for a in articles[:20]) or "No recent news available."
+        context = format_news_context(
+            symbol=stock.symbol,
+            company_name=stock.company_name,
+            sector=stock.sector,
+            articles=articles[:20],
+        )
         prompt = (
-            f"Analyze recent news for {stock.company_name} ({stock.symbol}).\n"
-            f"Sector: {stock.sector or 'Unknown'}\n\n"
-            f"Recent headlines:\n{headlines}\n\n"
-            "Provide: bullish_score (1-10), confidence (1-10), summary (1-2 sentences)."
+            f"{context}\n\n"
+            "Based on the data above, provide: bullish_score (1-10), confidence (1-10), "
+            "summary (1-2 sentences)."
         )
         result = await self.llm_client.invoke(prompt)
         if isinstance(result, StockSignal):

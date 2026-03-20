@@ -115,7 +115,9 @@ class PerformanceCalculator:
         # Exposure metrics
         avg_position_count = sum(s.position_count for s in snapshots) / len(snapshots)
         max_position_count = max(s.position_count for s in snapshots)
-        avg_long_exposure = sum(s.total_long_exposure for s in snapshots) / len(snapshots)
+        avg_long_exposure = sum(
+            s.total_long_exposure / s.nav if s.nav > 0 else 0.0 for s in snapshots
+        ) / len(snapshots)
 
         # Warnings
         warnings: list[str] = []

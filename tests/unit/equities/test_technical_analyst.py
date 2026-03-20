@@ -33,7 +33,14 @@ def _make_price_data(num_bars=252):
     bars = []
     for i in range(num_bars):
         close = 150.0 + i * 0.1
-        bars.append({"close": close, "volume": 1_000_000 + i * 100})
+        bars.append({
+            "timestamp": f"2025-01-{(i % 28) + 1:02d}",
+            "open": close - 1.0,
+            "high": close + 1.5,
+            "low": close - 1.5,
+            "close": close,
+            "volume": 1_000_000 + i * 100,
+        })
     return {"bars": bars}
 
 

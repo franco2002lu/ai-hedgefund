@@ -30,9 +30,8 @@ def build_equities_graph(branch_name: str):
         deps = state["deps"]
         provider = deps["universe_provider"]
         branch_name = state.get("branch_name", "")
-        branch_key = "growth" if "growth" in branch_name else "value"
-        holdings = await provider.get_holdings(branch_key)
-        logger.info("Fetched %d holdings for '%s' branch", len(holdings), branch_key)
+        holdings = await provider.get_holdings(branch_name)
+        logger.info("Fetched %d holdings for '%s' branch", len(holdings), branch_name)
         return {"universe": holdings}
 
     async def screen_stocks(state: EquitiesWorkflowState) -> dict:

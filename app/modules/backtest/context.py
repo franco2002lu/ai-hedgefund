@@ -73,8 +73,7 @@ class BacktestContext:
 
         # 2. Load universe symbols
         universe_provider = UniverseProvider()
-        branch_key = "growth" if "growth" in config.branch_name else "value"
-        universe_stocks = await universe_provider.get_holdings(branch_key)
+        universe_stocks = await universe_provider.get_holdings(config.branch_name)
         symbols = [s.symbol for s in universe_stocks]
         all_symbols = list(set(symbols + [config.benchmark_symbol]))
         logger.info("Universe loaded: %d stocks for branch '%s'", len(symbols), config.branch_name)
