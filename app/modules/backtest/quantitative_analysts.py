@@ -72,7 +72,7 @@ class QuantitativeNewsAnalyst:
             summary=f"1-month momentum: {change:.1%}",
         )
 
-    async def analyze_batch(self, stocks: list[UniverseStock]) -> list[StockSignal]:
+    async def analyze_batch(self, stocks: list[UniverseStock], **kwargs) -> list[StockSignal]:
         return [await self.analyze(stock) for stock in stocks]
 
 
@@ -91,7 +91,10 @@ class QuantitativeFundamentalsAnalyst:
             return _neutral_fallback(stock.symbol, "fundamentals", "neutral fallback signal")
 
     async def _analyze_impl(self, stock: UniverseStock) -> StockSignal:
-        metrics_list = await self.data_service.get_metrics(stock.symbol, end_date=self.time_provider.today())
+        result = await self.data_service.get_metrics(stock.symbol, end_date=self.time_provider.today())
+
+        # DataPlatformService wraps adapter output: {"metrics": [...], "symbol": ...}
+        metrics_list = result.get("metrics", []) if isinstance(result, dict) else result
 
         if not metrics_list:
             return StockSignal(
@@ -140,7 +143,7 @@ class QuantitativeFundamentalsAnalyst:
             summary=f"Fundamental score: {total:.2f}",
         )
 
-    async def analyze_batch(self, stocks: list[UniverseStock]) -> list[StockSignal]:
+    async def analyze_batch(self, stocks: list[UniverseStock], **kwargs) -> list[StockSignal]:
         return [await self.analyze(stock) for stock in stocks]
 
 
@@ -244,5 +247,5 @@ class QuantitativeTechnicalAnalyst:
             summary=f"Technical score: {total:.2f}",
         )
 
-    async def analyze_batch(self, stocks: list[UniverseStock]) -> list[StockSignal]:
+    async def analyze_batch(self, stocks: list[UniverseStock], **kwargs) -> list[StockSignal]:
         return [await self.analyze(stock) for stock in stocks]

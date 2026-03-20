@@ -100,7 +100,7 @@ class BacktestContext:
         async def _fetch_fundamentals(sym: str) -> None:
             async with sem:
                 try:
-                    metrics = await live_yahoo.get_metrics(sym)
+                    metrics = await live_yahoo.get_metrics(sym, config.end_date)
                     fundamentals_cache[sym] = metrics
                 except Exception:
                     logger.debug("Fundamentals unavailable for %s", sym)

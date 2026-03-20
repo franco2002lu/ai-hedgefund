@@ -74,6 +74,8 @@ class InMemoryPositionRepository(PositionRepository):
         self._store: dict[str, Position] = {}
 
     async def upsert(self, position: Position) -> Position:
+        if not position.id:
+            position.id = str(uuid.uuid4())
         self._store[position.id] = position
         return position
 
