@@ -108,3 +108,41 @@ class TestAnthropicAnalystClient:
 
         assert result["bullish_score"] == 7  # int(7.5) = 7
         assert result["confidence"] == 3  # int(3.9) = 3
+
+    async def test_custom_system_prompt_replaces_default(self):
+        """When system_prompt is provided, it replaces the default system message."""
+        payload = json.dumps({"bullish_score": 8, "confidence": 9, "summary": "Skilled"})
+        client, mock_api = _make_client_with_mock(payload)
+
+        custom_prompt = "You are a growth analyst. Evaluate momentum."
+        await client.invoke("Analyze NVDA", system_prompt=custom_prompt)
+
+        call_kwargs = mock_api.messages.create.call_args.kwargs
+        # System should be list-based with cache_control
+        system_arg = call_kwargs["system"]
+        assert isinstance(system_arg, list)
+        assert system_arg[0]["text"] == custom_prompt
+        assert system_arg[0]["cache_control"] == {"type": "ephemeral"}
+
+    async def test_none_system_prompt_uses_default(self):
+        """When system_prompt is None, uses the legacy default system message."""
+        payload = json.dumps({"bullish_score": 5, "confidence": 5, "summary": "Default"})
+        client, mock_api = _make_client_with_mock(payload)
+
+        await client.invoke("Analyze AAPL")
+
+        call_kwargs = mock_api.messages.create.call_args.kwargs
+        system_arg = call_kwargs["system"]
+        # Default should be a plain string (backward compatible)
+        assert isinstance(system_arg, str)
+        assert "financial analyst" in system_arg.lower()
+
+    async def test_max_tokens_is_512(self):
+        """max_tokens should be 512 to allow richer summaries."""
+        payload = json.dumps({"bullish_score": 5, "confidence": 5, "summary": "Test"})
+        client, mock_api = _make_client_with_mock(payload)
+
+        await client.invoke("Analyze AAPL")
+
+        call_kwargs = mock_api.messages.create.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 512

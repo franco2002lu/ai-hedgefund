@@ -117,6 +117,11 @@ class EquitiesBranchService:
         ps = portfolio_service or self.portfolio_service
         el = event_log_repo or self.event_log
 
+        # Set branch_name on LLM analysts so skill composition picks the right overlay
+        for analyst in [self.news_analyst, self.fundamentals_analyst, self.technical_analyst]:
+            if hasattr(analyst, "branch_name"):
+                analyst.branch_name = branch_name
+
         # --- Gap 5: Build branch-specific screener ---
         screener = self._build_screener(branch_name)
 

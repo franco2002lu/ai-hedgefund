@@ -134,3 +134,25 @@ class TestNewsAnalyst:
 
         with pytest.raises(Exception, match="API error"):
             await analyst.analyze(stock)
+
+    async def test_passes_system_prompt_to_llm_client(self):
+        """When branch_name is set, invoke() receives a system_prompt kwarg."""
+        analyst, _, llm_client = _make_analyst()
+        analyst.branch_name = "growth"
+        stock = _make_stock(sector="Technology")
+        await analyst.analyze(stock)
+
+        call_kwargs = llm_client.invoke.call_args.kwargs
+        assert "system_prompt" in call_kwargs
+        assert "News Analyst" in call_kwargs["system_prompt"]
+        assert "Growth Branch" in call_kwargs["system_prompt"]
+
+    async def test_simplified_user_prompt(self):
+        """User prompt should not contain the old format instruction."""
+        analyst, _, llm_client = _make_analyst()
+        stock = _make_stock()
+        await analyst.analyze(stock)
+
+        user_prompt = llm_client.invoke.call_args.args[0]
+        assert "AAPL" in user_prompt
+        assert "bullish_score (1-10)" not in user_prompt

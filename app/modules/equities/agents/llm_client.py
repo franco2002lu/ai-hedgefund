@@ -31,25 +31,44 @@ class AnthropicAnalystClient:
 
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
-    async def invoke(self, prompt: str) -> dict:
-        """Send prompt to Claude and parse a structured analyst response."""
+    _DEFAULT_SYSTEM_MSG = (
+        "You are a financial analyst assistant. Respond ONLY with a JSON object "
+        "containing exactly three keys:\n"
+        '  "bullish_score": integer 1-10 (1=very bearish, 10=very bullish)\n'
+        '  "confidence": integer 1-10 (1=very uncertain, 10=very certain)\n'
+        '  "summary": string (1-2 sentence analysis summary)\n'
+        "Do not include any text outside the JSON object."
+    )
+
+    async def invoke(self, prompt: str, *, system_prompt: str | None = None) -> dict:
+        """Send prompt to Claude and parse a structured analyst response.
+
+        Args:
+            prompt: User prompt (context + analysis instruction).
+            system_prompt: Custom system prompt from skill composition.
+                When provided, sent as list format with cache_control for
+                Anthropic prompt caching. When None, falls back to the
+                default legacy system message.
+        """
         if self._client is None:
             raise RuntimeError("ANTHROPIC_API_KEY not set — cannot invoke LLM analyst")
 
-        system_msg = (
-            "You are a financial analyst assistant. Respond ONLY with a JSON object "
-            "containing exactly three keys:\n"
-            '  "bullish_score": integer 1-10 (1=very bearish, 10=very bullish)\n'
-            '  "confidence": integer 1-10 (1=very uncertain, 10=very certain)\n'
-            '  "summary": string (1-2 sentence analysis summary)\n'
-            "Do not include any text outside the JSON object."
-        )
+        if system_prompt is not None:
+            system = [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        else:
+            system = self._DEFAULT_SYSTEM_MSG
 
         response = await self._client.messages.create(
             model=self.model,
-            max_tokens=256,
+            max_tokens=512,
             temperature=self.temperature,
-            system=system_msg,
+            system=system,
             messages=[{"role": "user", "content": prompt}],
         )
 

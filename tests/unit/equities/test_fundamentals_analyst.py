@@ -147,3 +147,37 @@ class TestFundamentalsAnalyst:
         assert signal.analyst_type == "fundamentals"
         assert 1 <= signal.bullish_score <= 10
         assert 1 <= signal.confidence <= 10
+
+    async def test_passes_system_prompt_to_llm_client(self):
+        """When branch_name is set, invoke() receives a system_prompt kwarg."""
+        analyst, _, _, llm_client = _make_analyst()
+        analyst.branch_name = "growth"
+        stock = _make_stock(sector="Technology")
+        await analyst.analyze(stock)
+
+        call_kwargs = llm_client.invoke.call_args.kwargs
+        assert "system_prompt" in call_kwargs
+        assert "Fundamentals Analyst" in call_kwargs["system_prompt"]
+        assert "Growth Branch" in call_kwargs["system_prompt"]
+
+    async def test_no_branch_still_passes_system_prompt(self):
+        """Even with default empty branch_name, system_prompt is passed (base only)."""
+        analyst, _, _, llm_client = _make_analyst()
+        stock = _make_stock()
+        await analyst.analyze(stock)
+
+        call_kwargs = llm_client.invoke.call_args.kwargs
+        assert "system_prompt" in call_kwargs
+        assert "Fundamentals Analyst" in call_kwargs["system_prompt"]
+
+    async def test_simplified_user_prompt(self):
+        """User prompt should be context + simple instruction, no score format."""
+        analyst, _, _, llm_client = _make_analyst()
+        stock = _make_stock()
+        await analyst.analyze(stock)
+
+        user_prompt = llm_client.invoke.call_args.args[0]
+        # Should contain the context (from format_fundamentals_context)
+        assert "AAPL" in user_prompt
+        # Should NOT contain the old format instruction
+        assert "bullish_score (1-10)" not in user_prompt
