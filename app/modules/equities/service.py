@@ -218,16 +218,28 @@ class EquitiesBranchService:
                     if not instr_id:
                         logger.warning("No instrument_id for %s — skipping order", order.symbol)
                         return None
-                    return await tes.submit_order(
-                        OrderRequest(
-                            branch_id=branch_id,
-                            instrument_id=instr_id,
-                            symbol=order.symbol,
-                            side=OrderSide(order.side),
-                            order_type=OrderType.MARKET,
-                            quantity=order.quantity,
-                        )
+                    req = OrderRequest(
+                        branch_id=branch_id,
+                        instrument_id=instr_id,
+                        symbol=order.symbol,
+                        side=OrderSide(order.side),
+                        order_type=OrderType.MARKET,
+                        quantity=order.quantity,
                     )
+                    try:
+                        return await tes.submit_order(req)
+                    except Exception:
+                        # Fallback: retry with whole shares if fractional rejected
+                        whole_qty = int(order.quantity)
+                        if whole_qty == 0:
+                            logger.warning(
+                                "Fractional order rejected and whole qty is 0 for %s",
+                                order.symbol,
+                            )
+                            return None
+                        logger.info("Retrying %s with whole shares: %d", order.symbol, whole_qty)
+                        req.quantity = float(whole_qty)
+                        return await tes.submit_order(req)
                 except Exception as e:
                     logger.warning("Trade execution failed for %s: %s", order.symbol, e)
                     return None

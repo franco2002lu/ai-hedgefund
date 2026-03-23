@@ -200,17 +200,17 @@ class TestLeverageFilter:
         assert len(result) == 0
 
     async def test_handles_missing_data(self):
-        """When debtToEquity is absent the stock should be rejected.
+        """When debtToEquity is absent the stock should be allowed through.
 
-        NOTE: Current stub defaults to 0.0 which passes. This test documents the
-        desired TDD contract -- implementation should treat missing leverage as rejection.
+        Financials and capital-return-heavy companies often report None for D/E.
+        Rejecting them structurally excludes valid value stocks (banks, etc.).
         """
         data_service = AsyncMock()
         data_service.get_metrics.return_value = _metrics_response("NODATA", {})
         f = LeverageFilter(max_debt_to_equity=5.0)
         result = await f.apply([_make_stock("NODATA")], data_service)
-        # TDD contract: missing data -> rejected
-        assert len(result) == 0
+        # Missing D/E -> allowed through (banks, negative-equity companies)
+        assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------

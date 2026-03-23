@@ -33,10 +33,10 @@ class TestScreeningConfig:
         cfg = ScreeningConfig()
         assert cfg.max_pe_percentile == pytest.approx(60.0)
         assert cfg.max_pb_percentile == pytest.approx(60.0)
-        assert cfg.min_fcf_yield == pytest.approx(0.02)
+        assert cfg.min_fcf_yield == pytest.approx(0.0)
         assert cfg.min_dividend_yield == pytest.approx(0.005)
         assert cfg.min_roe == pytest.approx(0.08)
-        assert cfg.max_52w_range_percentile == pytest.approx(70.0)
+        assert cfg.max_52w_range_percentile == pytest.approx(90.0)
 
     def test_custom_override(self):
         cfg = ScreeningConfig(min_avg_daily_volume=1_000_000, min_market_cap=5e9)

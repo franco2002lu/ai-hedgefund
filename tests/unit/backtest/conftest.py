@@ -65,7 +65,7 @@ def _make_backtest_config(**overrides) -> BacktestConfig:
         use_llm_agents=False,
         slippage_bps=5.0,
         commission_per_trade=0.0,
-        benchmark_symbol="SPY",
+        benchmark_symbols=["SPY"],
     )
     defaults.update(overrides)
     return BacktestConfig(**defaults)

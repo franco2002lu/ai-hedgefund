@@ -22,10 +22,10 @@ class ScreeningConfig(BaseModel):
     # Value-specific
     max_pe_percentile: float = 60.0
     max_pb_percentile: float = 60.0
-    min_fcf_yield: float = 0.02
+    min_fcf_yield: float = 0.0
     min_dividend_yield: float = 0.005
     min_roe: float = 0.08
-    max_52w_range_percentile: float = 70.0
+    max_52w_range_percentile: float = 90.0
 
 
 class PortfolioConfig(BaseModel):

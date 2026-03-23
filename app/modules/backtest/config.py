@@ -36,7 +36,7 @@ class BacktestConfig(BaseModel):
     llm_config: LLMBacktestConfig = LLMBacktestConfig()
     slippage_bps: float = 5.0
     commission_per_trade: float = 0.0
-    benchmark_symbol: str = "SPY"
+    benchmark_symbols: list[str] = ["SPY"]
     equities_config_override: EquitiesConfig | None = None
 
     @model_validator(mode="after")

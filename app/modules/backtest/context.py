@@ -75,7 +75,7 @@ class BacktestContext:
         universe_provider = UniverseProvider()
         universe_stocks = await universe_provider.get_holdings(config.branch_name)
         symbols = [s.symbol for s in universe_stocks]
-        all_symbols = list(set(symbols + [config.benchmark_symbol]))
+        all_symbols = list(set(symbols + config.benchmark_symbols))
         logger.info("Universe loaded: %d stocks for branch '%s'", len(symbols), config.branch_name)
 
         # 3. Preload OHLCV from yfinance

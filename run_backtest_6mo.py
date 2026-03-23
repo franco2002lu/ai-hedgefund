@@ -23,18 +23,18 @@ async def run_one(branch: str):
 
     print(f"\n{'='*60}")
     print(f"  BACKTEST: {branch.upper()} BRANCH (20-stock test universe)")
-    print(f"  Period: 2025-07-01 to 2025-12-31 | Weekly Rebalance")
-    print(f"  Capital: $100,000 | Quantitative Analysts")
+    print(f"  Period: 2025-01-01 to 2025-06-30 | Weekly Rebalance")
+    print(f"  Capital: $1,000 | Quantitative Analysts")
     print(f"{'='*60}")
 
     config = BacktestConfig(
-        start_date=date(2025, 7, 1),
-        end_date=date(2025, 12, 31),
-        initial_capital=100_000.0,
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 6, 30),
+        initial_capital=1_000.0,
         rebalance_frequency=RebalanceFrequency.WEEKLY,
         branch_name=test_branch,
         use_llm_agents=False,
-        benchmark_symbol="SPY",
+        benchmark_symbols=["SPY", "VOOG" if "growth" in test_branch else "VOOV"],
     )
 
     engine = BacktestEngine()
@@ -73,9 +73,8 @@ async def run_one(branch: str):
         print(f"  Max Position Count:  {m.max_position_count}")
         print(f"  Avg Long Exposure:   {m.avg_long_exposure:.1%}")
 
-    if result.benchmark:
-        b = result.benchmark
-        print(f"\n--- Benchmark (SPY) ---")
+    for b in result.benchmarks:
+        print(f"\n--- Benchmark ({b.benchmark_symbol}) ---")
         print(f"  Strategy Return:     {m.total_return:+.2%}")
         print(f"  Benchmark Return:    {b.benchmark_total_return:+.2%}")
         print(f"  Alpha:               {b.alpha:+.2%}")
@@ -119,10 +118,10 @@ async def main():
         print(f"  {'Win Rate':<22s} {g.win_rate:>9.1%} {v.win_rate:>9.1%}")
         print(f"  {'Trades':<22s} {g.total_trades:>10d} {v.total_trades:>10d}")
         print(f"  {'Avg Positions':<22s} {g.avg_position_count:>10.1f} {v.avg_position_count:>10.1f}")
-        if results["growth"].benchmark and results["value"].benchmark:
-            gb, vb = results["growth"].benchmark, results["value"].benchmark
-            print(f"  {'Alpha':<22s} {gb.alpha:>+9.2%} {vb.alpha:>+9.2%}")
-            print(f"  {'Beta':<22s} {gb.beta:>10.2f} {vb.beta:>10.2f}")
+        if results["growth"].benchmarks and results["value"].benchmarks:
+            gb, vb = results["growth"].benchmarks[0], results["value"].benchmarks[0]
+            print(f"  {'Alpha (SPY)':<22s} {gb.alpha:>+9.2%} {vb.alpha:>+9.2%}")
+            print(f"  {'Beta (SPY)':<22s} {gb.beta:>10.2f} {vb.beta:>10.2f}")
 
 
 if __name__ == "__main__":

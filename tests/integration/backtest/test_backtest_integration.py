@@ -73,12 +73,12 @@ class TestBacktestIntegration:
             rebalance_frequency=RebalanceFrequency.WEEKLY,
             branch_name="growth",
             use_llm_agents=False,
-            benchmark_symbol="SPY",
+            benchmark_symbols=["SPY"],
         )
         engine = BacktestEngine()
         result = await engine.run(config)
 
-        if result.benchmark:
-            assert result.benchmark.alpha is not None
-            assert result.benchmark.beta is not None
-            assert result.benchmark.tracking_error is not None
+        if result.benchmarks:
+            assert result.benchmarks[0].alpha is not None
+            assert result.benchmarks[0].beta is not None
+            assert result.benchmarks[0].tracking_error is not None

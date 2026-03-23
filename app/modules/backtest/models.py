@@ -67,7 +67,7 @@ class BacktestResult(BaseModel):
     metrics: PerformanceMetrics | None
     snapshots: list[DailySnapshot]
     trades: list[BacktestTrade]
-    benchmark: BenchmarkComparison | None
+    benchmarks: list[BenchmarkComparison] = []
     rebalance_count: int
     duration_seconds: float
     error_message: str | None = None

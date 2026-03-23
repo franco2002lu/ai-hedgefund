@@ -159,8 +159,8 @@ async def get_backtest_result(backtest_id: str) -> dict | None:
         response["duration_seconds"] = record.result.duration_seconds
         if record.result.metrics:
             response["metrics"] = record.result.metrics.model_dump()
-        if record.result.benchmark:
-            response["benchmark"] = record.result.benchmark.model_dump()
+        if record.result.benchmarks:
+            response["benchmarks"] = [b.model_dump() for b in record.result.benchmarks]
 
     return response
 

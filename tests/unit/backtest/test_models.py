@@ -182,14 +182,14 @@ class TestBacktestResult:
             ),
             snapshots=[],
             trades=[],
-            benchmark=None,
+            benchmarks=[],
             rebalance_count=12,
             duration_seconds=45.2,
         )
         assert result.backtest_id == "abc-123"
         assert result.status == "completed"
         assert result.metrics.total_return == 0.15
-        assert result.benchmark is None
+        assert result.benchmarks == []
         assert result.rebalance_count == 12
 
     def test_failed_result_has_error_message(self):
@@ -200,7 +200,7 @@ class TestBacktestResult:
             metrics=None,
             snapshots=[],
             trades=[],
-            benchmark=None,
+            benchmarks=[],
             rebalance_count=0,
             duration_seconds=1.5,
             error_message="Pipeline crashed: division by zero",

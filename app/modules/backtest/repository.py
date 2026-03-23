@@ -84,7 +84,7 @@ class PostgresBacktestRepository(BacktestRepository):
             status=result.status,
             config=result.config,
             metrics=result.metrics.model_dump() if result.metrics else None,
-            benchmark=result.benchmark.model_dump() if result.benchmark else None,
+            benchmark=[b.model_dump() for b in result.benchmarks] if result.benchmarks else None,
             duration_seconds=result.duration_seconds,
             error_message=result.error_message,
             rebalance_count=result.rebalance_count,

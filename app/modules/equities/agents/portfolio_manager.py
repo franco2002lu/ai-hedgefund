@@ -136,7 +136,7 @@ class PortfolioManager:
             price = prices.get(symbol)
             if not price or price <= 0:
                 continue
-            quantity = int(abs(delta * nav) / price)
+            quantity = round(abs(delta * nav) / price, 4)
             if quantity == 0:
                 continue
             if delta > 0:

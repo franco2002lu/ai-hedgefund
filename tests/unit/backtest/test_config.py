@@ -57,7 +57,7 @@ class TestBacktestConfig:
         assert config.use_llm_agents is False
         assert config.slippage_bps == 5.0
         assert config.commission_per_trade == 0.0
-        assert config.benchmark_symbol == "SPY"
+        assert config.benchmark_symbols == ["SPY"]
         assert config.equities_config_override is None
 
     def test_end_date_must_be_after_start_date(self):

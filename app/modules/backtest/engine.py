@@ -171,26 +171,29 @@ class BacktestEngine:
 
         # Compute analytics
         metrics = None
-        benchmark = None
+        benchmarks: list = []
         if len(snapshots) >= 2:
             calculator = PerformanceCalculator()
             metrics = calculator.compute_metrics(snapshots, backtest_trades)
 
-            benchmark_bars = ctx.store.get_bars(
-                config.benchmark_symbol, config.start_date, config.end_date
-            )
-            if len(benchmark_bars) >= 2:
-                benchmark_prices = {b.timestamp: b for b in benchmark_bars}
-                try:
-                    benchmark = calculator.compute_benchmark_comparison(
-                        snapshots=snapshots,
-                        benchmark_prices=benchmark_prices,
-                        benchmark_symbol=config.benchmark_symbol,
-                        start_date=config.start_date,
-                        end_date=config.end_date,
-                    )
-                except Exception:
-                    logger.warning("Benchmark comparison failed", exc_info=True)
+            for bench_symbol in config.benchmark_symbols:
+                benchmark_bars = ctx.store.get_bars(
+                    bench_symbol, config.start_date, config.end_date
+                )
+                if len(benchmark_bars) >= 2:
+                    benchmark_prices = {b.timestamp: b for b in benchmark_bars}
+                    try:
+                        benchmarks.append(
+                            calculator.compute_benchmark_comparison(
+                                snapshots=snapshots,
+                                benchmark_prices=benchmark_prices,
+                                benchmark_symbol=bench_symbol,
+                                start_date=config.start_date,
+                                end_date=config.end_date,
+                            )
+                        )
+                    except Exception:
+                        logger.warning("Benchmark comparison failed for %s", bench_symbol, exc_info=True)
 
         duration = _time.monotonic() - started
 
@@ -201,7 +204,7 @@ class BacktestEngine:
             metrics=metrics,
             snapshots=snapshots,
             trades=backtest_trades,
-            benchmark=benchmark,
+            benchmarks=benchmarks,
             rebalance_count=actual_rebalances,
             duration_seconds=duration,
             error_message=error_message,

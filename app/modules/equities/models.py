@@ -53,7 +53,7 @@ class RebalanceOrder(BaseModel):
 
     symbol: str
     side: OrderSide  # BUY or SELL
-    quantity: int
+    quantity: float
     reason: str  # "new_position" | "removed_position" | "weight_adjustment"
 
 

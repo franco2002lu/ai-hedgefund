@@ -144,7 +144,7 @@ class LeverageFilter(ScreeningFilter):
         result = []
         for stock in stocks:
             dte = await _get_metric(data_service, stock.symbol, "debtToEquity", None)
-            if dte is not None and dte <= self.max_debt_to_equity:
+            if dte is None or dte <= self.max_debt_to_equity:
                 result.append(stock)
         return result
 

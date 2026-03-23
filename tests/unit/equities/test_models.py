@@ -88,14 +88,14 @@ class TestRebalanceOrder:
         order = RebalanceOrder(symbol="AAPL", side=OrderSide.BUY, quantity=100, reason="new_position")
         assert order.symbol == "AAPL"
         assert order.side == OrderSide.BUY
-        assert order.quantity == 100
+        assert order.quantity == 100.0
         assert order.reason == "new_position"
 
     def test_sell_order(self):
-        order = RebalanceOrder(symbol="MSFT", side=OrderSide.SELL, quantity=50, reason="removed_position")
+        order = RebalanceOrder(symbol="MSFT", side=OrderSide.SELL, quantity=50.0, reason="removed_position")
         assert order.symbol == "MSFT"
         assert order.side == OrderSide.SELL
-        assert order.quantity == 50
+        assert order.quantity == 50.0
         assert order.reason == "removed_position"
 
     def test_string_side_coerced(self):

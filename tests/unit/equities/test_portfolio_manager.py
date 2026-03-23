@@ -362,12 +362,12 @@ class TestOrderGeneration:
         o = orders[0]
         assert o.symbol == "AAPL"
         assert o.side == "buy"
-        assert o.quantity == 666
+        assert o.quantity == pytest.approx(666.6667)
         assert o.reason == "new_position"
 
     def test_removed_position_generates_sell(self):
         """Current has MSFT at 10% weight, target does not have MSFT -> SELL.
-        quantity = floor(0.10 * 1_000_000 / 300) = 333
+        quantity = round(0.10 * 1_000_000 / 300, 4) = 333.3333
         """
         pm = _make_pm()
         orders = pm.generate_orders(
@@ -381,12 +381,12 @@ class TestOrderGeneration:
         o = orders[0]
         assert o.symbol == "MSFT"
         assert o.side == "sell"
-        assert o.quantity == 333
+        assert o.quantity == pytest.approx(333.3333)
         assert o.reason == "removed_position"
 
     def test_weight_increase_generates_buy(self):
         """Current AAPL at 5% weight, target at 10% -> BUY delta=5%.
-        quantity = floor(0.05 * 1_000_000 / 150) = 333
+        quantity = round(0.05 * 1_000_000 / 150, 4) = 333.3333
         """
         pm = _make_pm()
         target = [
@@ -408,12 +408,12 @@ class TestOrderGeneration:
         assert len(orders) == 1
         o = orders[0]
         assert o.side == "buy"
-        assert o.quantity == 333
+        assert o.quantity == pytest.approx(333.3333)
         assert o.reason == "weight_adjustment"
 
     def test_weight_decrease_generates_sell(self):
         """Current AAPL at 15% weight, target at 10% -> SELL delta=5%.
-        quantity = floor(0.05 * 1_000_000 / 150) = 333
+        quantity = round(0.05 * 1_000_000 / 150, 4) = 333.3333
         """
         pm = _make_pm()
         target = [
@@ -435,7 +435,7 @@ class TestOrderGeneration:
         assert len(orders) == 1
         o = orders[0]
         assert o.side == "sell"
-        assert o.quantity == 333
+        assert o.quantity == pytest.approx(333.3333)
         assert o.reason == "weight_adjustment"
 
     def test_min_trade_threshold_skips_small_adjustment(self):
@@ -461,7 +461,7 @@ class TestOrderGeneration:
         assert len(orders) == 0
 
     def test_correct_share_calculation(self):
-        """target_weight=0.10, NAV=1_000_000, price=150 -> quantity=666."""
+        """target_weight=0.10, NAV=1_000_000, price=150 -> quantity=666.6667."""
         pm = _make_pm()
         target = [
             CompositeScore(
@@ -479,8 +479,8 @@ class TestOrderGeneration:
             prices={"AAPL": 150.0},
         )
 
-        assert orders[0].quantity == int(0.10 * 1_000_000 / 150.0)
-        assert orders[0].quantity == 666
+        assert orders[0].quantity == pytest.approx(round(0.10 * 1_000_000 / 150.0, 4))
+        assert orders[0].quantity == pytest.approx(666.6667)
 
     def test_empty_target_sells_everything(self):
         """No target positions, current has 3 positions -> 3 SELL orders."""
