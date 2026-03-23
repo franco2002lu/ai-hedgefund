@@ -1,14 +1,15 @@
-"""Run backtests using small test universes (~20 stocks each).
+"""Run backtests using test universes (~20 stocks each).
 
 Usage:
-    python run_backtest.py                  # both branches
-    python run_backtest.py growth           # growth only
-    python run_backtest.py value            # value only
+    python scripts/run_backtest.py 2025-01-01 2025-12-31              # both branches
+    python scripts/run_backtest.py 2025-01-01 2025-06-30 growth       # growth only
+    python scripts/run_backtest.py 2025-01-01 2025-06-30 value        # value only
+    python scripts/run_backtest.py 2025-01-01 2025-06-30 --capital 10000
 """
 
+import argparse
 import asyncio
 import logging
-import sys
 from datetime import date
 
 from app.modules.backtest.config import BacktestConfig, RebalanceFrequency
@@ -18,20 +19,19 @@ logging.basicConfig(level=logging.WARNING)
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 
-async def run_one(branch: str):
-    # Prefix with "test_" to load from test_{branch}_universe.csv
+async def run_one(branch: str, start: date, end: date, capital: float):
     test_branch = f"test_{branch}"
 
     print(f"\n{'='*60}")
     print(f"  BACKTEST: {branch.upper()} BRANCH (20-stock test universe)")
-    print(f"  Period: 2024-06-01 to 2024-06-28 | Weekly Rebalance")
-    print(f"  Capital: $100,000 | Quantitative Analysts")
+    print(f"  Period: {start} to {end} | Weekly Rebalance")
+    print(f"  Capital: ${capital:,.0f} | Quantitative Analysts")
     print(f"{'='*60}")
 
     config = BacktestConfig(
-        start_date=date(2024, 6, 1),
-        end_date=date(2024, 6, 28),
-        initial_capital=100_000.0,
+        start_date=start,
+        end_date=end,
+        initial_capital=capital,
         rebalance_frequency=RebalanceFrequency.WEEKLY,
         branch_name=test_branch,
         use_llm_agents=False,
@@ -100,10 +100,21 @@ async def run_one(branch: str):
 
 
 async def main():
-    branches = sys.argv[1:] if len(sys.argv) > 1 else ["growth", "value"]
+    parser = argparse.ArgumentParser(description="Run backtests with test universes")
+    parser.add_argument("start_date", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("end_date", help="End date (YYYY-MM-DD)")
+    parser.add_argument("branches", nargs="*", default=["growth", "value"],
+                        help="Branches to run (default: both)")
+    parser.add_argument("--capital", type=float, default=1_000.0,
+                        help="Initial capital (default: 1000)")
+    args = parser.parse_args()
+
+    start = date.fromisoformat(args.start_date)
+    end = date.fromisoformat(args.end_date)
+
     results = {}
-    for branch in branches:
-        results[branch] = await run_one(branch)
+    for branch in args.branches:
+        results[branch] = await run_one(branch, start, end, args.capital)
 
     if len(results) == 2 and all(r.metrics for r in results.values()):
         g, v = results["growth"].metrics, results["value"].metrics

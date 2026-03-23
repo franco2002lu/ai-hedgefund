@@ -27,9 +27,9 @@ pytest tests/integration/ -m integration -v     # analyst agent tests (real LLM 
 pytest tests/integration/ -m e2e -v             # all e2e tests (equities pipeline, checkpoint2, smoke)
 
 # Backtesting (no DB/server needed, uses Yahoo Finance for data)
-python run_backtest.py                          # both growth + value branches
-python run_backtest.py growth                   # growth only
-python run_backtest.py value                    # value only
+python scripts/run_backtest.py 2025-01-01 2025-12-31              # both branches, $1K default
+python scripts/run_backtest.py 2025-01-01 2025-06-30 growth       # growth only
+python scripts/run_backtest.py 2025-01-01 2025-06-30 --capital 10000  # custom capital
 pytest tests/unit/backtest/ -q                  # backtest unit tests
 
 # Lint and format (ruff)
@@ -95,7 +95,7 @@ Each module in `app/modules/` follows: `api.py` (FastAPI router) → `service.py
 - **Quantitative analysts** (`backtest/quantitative_analysts.py`) replace LLM agents with deterministic scoring based on cached fundamentals, technicals, and simulated news sentiment
 - **Data pre-caching**: `BacktestContext` fetches all OHLCV + fundamentals data upfront from Yahoo Finance before simulation starts; the simulation loop itself makes zero live API calls
 - **Analytics** (`backtest/analytics.py`) computes 16+ metrics: Sharpe, Sortino, Calmar, max drawdown, win rate, profit factor, plus benchmark comparison (alpha, beta, information ratio)
-- **Test universes**: `data/universes/test_{branch}_universe.csv` (20 stocks each) reduce Yahoo API calls from ~285 to ~47. `run_backtest.py` uses `branch_name="test_{branch}"` to auto-load these
+- **Test universes**: `data/universes/test_{branch}_universe.csv` (20 stocks each) reduce Yahoo API calls from ~285 to ~47. `scripts/run_backtest.py` uses `branch_name="test_{branch}"` to auto-load these
 
 ### Database
 
@@ -132,7 +132,7 @@ Design decisions and specs live in `plans/architecture/`:
 - `app/modules/backtest/state.py` — in-memory repository implementations
 - `app/modules/backtest/analytics.py` — performance metrics and benchmark comparison
 - `app/modules/backtest/config.py` — `BacktestConfig`, `RebalanceFrequency`
-- `run_backtest.py` — CLI script to run backtests with test universes
+- `scripts/run_backtest.py` — CLI script to run backtests with test universes
 - `data/universes/test_growth_universe.csv` — 20-stock growth test universe
 - `data/universes/test_value_universe.csv` — 20-stock value test universe
 - `tests/conftest.py` — shared test fixtures (`_make_universe_stock`, `_make_stock_signal`, `_make_composite_score`)
@@ -229,7 +229,7 @@ pytest tests/integration/test_e2e_smoke.py -m e2e -v
 - **Screening filters handle missing data with None** — `LeverageFilter` and `PEGFilter` default to `None` and reject stocks with missing data (not 0.0 default). New filters should follow this pattern.
 - **EquitiesBranchService is a singleton but uses per-request DB deps** — the service is created once, but `run_pipeline()` accepts optional `trade_execution_service`, `portfolio_service`, `event_log_repo`, and `session` injected per-request from the API layer.
 - **`alembic.ini` has a hardcoded DB URL** — it doesn't read from `.env`; update it manually if your connection string differs.
-- **Yahoo Finance rate limiting** — ~285 API calls for a full 138-stock universe can trigger rate limits (1-24 hour bans). Use test universes (20 stocks, ~47 calls) via `run_backtest.py` to avoid this. If rate-limited, wait 15-30 minutes.
+- **Yahoo Finance rate limiting** — ~285 API calls for a full 138-stock universe can trigger rate limits (1-24 hour bans). Use test universes (20 stocks, ~47 calls) via `scripts/run_backtest.py` to avoid this. If rate-limited, wait 15-30 minutes.
 - **Backtest data pre-caching is all-or-nothing** — `BacktestContext` fetches all fundamentals/OHLCV upfront. If any `get_metrics()` call fails silently (e.g., missing `end_date` arg), the screener's `LiquidityFilter` drops all stocks to 0 because `averageDailyVolume10Day` is never cached.
 - **`DataPlatformService.get_metrics()` wraps adapter output** — returns `{"metrics": [...], "symbol": ..., "source": ...}` (a dict), not a raw list. Code consuming metrics must extract via `result.get("metrics", [])`.
 - **In-memory position repo generates UUIDs** — `PortfolioService.handle_trade_executed()` creates positions with `id=""` (expects DB to assign). `InMemoryPositionRepository.upsert()` generates a UUID when id is empty to avoid dict key collisions.
