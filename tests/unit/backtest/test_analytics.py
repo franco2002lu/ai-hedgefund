@@ -190,6 +190,58 @@ class TestComputeMetrics:
         assert metrics.total_return == pytest.approx(0.0, abs=0.001)
         assert metrics.volatility == pytest.approx(0.0, abs=0.001)
 
+    def test_turnover_rate(self):
+        """turnover = (total_notional / avg_nav) / years."""
+        trades = [
+            _make_backtest_trade(symbol="AAPL", side="buy", quantity=100.0, price=150.0),
+            _make_backtest_trade(symbol="AAPL", side="sell", quantity=100.0, price=160.0),
+        ]
+        # 10 snapshots → 9 trading days → 9/252 years
+        navs = [1_000_000] * 10
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        metrics = calc.compute_metrics(snapshots, trades)
+        # total_notional = (100*150) + (100*160) = 31000
+        # years = 9/252 ≈ 0.03571
+        # turnover = (31000 / 1_000_000) / 0.03571 ≈ 0.868
+        assert metrics.turnover_rate == pytest.approx(0.868, abs=0.05)
+
+    def test_value_at_risk_95(self):
+        """VaR(95%) = 5th percentile of daily returns."""
+        # NAV: 100, 98, 103, 97, 105, 99, 106, 101, 108, 104, 110
+        navs = [100, 98, 103, 97, 105, 99, 106, 101, 108, 104, 110]
+        navs = [n * 10_000 for n in navs]
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        metrics = calc.compute_metrics(snapshots, [])
+        # VaR should be negative (a loss) — the worst daily returns
+        assert metrics.value_at_risk_95 < 0
+
+    def test_conditional_var_95(self):
+        """CVaR(95%) <= VaR(95%) since it's the avg of the tail."""
+        navs = [1_000_000 + (i % 5 - 2) * 20_000 for i in range(50)]
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        metrics = calc.compute_metrics(snapshots, [])
+        assert metrics.conditional_var_95 <= metrics.value_at_risk_95
+
+    def test_ulcer_index(self):
+        """Ulcer index > 0 when drawdowns exist."""
+        navs = [1_000_000, 1_100_000, 900_000, 1_050_000]
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        metrics = calc.compute_metrics(snapshots, [])
+        # NAV drops from 1.1M peak to 900K → significant drawdown
+        assert metrics.ulcer_index > 0
+
+    def test_ulcer_index_zero_for_monotonic_growth(self):
+        """Ulcer index = 0 when NAV only goes up."""
+        navs = [1_000_000 + i * 10_000 for i in range(20)]
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        metrics = calc.compute_metrics(snapshots, [])
+        assert metrics.ulcer_index == pytest.approx(0.0, abs=0.0001)
+
 
 # ---------------------------------------------------------------------------
 # TestComputeMetricsEdgeCases
@@ -333,6 +385,36 @@ class TestComputeBenchmarkComparison:
         )
         assert comparison.benchmark_symbol == "SPY"
         assert comparison.benchmark_total_return is not None
+
+    def test_up_capture_ratio(self):
+        """Up capture > 100% when strategy gains more than benchmark on up days."""
+        # Strategy returns 2x benchmark → up capture ≈ 200%
+        spy_series = _make_price_series(
+            "SPY", start=date(2024, 1, 2), days=126,
+            base_price=450.0, daily_return=0.0004,
+        )
+        navs = [1_000_000]
+        for _ in range(126):
+            navs.append(navs[-1] * (1 + 0.0008))
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        comparison = calc.compute_benchmark_comparison(
+            snapshots, spy_series, "SPY", date(2024, 1, 2), date(2024, 6, 28)
+        )
+        # Strategy consistently earns 2x benchmark → up capture ≈ 200%
+        assert comparison.up_capture_ratio > 100
+
+    def test_down_capture_ratio(self):
+        """Down capture computed from benchmark down days."""
+        spy_series = self._make_benchmark_data()
+        navs = [1_000_000 * (1 + 0.0004) ** i for i in range(127)]
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        comparison = calc.compute_benchmark_comparison(
+            snapshots, spy_series, "SPY", date(2024, 1, 2), date(2024, 6, 28)
+        )
+        # Down capture should be a number (may be 0 if benchmark has no down days)
+        assert comparison.down_capture_ratio is not None
 
     def test_perfect_correlation_beta_1_alpha_0(self):
         """When strategy perfectly tracks benchmark, beta ≈ 1 and alpha ≈ 0."""

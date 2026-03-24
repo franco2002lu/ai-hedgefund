@@ -45,6 +45,10 @@ class PerformanceMetrics(BaseModel):
     avg_position_count: float
     max_position_count: int
     avg_long_exposure: float
+    turnover_rate: float = 0.0
+    value_at_risk_95: float = 0.0
+    conditional_var_95: float = 0.0
+    ulcer_index: float = 0.0
     warnings: list[str] = []
 
 
@@ -58,6 +62,8 @@ class BenchmarkComparison(BaseModel):
     beta: float
     information_ratio: float
     tracking_error: float
+    up_capture_ratio: float = 0.0
+    down_capture_ratio: float = 0.0
 
 
 class BacktestResult(BaseModel):

@@ -119,6 +119,31 @@ class PerformanceCalculator:
             s.total_long_exposure / s.nav if s.nav > 0 else 0.0 for s in snapshots
         ) / len(snapshots)
 
+        # Turnover rate (annualized)
+        total_notional = sum(t.quantity * t.price for t in trades)
+        avg_nav = sum(s.nav for s in snapshots) / len(snapshots)
+        years = trading_days / TRADING_DAYS_PER_YEAR
+        turnover_rate = (total_notional / avg_nav) / years if avg_nav > 0 and years > 0 else 0.0
+
+        # Value at Risk (95%) — 5th percentile of daily returns
+        sorted_returns = sorted(daily_returns)
+        var_idx = int(len(sorted_returns) * 0.05)
+        value_at_risk_95 = sorted_returns[var_idx]
+
+        # Conditional VaR (95%) — mean of returns at or below VaR
+        tail = [r for r in sorted_returns if r <= value_at_risk_95]
+        conditional_var_95 = sum(tail) / len(tail) if tail else value_at_risk_95
+
+        # Ulcer Index — RMS of percentage drawdowns from peak
+        peak = snapshots[0].nav
+        squared_drawdowns = []
+        for s in snapshots:
+            if s.nav > peak:
+                peak = s.nav
+            dd_pct = (peak - s.nav) / peak
+            squared_drawdowns.append(dd_pct**2)
+        ulcer_index = math.sqrt(sum(squared_drawdowns) / len(squared_drawdowns))
+
         # Warnings
         warnings: list[str] = []
         if annualized_return > 5.0:
@@ -141,6 +166,10 @@ class PerformanceCalculator:
             avg_position_count=avg_position_count,
             max_position_count=max_position_count,
             avg_long_exposure=avg_long_exposure,
+            turnover_rate=turnover_rate,
+            value_at_risk_95=value_at_risk_95,
+            conditional_var_95=conditional_var_95,
+            ulcer_index=ulcer_index,
             warnings=warnings,
         )
 
@@ -281,6 +310,17 @@ class PerformanceCalculator:
             if dd > benchmark_max_drawdown:
                 benchmark_max_drawdown = dd
 
+        # Up/Down capture ratios
+        up_days_strat = [strat_aligned[i] for i in range(min_len) if bench_aligned[i] > 0]
+        up_days_bench = [bench_aligned[i] for i in range(min_len) if bench_aligned[i] > 0]
+        sum_up_bench = sum(up_days_bench)
+        up_capture_ratio = (sum(up_days_strat) / sum_up_bench * 100) if up_days_bench and abs(sum_up_bench) > 1e-12 else 0.0
+
+        down_days_strat = [strat_aligned[i] for i in range(min_len) if bench_aligned[i] < 0]
+        down_days_bench = [bench_aligned[i] for i in range(min_len) if bench_aligned[i] < 0]
+        sum_down_bench = sum(down_days_bench)
+        down_capture_ratio = (sum(down_days_strat) / sum_down_bench * 100) if down_days_bench and abs(sum_down_bench) > 1e-12 else 0.0
+
         return BenchmarkComparison(
             benchmark_symbol=benchmark_symbol,
             benchmark_total_return=benchmark_total_return,
@@ -291,4 +331,6 @@ class PerformanceCalculator:
             beta=beta,
             information_ratio=information_ratio,
             tracking_error=tracking_error,
+            up_capture_ratio=up_capture_ratio,
+            down_capture_ratio=down_capture_ratio,
         )
