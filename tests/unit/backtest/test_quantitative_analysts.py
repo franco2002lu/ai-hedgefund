@@ -2,10 +2,14 @@
 
 Each analyst produces deterministic signals based on price data and fundamentals,
 with continuous scoring via linear interpolation.
+
+The QuantitativeNewsAnalyst uses earnings surprise (YoY EPS change) from a
+HistoricalFundamentalsStore as a sentiment proxy. When no fundamentals store
+is available, it falls back to earnings growth from data_service.get_metrics().
 """
 
 from datetime import date
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from app.modules.backtest.quantitative_analysts import (
     QuantitativeFundamentalsAnalyst,
@@ -27,7 +31,7 @@ def _make_stock(symbol: str = "AAPL") -> UniverseStock:
 
 
 # ---------------------------------------------------------------------------
-# QuantitativeNewsAnalyst
+# QuantitativeNewsAnalyst — earnings surprise via HistoricalFundamentalsStore
 # ---------------------------------------------------------------------------
 
 
@@ -35,103 +39,151 @@ class TestQuantitativeNewsAnalyst:
     def _make_analyst(
         self,
         sim_date: date = date(2024, 6, 15),
-        prices: dict | None = None,
+        fundamentals_store=None,
     ) -> QuantitativeNewsAnalyst:
         tp = BacktestTimeProvider(sim_date)
         data_service = AsyncMock()
-        if prices is not None:
-            data_service.get_prices = AsyncMock(return_value=prices)
-        return QuantitativeNewsAnalyst(data_service=data_service, time_provider=tp)
-
-    async def test_positive_momentum_returns_score_6(self):
-        """Price change > 3% → bullish_score = 6."""
-        analyst = self._make_analyst()
-        # Mock: 1-month price went up 5%
-        analyst.data_service.get_prices = AsyncMock(
-            return_value=[
-                type("Bar", (), {"close": 100.0})(),  # start
-                type("Bar", (), {"close": 105.0})(),  # end (5% gain)
-            ]
+        return QuantitativeNewsAnalyst(
+            data_service=data_service,
+            time_provider=tp,
+            fundamentals_store=fundamentals_store,
         )
+
+    def _make_fundamentals_store(
+        self,
+        latest_eps: float | None,
+        prior_eps: float | None,
+        filing_date: date | None = None,
+    ) -> MagicMock:
+        """Create a mock HistoricalFundamentalsStore with get_latest_eps configured."""
+        store = MagicMock()
+        store.get_latest_eps = MagicMock(
+            return_value=(latest_eps, prior_eps, filing_date)
+        )
+        return store
+
+    async def test_strong_eps_growth_returns_high_score(self):
+        """EPS YoY change > 20% → bullish_score = 8."""
+        store = self._make_fundamentals_store(
+            latest_eps=2.40, prior_eps=1.80,  # +33% change
+            filing_date=date(2024, 6, 1),
+        )
+        analyst = self._make_analyst(fundamentals_store=store)
         signal = await analyst.analyze(_make_stock())
-        assert signal.bullish_score == 6
+        assert signal.bullish_score == 8
 
-    async def test_negative_momentum_returns_score_4(self):
-        """Price change < -3% → bullish_score = 4."""
-        analyst = self._make_analyst()
-        analyst.data_service.get_prices = AsyncMock(
-            return_value=[
-                type("Bar", (), {"close": 100.0})(),
-                type("Bar", (), {"close": 95.0})(),  # -5%
-            ]
+    async def test_moderate_eps_growth_returns_score_7(self):
+        """EPS YoY change between 5% and 20% → bullish_score = 7."""
+        store = self._make_fundamentals_store(
+            latest_eps=1.60, prior_eps=1.50,  # +6.7% change
+            filing_date=date(2024, 6, 1),
         )
+        analyst = self._make_analyst(fundamentals_store=store)
+        signal = await analyst.analyze(_make_stock())
+        assert signal.bullish_score == 7
+
+    async def test_negative_eps_returns_low_score(self):
+        """EPS YoY change between -20% and -5% → bullish_score = 4."""
+        store = self._make_fundamentals_store(
+            latest_eps=1.35, prior_eps=1.50,  # -10% change
+            filing_date=date(2024, 6, 1),
+        )
+        analyst = self._make_analyst(fundamentals_store=store)
         signal = await analyst.analyze(_make_stock())
         assert signal.bullish_score == 4
 
-    async def test_flat_momentum_returns_score_5(self):
-        """Price change between -3% and +3% → bullish_score = 5."""
-        analyst = self._make_analyst()
-        analyst.data_service.get_prices = AsyncMock(
-            return_value=[
-                type("Bar", (), {"close": 100.0})(),
-                type("Bar", (), {"close": 101.0})(),  # +1%, flat
-            ]
+    async def test_flat_eps_returns_neutral_score(self):
+        """EPS YoY change between -5% and +5% → bullish_score = 5."""
+        store = self._make_fundamentals_store(
+            latest_eps=1.52, prior_eps=1.50,  # +1.3% change
+            filing_date=date(2024, 6, 1),
         )
+        analyst = self._make_analyst(fundamentals_store=store)
         signal = await analyst.analyze(_make_stock())
         assert signal.bullish_score == 5
 
-    async def test_confidence_always_3(self):
-        """News analyst confidence is low (3) since momentum is a crude proxy."""
-        analyst = self._make_analyst()
-        analyst.data_service.get_prices = AsyncMock(
-            return_value=[
-                type("Bar", (), {"close": 100.0})(),
-                type("Bar", (), {"close": 110.0})(),
-            ]
+    async def test_confidence_high_for_recent_filing(self):
+        """Confidence is 5 when filing was within 30 days."""
+        store = self._make_fundamentals_store(
+            latest_eps=2.00, prior_eps=1.50,
+            filing_date=date(2024, 6, 1),  # 14 days before sim_date (June 15)
         )
+        analyst = self._make_analyst(sim_date=date(2024, 6, 15), fundamentals_store=store)
+        signal = await analyst.analyze(_make_stock())
+        assert signal.confidence == 5
+
+    async def test_confidence_medium_for_older_filing(self):
+        """Confidence is 4 when filing was 30-60 days ago."""
+        store = self._make_fundamentals_store(
+            latest_eps=2.00, prior_eps=1.50,
+            filing_date=date(2024, 5, 1),  # 45 days before sim_date (June 15)
+        )
+        analyst = self._make_analyst(sim_date=date(2024, 6, 15), fundamentals_store=store)
+        signal = await analyst.analyze(_make_stock())
+        assert signal.confidence == 4
+
+    async def test_confidence_low_for_stale_filing(self):
+        """Confidence is 3 when filing was > 60 days ago."""
+        store = self._make_fundamentals_store(
+            latest_eps=2.00, prior_eps=1.50,
+            filing_date=date(2024, 3, 1),  # 106 days before sim_date
+        )
+        analyst = self._make_analyst(sim_date=date(2024, 6, 15), fundamentals_store=store)
         signal = await analyst.analyze(_make_stock())
         assert signal.confidence == 3
 
     async def test_analyst_type_is_news(self):
-        analyst = self._make_analyst()
-        analyst.data_service.get_prices = AsyncMock(
-            return_value=[
-                type("Bar", (), {"close": 100.0})(),
-                type("Bar", (), {"close": 100.0})(),
-            ]
+        store = self._make_fundamentals_store(
+            latest_eps=1.50, prior_eps=1.50,
+            filing_date=date(2024, 6, 1),
         )
+        analyst = self._make_analyst(fundamentals_store=store)
         signal = await analyst.analyze(_make_stock())
         assert signal.analyst_type == "news"
 
-    async def test_missing_data_returns_neutral(self):
-        """When no price data available, return neutral signal."""
-        analyst = self._make_analyst()
-        analyst.data_service.get_prices = AsyncMock(return_value=[])
+    async def test_missing_fundamentals_store_falls_back_to_metrics(self):
+        """When no fundamentals store, uses get_metrics for earnings growth."""
+        analyst = self._make_analyst(fundamentals_store=None)
+        # Mock get_metrics to return earnings growth > 10%
+        analyst.data_service.get_metrics = AsyncMock(
+            return_value={"metrics": [{"earnings_growth": 0.15}]}
+        )
         signal = await analyst.analyze(_make_stock())
-        assert signal.bullish_score == 5
+        assert signal.bullish_score == 7
         assert signal.confidence == 3
 
-    async def test_analyze_batch_returns_all_signals(self):
-        analyst = self._make_analyst()
-        analyst.data_service.get_prices = AsyncMock(
-            return_value=[
-                type("Bar", (), {"close": 100.0})(),
-                type("Bar", (), {"close": 105.0})(),
-            ]
+    async def test_missing_data_returns_neutral(self):
+        """When no earnings data available, return neutral signal."""
+        analyst = self._make_analyst(fundamentals_store=None)
+        analyst.data_service.get_metrics = AsyncMock(
+            return_value={"metrics": []}
         )
+        signal = await analyst.analyze(_make_stock())
+        assert signal.bullish_score == 5
+
+    async def test_analyze_batch_returns_all_signals(self):
+        store = self._make_fundamentals_store(
+            latest_eps=2.00, prior_eps=1.50,
+            filing_date=date(2024, 6, 1),
+        )
+        analyst = self._make_analyst(fundamentals_store=store)
         stocks = [_make_stock("AAPL"), _make_stock("MSFT"), _make_stock("GOOGL")]
         signals = await analyst.analyze_batch(stocks)
         assert len(signals) == 3
         assert all(s.analyst_type == "news" for s in signals)
 
-    async def test_missing_data_single_price_returns_neutral(self):
-        """If only one price bar, can't compute momentum."""
-        analyst = self._make_analyst()
-        analyst.data_service.get_prices = AsyncMock(
-            return_value=[type("Bar", (), {"close": 100.0})()]
+    async def test_no_prior_eps_falls_back_to_metrics(self):
+        """If fundamentals store has no prior EPS, falls back to get_metrics."""
+        store = self._make_fundamentals_store(
+            latest_eps=2.00, prior_eps=None,
+            filing_date=date(2024, 6, 1),
+        )
+        analyst = self._make_analyst(fundamentals_store=store)
+        analyst.data_service.get_metrics = AsyncMock(
+            return_value={"metrics": [{"earnings_growth": -0.10}]}
         )
         signal = await analyst.analyze(_make_stock())
-        assert signal.bullish_score == 5
+        assert signal.bullish_score == 4
 
 
 # ---------------------------------------------------------------------------

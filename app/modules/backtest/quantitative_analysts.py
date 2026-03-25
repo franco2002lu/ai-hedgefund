@@ -21,10 +21,7 @@ def _extract_closes(result) -> list[float]:
     returned by DataPlatformService and raw lists of PriceBar objects
     (from direct adapters or test mocks).
     """
-    if isinstance(result, dict):
-        bars = result.get("bars", [])
-    else:
-        bars = result if result else []
+    bars = result.get("bars", []) if isinstance(result, dict) else result if result else []
     closes: list[float] = []
     for bar in bars:
         if isinstance(bar, dict):
@@ -46,11 +43,18 @@ def _neutral_fallback(symbol: str, analyst_type: str, reason: str) -> StockSigna
 
 
 class QuantitativeNewsAnalyst:
-    """Uses 1-month price momentum as a crude proxy for news sentiment."""
+    """Uses earnings surprise (YoY EPS change) as a sentiment proxy.
 
-    def __init__(self, data_service, time_provider: BacktestTimeProvider) -> None:
+    This avoids the momentum double-counting problem of the old implementation,
+    which used 1-month price returns (correlated with the technical analyst).
+    Earnings surprises are a fundamentally different signal that proxies for
+    the kind of news events the LLM-based analyst would detect.
+    """
+
+    def __init__(self, data_service, time_provider: BacktestTimeProvider, fundamentals_store=None) -> None:
         self.data_service = data_service
         self.time_provider = time_provider
+        self._fundamentals_store = fundamentals_store
 
     async def analyze(self, stock: UniverseStock) -> StockSignal:
         try:
@@ -60,37 +64,70 @@ class QuantitativeNewsAnalyst:
             return _neutral_fallback(stock.symbol, "news", "neutral fallback signal")
 
     async def _analyze_impl(self, stock: UniverseStock) -> StockSignal:
-        end_date = self.time_provider.today()
-        start_date = end_date - timedelta(days=30)
-        result = await self.data_service.get_prices(stock.symbol, start_date, end_date)
-        closes = _extract_closes(result)
+        as_of = self.time_provider.today()
 
-        if not closes or len(closes) <= 1:
-            return StockSignal(
-                symbol=stock.symbol,
-                analyst_type="news",
-                bullish_score=5,
-                confidence=3,
-                summary="Insufficient price data for momentum calculation",
-            )
+        # Try to get earnings surprise from HistoricalFundamentalsStore
+        if self._fundamentals_store is not None:
+            latest_eps, prior_eps, filing_date = self._fundamentals_store.get_latest_eps(stock.symbol, as_of)
+            if latest_eps is not None and prior_eps is not None and prior_eps != 0:
+                eps_change = (latest_eps - prior_eps) / abs(prior_eps)
+                days_since = (as_of - filing_date).days if filing_date else 90
 
-        first_close = closes[0]
-        last_close = closes[-1]
-        change = (last_close - first_close) / first_close
+                # Score based on YoY EPS change
+                if eps_change > 0.20:
+                    score = 8
+                elif eps_change > 0.05:
+                    score = 7
+                elif eps_change > -0.05:
+                    score = 5
+                elif eps_change > -0.20:
+                    score = 4
+                else:
+                    score = 3
 
-        if change > 0.03:
-            score = 6
-        elif change < -0.03:
-            score = 4
-        else:
-            score = 5
+                # Confidence decays with time since filing
+                if days_since <= 30:
+                    confidence = 5
+                elif days_since <= 60:
+                    confidence = 4
+                else:
+                    confidence = 3
+
+                return StockSignal(
+                    symbol=stock.symbol,
+                    analyst_type="news",
+                    bullish_score=score,
+                    confidence=confidence,
+                    summary=f"EPS YoY change: {eps_change:.1%} (filed {days_since}d ago)",
+                )
+
+        # Fallback: use earnings growth from get_metrics if fundamentals store unavailable
+        result = await self.data_service.get_metrics(stock.symbol, end_date=as_of)
+        metrics_list = result.get("metrics", []) if isinstance(result, dict) else result
+        if metrics_list:
+            m = metrics_list[0]
+            eg = m.get("earnings_growth") or m.get("earningsGrowthYoy")
+            if eg is not None:
+                if eg > 0.10:
+                    score = 7
+                elif eg > -0.05:
+                    score = 5
+                else:
+                    score = 4
+                return StockSignal(
+                    symbol=stock.symbol,
+                    analyst_type="news",
+                    bullish_score=score,
+                    confidence=3,
+                    summary=f"Earnings growth proxy: {eg:.1%}",
+                )
 
         return StockSignal(
             symbol=stock.symbol,
             analyst_type="news",
-            bullish_score=score,
-            confidence=3,
-            summary=f"1-month momentum: {change:.1%}",
+            bullish_score=5,
+            confidence=2,
+            summary="No earnings data available for sentiment proxy",
         )
 
     async def analyze_batch(self, stocks: list[UniverseStock], **kwargs) -> list[StockSignal]:
@@ -146,7 +183,7 @@ class QuantitativeFundamentalsAnalyst:
         earn_component = (earn_growth - (-0.10)) / (0.30 - (-0.10)) * 2 - 1
 
         # FCF yield: tiered - > 5%: +1, > 10%: +2
-        fcf_yield = m.get("free_cash_flow_yield", 0.0)
+        fcf_yield = m.get("fcfYield") or m.get("free_cash_flow_yield", 0.0) or 0.0
         fcf_component = 0.0
         if fcf_yield > 0.10:
             fcf_component = 2.0
