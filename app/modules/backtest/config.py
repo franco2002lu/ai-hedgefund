@@ -36,6 +36,7 @@ class BacktestConfig(BaseModel):
     llm_config: LLMBacktestConfig = LLMBacktestConfig()
     slippage_bps: float = 5.0
     commission_per_trade: float = 0.0
+    max_participation_rate: float = 0.25  # reject orders > 25% of daily volume
     benchmark_symbols: list[str] = ["SPY"]
     equities_config_override: EquitiesConfig | None = None
 

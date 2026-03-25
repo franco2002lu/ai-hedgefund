@@ -111,6 +111,7 @@ class EquitiesBranchService:
         event_log_repo: EventLogRepository | None = None,
         session: AsyncSession | None = None,
         instrument_ids: dict[str, str] | None = None,
+        as_of_date=None,
     ) -> RunResult:
         """Run the full pipeline: universe -> screen -> analyze -> rebalance -> execute."""
         tes = trade_execution_service or self.trade_execution_service
@@ -275,6 +276,7 @@ class EquitiesBranchService:
                 "nav": nav,
                 "execute_trade_fn": execute_trade_fn,
                 "max_concurrent_analyses": self.config.agents.max_concurrent_analyses,
+                "as_of_date": as_of_date,
             },
         }
 

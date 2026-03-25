@@ -11,6 +11,7 @@ from app.modules.backtest.adapters.historical_data import (
     HistoricalDataAdapter,
     HistoricalPriceStore,
 )
+from app.modules.backtest.adapters.historical_fundamentals import HistoricalFundamentalsStore
 from app.modules.backtest.config import BacktestConfig
 from app.modules.backtest.engine import compute_rebalance_schedule
 from app.modules.backtest.llm_analyst_cache import CachedAnalystWrapper
@@ -55,6 +56,7 @@ class BacktestContext:
         self.rebalance_days: set = set()
         self.cancelled: asyncio.Event = asyncio.Event()
         self.trade_repo: InMemoryTradeRepository | None = None
+        self.fundamentals_store: HistoricalFundamentalsStore | None = None
         self.llm_cache: dict = {}
         self.llm_counter: list[int] = [0]
         self.llm_wrappers: list[CachedAnalystWrapper] = []
@@ -87,36 +89,43 @@ class BacktestContext:
         )
         ctx.store = store
 
-        # 4. Pre-cache fundamentals from live Yahoo (parallel burst)
-        from app.modules.data_platform.adapters.yahoo_finance import YahooFinanceAdapter
+        # 3b. Survivorship bias filter: remove symbols that weren't traded
+        #     at the start of the backtest or have insufficient data coverage
+        excluded: list[str] = []
+        for sym in list(symbols):
+            first_date = store.get_first_trading_date(sym)
+            if first_date is not None and first_date > config.start_date:
+                excluded.append(sym)
+                symbols.remove(sym)
+                logger.info(
+                    "Excluded %s: first traded %s, backtest starts %s",
+                    sym, first_date, config.start_date,
+                )
+                continue
+            coverage = store.get_data_coverage(sym, config.start_date, config.end_date)
+            if coverage < 0.80:
+                excluded.append(sym)
+                symbols.remove(sym)
+                logger.info(
+                    "Excluded %s: only %.0f%% data coverage in backtest range",
+                    sym, coverage * 100,
+                )
+        if excluded:
+            logger.info(
+                "Survivorship filter: excluded %d/%d symbols",
+                len(excluded), len(excluded) + len(symbols),
+            )
 
-        live_yahoo = YahooFinanceAdapter()
-        fundamentals_cache: dict[str, list] = {}
-        facts_cache: dict[str, dict] = {}
-
-        sem = asyncio.Semaphore(20)  # Match OHLCV batch size to avoid rate limits
-
-        async def _fetch_fundamentals(sym: str) -> None:
-            async with sem:
-                try:
-                    metrics = await live_yahoo.get_metrics(sym, config.end_date)
-                    fundamentals_cache[sym] = metrics
-                except Exception:
-                    logger.debug("Fundamentals unavailable for %s", sym)
-                try:
-                    facts = await live_yahoo.get_company_facts(sym)
-                    facts_cache[sym] = facts
-                except Exception:
-                    logger.debug("Company facts unavailable for %s", sym)
-
-        await asyncio.gather(*(_fetch_fundamentals(sym) for sym in symbols))
+        # 4. Pre-load point-in-time fundamentals from SEC EDGAR
+        fundamentals_store = HistoricalFundamentalsStore(price_store=store)
+        await fundamentals_store.preload(symbols, config.start_date, config.end_date)
+        ctx.fundamentals_store = fundamentals_store
 
         # 5. Historical data adapter → DataPlatformService (correct nested registry)
         adapter = HistoricalDataAdapter(
             store=store,
             time_provider=tp,
-            fundamentals_cache=fundamentals_cache,
-            facts_cache=facts_cache,
+            fundamentals_store=fundamentals_store,
         )
         data_service = DataPlatformService(
             adapter_registry={
@@ -157,6 +166,7 @@ class BacktestContext:
             time_provider=tp,
             slippage_bps=config.slippage_bps,
             commission_per_trade=config.commission_per_trade,
+            max_participation_rate=config.max_participation_rate,
         )
 
         trade_execution_service = TradeExecutionService(
@@ -249,7 +259,7 @@ class BacktestContext:
             ctx.llm_counter = shared_counter
             ctx.llm_wrappers = [news_analyst, fundamentals_analyst, technical_analyst]
         else:
-            news_analyst = QuantitativeNewsAnalyst(data_service, tp)
+            news_analyst = QuantitativeNewsAnalyst(data_service, tp, fundamentals_store=fundamentals_store)
             fundamentals_analyst = QuantitativeFundamentalsAnalyst(data_service, tp)
             technical_analyst = QuantitativeTechnicalAnalyst(data_service, tp)
 

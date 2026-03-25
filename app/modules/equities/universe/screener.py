@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from datetime import date
 
 from app.modules.data_platform.service import DataPlatformService
 from app.modules.equities.models import UniverseStock
@@ -17,6 +18,7 @@ class ScreeningFilter(ABC):
         self,
         stocks: list[UniverseStock],
         data_service: DataPlatformService,
+        as_of_date: date | None = None,
     ) -> list[UniverseStock]: ...
 
     @property
@@ -34,18 +36,25 @@ class Screener:
         self,
         stocks: list[UniverseStock],
         data_service: DataPlatformService,
+        as_of_date: date | None = None,
     ) -> list[UniverseStock]:
         remaining = stocks
         for f in self.filters:
             before = len(remaining)
-            remaining = await f.apply(remaining, data_service)
+            remaining = await f.apply(remaining, data_service, as_of_date)
             logger.info("%s: %d -> %d", f.name, before, len(remaining))
         return remaining
 
 
-async def _get_metric(data_service: DataPlatformService, symbol: str, key: str, default=None):
+async def _get_metric(
+    data_service: DataPlatformService,
+    symbol: str,
+    key: str,
+    default=None,
+    as_of_date: date | None = None,
+):
     try:
-        result = await data_service.get_metrics(symbol)
+        result = await data_service.get_metrics(symbol, end_date=as_of_date)
         metrics = result.get("metrics", [])
         if metrics and isinstance(metrics[0], dict):
             return metrics[0].get(key, default)
@@ -65,10 +74,15 @@ class LiquidityFilter(ScreeningFilter):
     def name(self) -> str:
         return "LiquidityFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            vol = await _get_metric(data_service, stock.symbol, "averageDailyVolume10Day", 0)
+            vol = await _get_metric(data_service, stock.symbol, "averageDailyVolume10Day", 0, as_of_date=as_of_date)
             if vol >= self.min_avg_daily_volume:
                 result.append(stock)
         return result
@@ -82,10 +96,15 @@ class MarketCapFilter(ScreeningFilter):
     def name(self) -> str:
         return "MarketCapFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            cap = await _get_metric(data_service, stock.symbol, "marketCap", 0)
+            cap = await _get_metric(data_service, stock.symbol, "marketCap", 0, as_of_date=as_of_date)
             if cap >= self.min_market_cap:
                 result.append(stock)
         return result
@@ -99,10 +118,15 @@ class EarningsRecencyFilter(ScreeningFilter):
     def name(self) -> str:
         return "EarningsRecencyFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            days = await _get_metric(data_service, stock.symbol, "daysSinceLastEarnings")
+            days = await _get_metric(data_service, stock.symbol, "daysSinceLastEarnings", as_of_date=as_of_date)
             if days is not None and days <= self.max_days_since_earnings:
                 result.append(stock)
         return result
@@ -116,12 +140,17 @@ class VolatilityFilter(ScreeningFilter):
     def name(self) -> str:
         return "VolatilityFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         if not stocks:
             return []
         vols = []
         for stock in stocks:
-            vol = await _get_metric(data_service, stock.symbol, "volatility90d", 0.0)
+            vol = await _get_metric(data_service, stock.symbol, "volatility90d", 0.0, as_of_date=as_of_date)
             vols.append((stock, vol))
         sorted_vols = sorted([v for _, v in vols])
         n = len(sorted_vols)
@@ -140,10 +169,15 @@ class LeverageFilter(ScreeningFilter):
     def name(self) -> str:
         return "LeverageFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            dte = await _get_metric(data_service, stock.symbol, "debtToEquity", None)
+            dte = await _get_metric(data_service, stock.symbol, "debtToEquity", None, as_of_date=as_of_date)
             if dte is None or dte <= self.max_debt_to_equity:
                 result.append(stock)
         return result
@@ -160,10 +194,15 @@ class RevenueGrowthFilter(ScreeningFilter):
     def name(self) -> str:
         return "RevenueGrowthFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            growth = await _get_metric(data_service, stock.symbol, "revenueGrowthYoy", 0.0)
+            growth = await _get_metric(data_service, stock.symbol, "revenueGrowthYoy", 0.0, as_of_date=as_of_date)
             if growth >= self.min_revenue_growth_yoy:
                 result.append(stock)
         return result
@@ -177,10 +216,15 @@ class EarningsGrowthFilter(ScreeningFilter):
     def name(self) -> str:
         return "EarningsGrowthFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            growth = await _get_metric(data_service, stock.symbol, "earningsGrowthYoy", 0.0)
+            growth = await _get_metric(data_service, stock.symbol, "earningsGrowthYoy", 0.0, as_of_date=as_of_date)
             if growth >= self.min_earnings_growth_yoy:
                 result.append(stock)
         return result
@@ -194,10 +238,21 @@ class GrossMarginTrendFilter(ScreeningFilter):
     def name(self) -> str:
         return "GrossMarginTrendFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            quarters = await _get_metric(data_service, stock.symbol, "grossMarginDecliningQuarters", 0)
+            quarters = await _get_metric(
+                data_service,
+                stock.symbol,
+                "grossMarginDecliningQuarters",
+                0,
+                as_of_date=as_of_date,
+            )
             if quarters < self.margin_declining_quarters:
                 result.append(stock)
         return result
@@ -211,10 +266,21 @@ class EarningsSurpriseFilter(ScreeningFilter):
     def name(self) -> str:
         return "EarningsSurpriseFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            surprise = await _get_metric(data_service, stock.symbol, "lastEarningsSurprisePct", 0.0)
+            surprise = await _get_metric(
+                data_service,
+                stock.symbol,
+                "lastEarningsSurprisePct",
+                0.0,
+                as_of_date=as_of_date,
+            )
             if surprise >= self.min_surprise_pct:
                 result.append(stock)
         return result
@@ -228,10 +294,15 @@ class MomentumFilter(ScreeningFilter):
     def name(self) -> str:
         return "MomentumFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            ret = await _get_metric(data_service, stock.symbol, "return6m", 0.0)
+            ret = await _get_metric(data_service, stock.symbol, "return6m", 0.0, as_of_date=as_of_date)
             if ret >= self.min_return_6m:
                 result.append(stock)
         return result
@@ -245,10 +316,15 @@ class PEGFilter(ScreeningFilter):
     def name(self) -> str:
         return "PEGFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            peg = await _get_metric(data_service, stock.symbol, "pegRatio", None)
+            peg = await _get_metric(data_service, stock.symbol, "pegRatio", None, as_of_date=as_of_date)
             if peg is not None and peg >= 0 and peg <= self.max_peg_ratio:
                 result.append(stock)
         return result
@@ -265,12 +341,17 @@ class PEFilter(ScreeningFilter):
     def name(self) -> str:
         return "PEFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         if not stocks:
             return []
         pe_values = []
         for stock in stocks:
-            pe = await _get_metric(data_service, stock.symbol, "peRatio", None)
+            pe = await _get_metric(data_service, stock.symbol, "peRatio", None, as_of_date=as_of_date)
             pe_values.append((stock, pe))
         valid = [(s, pe) for s, pe in pe_values if pe is not None]
         if not valid:
@@ -289,12 +370,17 @@ class PBFilter(ScreeningFilter):
     def name(self) -> str:
         return "PBFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         if not stocks:
             return []
         pb_values = []
         for stock in stocks:
-            pb = await _get_metric(data_service, stock.symbol, "pbRatio", None)
+            pb = await _get_metric(data_service, stock.symbol, "pbRatio", None, as_of_date=as_of_date)
             pb_values.append((stock, pb))
         valid = [(s, pb) for s, pb in pb_values if pb is not None]
         if not valid:
@@ -313,10 +399,15 @@ class FCFYieldFilter(ScreeningFilter):
     def name(self) -> str:
         return "FCFYieldFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            fcf = await _get_metric(data_service, stock.symbol, "fcfYield", 0.0)
+            fcf = await _get_metric(data_service, stock.symbol, "fcfYield", 0.0, as_of_date=as_of_date)
             if fcf >= self.min_fcf_yield:
                 result.append(stock)
         return result
@@ -330,10 +421,15 @@ class DividendYieldFilter(ScreeningFilter):
     def name(self) -> str:
         return "DividendYieldFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            dy = await _get_metric(data_service, stock.symbol, "dividendYield", 0.0)
+            dy = await _get_metric(data_service, stock.symbol, "dividendYield", 0.0, as_of_date=as_of_date)
             if dy >= self.min_dividend_yield:
                 result.append(stock)
         return result
@@ -347,10 +443,15 @@ class ROEFilter(ScreeningFilter):
     def name(self) -> str:
         return "ROEFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
-            roe = await _get_metric(data_service, stock.symbol, "returnOnEquity", 0.0)
+            roe = await _get_metric(data_service, stock.symbol, "returnOnEquity", 0.0, as_of_date=as_of_date)
             if roe >= self.min_roe:
                 result.append(stock)
         return result
@@ -364,11 +465,16 @@ class PriceRangeFilter(ScreeningFilter):
     def name(self) -> str:
         return "PriceRangeFilter"
 
-    async def apply(self, stocks: list[UniverseStock], data_service: DataPlatformService) -> list[UniverseStock]:
+    async def apply(
+        self,
+        stocks: list[UniverseStock],
+        data_service: DataPlatformService,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         result = []
         for stock in stocks:
             try:
-                data = await data_service.get_metrics(stock.symbol)
+                data = await data_service.get_metrics(stock.symbol, end_date=as_of_date)
                 metrics = data.get("metrics", [{}])
                 m = metrics[0] if metrics else {}
                 high = m.get("fiftyTwoWeekHigh")

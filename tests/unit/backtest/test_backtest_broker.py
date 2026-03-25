@@ -1,5 +1,18 @@
-"""Tests for BacktestBrokerAdapter."""
+"""Tests for BacktestBrokerAdapter.
 
+Slippage uses a square-root market impact model:
+  effective_slippage_bps = base_slippage_bps * sqrt(participation_rate / 0.01)
+  participation_rate = order_quantity / daily_volume
+
+With default test bars (volume=1,000,000) and quantity=10:
+  participation_rate = 10 / 1,000,000 = 0.00001
+  effective_slippage_bps = base_bps * sqrt(0.00001 / 0.01) = base_bps * sqrt(0.001)
+                         = base_bps * 0.031623
+
+When volume is unavailable (bar.volume = 0 or no bar), falls back to base_slippage_bps.
+"""
+
+import math
 from datetime import date
 
 import pytest
@@ -12,6 +25,16 @@ from app.modules.backtest.time_provider import BacktestTimeProvider
 
 from .conftest import _make_price_bar
 
+# Default conftest bar has volume = 1,000,000
+DEFAULT_VOLUME = 1_000_000
+DEFAULT_QUANTITY = 10.0
+
+
+def _expected_effective_bps(base_bps: float, quantity: float = DEFAULT_QUANTITY, volume: int = DEFAULT_VOLUME) -> float:
+    """Compute effective slippage bps using the square-root market impact model."""
+    participation = quantity / volume
+    return base_bps * math.sqrt(participation / 0.01)
+
 
 def _make_order_request(**overrides) -> OrderRequest:
     defaults = dict(
@@ -20,7 +43,7 @@ def _make_order_request(**overrides) -> OrderRequest:
         symbol="AAPL",
         side=OrderSide.BUY,
         order_type=OrderType.MARKET,
-        quantity=10.0,
+        quantity=DEFAULT_QUANTITY,
     )
     defaults.update(overrides)
     return OrderRequest(**defaults)
@@ -31,11 +54,12 @@ def _make_broker(
     price: float = 100.0,
     slippage_bps: float = 10.0,
     commission_per_trade: float = 1.50,
+    volume: int = DEFAULT_VOLUME,
 ) -> BacktestBrokerAdapter:
     """Create a broker with a store containing a single bar at sim_date."""
     tp = BacktestTimeProvider(sim_date)
     store = HistoricalPriceStore()
-    bar = _make_price_bar(timestamp=sim_date, close=price)
+    bar = _make_price_bar(timestamp=sim_date, close=price, volume=volume)
     store._data["AAPL"] = {sim_date: bar}
     store._sorted["AAPL"] = [bar]
     return BacktestBrokerAdapter(
@@ -47,7 +71,7 @@ def _make_broker(
 
 
 # ---------------------------------------------------------------------------
-# Market orders — slippage
+# Market orders — volume-aware slippage (square-root model)
 # ---------------------------------------------------------------------------
 
 
@@ -57,37 +81,74 @@ class TestMarketOrders:
         result = await broker.submit_order(_make_order_request(side=OrderSide.BUY))
 
         assert result.success is True
-        # 100 * (1 + 10/10000) = 100.10
-        assert result.trade.price == pytest.approx(100.10, abs=0.01)
+        eff_bps = _expected_effective_bps(10.0)
+        expected_price = 100.0 * (1 + eff_bps / 10000)
+        assert result.trade.price == pytest.approx(expected_price, rel=1e-6)
+        # Buy price must be above the close
+        assert result.trade.price > 100.0
 
     async def test_sell_slippage_decreases_price(self):
         broker = _make_broker(price=100.0, slippage_bps=10.0)
         result = await broker.submit_order(_make_order_request(side=OrderSide.SELL))
 
         assert result.success is True
-        # 100 * (1 - 10/10000) = 99.90
-        assert result.trade.price == pytest.approx(99.90, abs=0.01)
+        eff_bps = _expected_effective_bps(10.0)
+        expected_price = 100.0 * (1 - eff_bps / 10000)
+        assert result.trade.price == pytest.approx(expected_price, rel=1e-6)
+        # Sell price must be below the close
+        assert result.trade.price < 100.0
 
     async def test_short_slippage_decreases_price(self):
         broker = _make_broker(price=100.0, slippage_bps=10.0)
         result = await broker.submit_order(_make_order_request(side=OrderSide.SHORT))
 
         assert result.success is True
-        assert result.trade.price == pytest.approx(99.90, abs=0.01)
+        eff_bps = _expected_effective_bps(10.0)
+        expected_price = 100.0 * (1 - eff_bps / 10000)
+        assert result.trade.price == pytest.approx(expected_price, rel=1e-6)
 
     async def test_cover_slippage_increases_price(self):
         broker = _make_broker(price=100.0, slippage_bps=10.0)
         result = await broker.submit_order(_make_order_request(side=OrderSide.COVER))
 
         assert result.success is True
-        assert result.trade.price == pytest.approx(100.10, abs=0.01)
+        eff_bps = _expected_effective_bps(10.0)
+        expected_price = 100.0 * (1 + eff_bps / 10000)
+        assert result.trade.price == pytest.approx(expected_price, rel=1e-6)
 
     async def test_slippage_value_recorded(self):
         broker = _make_broker(price=100.0, slippage_bps=10.0)
         result = await broker.submit_order(_make_order_request(side=OrderSide.BUY))
 
-        # slippage = 100 * (10/10000) = 0.10
-        assert result.trade.slippage == pytest.approx(0.10, abs=0.01)
+        eff_bps = _expected_effective_bps(10.0)
+        expected_slippage = 100.0 * eff_bps / 10000
+        assert result.trade.slippage == pytest.approx(expected_slippage, rel=1e-6)
+
+    async def test_higher_participation_increases_slippage(self):
+        """Larger orders relative to volume produce more slippage."""
+        # Small order: quantity=10, volume=1M
+        broker_small = _make_broker(price=100.0, slippage_bps=10.0, volume=1_000_000)
+        result_small = await broker_small.submit_order(
+            _make_order_request(side=OrderSide.BUY, quantity=10.0)
+        )
+
+        # Larger order: quantity=10000, volume=1M (1% participation)
+        broker_large = _make_broker(price=100.0, slippage_bps=10.0, volume=1_000_000)
+        result_large = await broker_large.submit_order(
+            _make_order_request(side=OrderSide.BUY, quantity=10000.0)
+        )
+
+        assert result_large.trade.slippage > result_small.trade.slippage
+
+    async def test_no_volume_falls_back_to_base_slippage(self):
+        """When bar has volume=0, broker uses base slippage as fallback."""
+        broker = _make_broker(price=100.0, slippage_bps=10.0, volume=0)
+        result = await broker.submit_order(_make_order_request(side=OrderSide.BUY))
+
+        assert result.success is True
+        # With no volume data, effective_slippage_bps = base_slippage_bps
+        expected_price = 100.0 * (1 + 10.0 / 10000)
+        assert result.trade.price == pytest.approx(expected_price, rel=1e-6)
 
     async def test_commission_recorded(self):
         broker = _make_broker(price=100.0, commission_per_trade=2.50)

@@ -38,7 +38,8 @@ def build_equities_graph(branch_name: str):
         deps = state["deps"]
         screener = deps["screener"]
         data_service = deps["data_service"]
-        screened = await screener.screen(state["universe"], data_service)
+        as_of_date = deps.get("as_of_date")
+        screened = await screener.screen(state["universe"], data_service, as_of_date=as_of_date)
         logger.info("Screened %d -> %d stocks", len(state["universe"]), len(screened))
         return {"screened": screened}
 

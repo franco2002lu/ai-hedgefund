@@ -107,6 +107,7 @@ class BacktestEngine:
                         event_log_repo=ctx.event_log,
                         session=None,
                         instrument_ids=ctx.instrument_ids,
+                        as_of_date=day,
                     )
                     actual_rebalances += 1
                 except Exception as exc:

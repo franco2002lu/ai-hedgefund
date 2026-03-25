@@ -1,9 +1,12 @@
 """Historical price store and data adapter for backtesting."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import math
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
 import pandas as pd
 import yfinance as yf
@@ -11,6 +14,9 @@ import yfinance as yf
 from app.common.interfaces.fundamentals import FundamentalsAdapter
 from app.common.interfaces.price_data import PriceBar, PriceDataAdapter
 from app.modules.backtest.time_provider import BacktestTimeProvider
+
+if TYPE_CHECKING:
+    from app.modules.backtest.adapters.historical_fundamentals import HistoricalFundamentalsStore
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +166,19 @@ class HistoricalPriceStore:
         else:
             self.failed_symbols.add(symbol)
 
+    def get_first_trading_date(self, symbol: str) -> date | None:
+        """Return the earliest date with data for a symbol."""
+        bars = self._sorted.get(symbol, [])
+        return bars[0].timestamp if bars else None
+
+    def get_data_coverage(self, symbol: str, start: date, end: date) -> float:
+        """Return fraction of trading days with data for a symbol in [start, end]."""
+        bars = self.get_bars(symbol, start, end)
+        if not bars:
+            return 0.0
+        all_trading_days = self.get_trading_days(start, end)
+        return len(bars) / len(all_trading_days) if all_trading_days else 0.0
+
     def get_trading_days(self, start: date, end: date) -> list[date]:
         all_dates: set[date] = set()
         for bars in self._sorted.values():
@@ -170,7 +189,14 @@ class HistoricalPriceStore:
 
 
 class HistoricalDataAdapter(PriceDataAdapter, FundamentalsAdapter):
-    """Adapter that serves historical data clamped to the simulated date."""
+    """Adapter that serves historical data clamped to the simulated date.
+
+    Supports two modes:
+    - Point-in-time mode (fundamentals_store provided): Uses SEC EDGAR
+      quarterly filings indexed by filing date for true point-in-time metrics.
+    - Legacy cache mode (fundamentals_cache/facts_cache provided): Uses a
+      static snapshot for backward compatibility.
+    """
 
     name = "backtest_historical"
 
@@ -178,13 +204,17 @@ class HistoricalDataAdapter(PriceDataAdapter, FundamentalsAdapter):
         self,
         store: HistoricalPriceStore,
         time_provider: BacktestTimeProvider,
-        fundamentals_cache: dict,
-        facts_cache: dict,
+        fundamentals_cache: dict | None = None,
+        facts_cache: dict | None = None,
+        *,
+        fundamentals_store: HistoricalFundamentalsStore | None = None,
     ) -> None:
         self._store = store
         self._time_provider = time_provider
-        self._fundamentals_cache = fundamentals_cache
-        self._facts_cache = facts_cache
+        self._fundamentals_store = fundamentals_store
+        # Legacy caches (used only if fundamentals_store is None)
+        self._fundamentals_cache = fundamentals_cache or {}
+        self._facts_cache = facts_cache or {}
 
     async def get_prices(
         self,
@@ -210,6 +240,9 @@ class HistoricalDataAdapter(PriceDataAdapter, FundamentalsAdapter):
         limit: int = 10,
         **kwargs,
     ) -> list[dict]:
+        if self._fundamentals_store is not None:
+            as_of = end_date or self._time_provider.today()
+            return self._fundamentals_store.get_metrics_as_of(symbol, as_of)
         return self._fundamentals_cache.get(symbol, [])
 
     async def search_line_items(
@@ -223,4 +256,10 @@ class HistoricalDataAdapter(PriceDataAdapter, FundamentalsAdapter):
         return []
 
     async def get_company_facts(self, symbol: str) -> dict:
+        if self._fundamentals_store is not None:
+            info = self._fundamentals_store.get_company_info(symbol)
+            return {
+                "symbol": symbol,
+                "name": info.get("entityName", symbol),
+            }
         return self._facts_cache.get(symbol, {})

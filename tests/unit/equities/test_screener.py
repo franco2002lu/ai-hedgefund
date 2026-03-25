@@ -21,7 +21,7 @@ class _MockFilter(ScreeningFilter):
     def name(self) -> str:
         return self._name
 
-    async def apply(self, stocks, data_service):
+    async def apply(self, stocks, data_service, as_of_date=None):
         return await self._apply_fn(stocks, data_service)
 
 

@@ -115,9 +115,7 @@ class PerformanceCalculator:
         # Exposure metrics
         avg_position_count = sum(s.position_count for s in snapshots) / len(snapshots)
         max_position_count = max(s.position_count for s in snapshots)
-        avg_long_exposure = sum(
-            s.total_long_exposure / s.nav if s.nav > 0 else 0.0 for s in snapshots
-        ) / len(snapshots)
+        avg_long_exposure = sum(s.total_long_exposure / s.nav if s.nav > 0 else 0.0 for s in snapshots) / len(snapshots)
 
         # Turnover rate (annualized)
         total_notional = sum(t.quantity * t.price for t in trades)
@@ -314,12 +312,16 @@ class PerformanceCalculator:
         up_days_strat = [strat_aligned[i] for i in range(min_len) if bench_aligned[i] > 0]
         up_days_bench = [bench_aligned[i] for i in range(min_len) if bench_aligned[i] > 0]
         sum_up_bench = sum(up_days_bench)
-        up_capture_ratio = (sum(up_days_strat) / sum_up_bench * 100) if up_days_bench and abs(sum_up_bench) > 1e-12 else 0.0
+        up_capture_ratio = (
+            (sum(up_days_strat) / sum_up_bench * 100) if up_days_bench and abs(sum_up_bench) > 1e-12 else 0.0
+        )
 
         down_days_strat = [strat_aligned[i] for i in range(min_len) if bench_aligned[i] < 0]
         down_days_bench = [bench_aligned[i] for i in range(min_len) if bench_aligned[i] < 0]
         sum_down_bench = sum(down_days_bench)
-        down_capture_ratio = (sum(down_days_strat) / sum_down_bench * 100) if down_days_bench and abs(sum_down_bench) > 1e-12 else 0.0
+        down_capture_ratio = (
+            (sum(down_days_strat) / sum_down_bench * 100) if down_days_bench and abs(sum_down_bench) > 1e-12 else 0.0
+        )
 
         return BenchmarkComparison(
             benchmark_symbol=benchmark_symbol,

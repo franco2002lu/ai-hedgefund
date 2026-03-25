@@ -1,5 +1,15 @@
-"""Backtest broker adapter that simulates order fills using historical prices."""
+"""Backtest broker adapter that simulates order fills using historical prices.
 
+Uses a square-root market impact model for volume-aware slippage:
+  impact_bps = base_slippage_bps × sqrt(participation_rate / 0.01)
+
+This means:
+  - participation_rate < 1%  → impact ≈ base slippage (5 bps default)
+  - participation_rate = 10% → impact ≈ 3× base slippage
+  - participation_rate > max_participation_rate → order rejected
+"""
+
+import math
 from uuid import uuid4
 
 from app.common.enums import ExecutionMode, OrderSide, OrderType
@@ -11,7 +21,7 @@ from app.modules.backtest.time_provider import BacktestTimeProvider
 
 
 class BacktestBrokerAdapter(BrokerAdapter):
-    """Simulates order execution against historical close prices with slippage."""
+    """Simulates order execution against historical prices with volume-aware slippage."""
 
     def __init__(
         self,
@@ -19,22 +29,53 @@ class BacktestBrokerAdapter(BrokerAdapter):
         time_provider: BacktestTimeProvider,
         slippage_bps: float = 5.0,
         commission_per_trade: float = 0.0,
+        max_participation_rate: float = 0.25,
     ) -> None:
         self._store = store
         self._time_provider = time_provider
         self._slippage_bps = slippage_bps
         self._commission_per_trade = commission_per_trade
+        self._max_participation_rate = max_participation_rate
 
     async def submit_order(self, order: OrderRequest) -> OrderResult:
-        close = self._store.get_latest_close(order.symbol, self._time_provider.today())
+        today = self._time_provider.today()
+        close = self._store.get_latest_close(order.symbol, today)
         if close is None:
             return OrderResult(success=False, rejection_reason="No price available")
 
-        # Apply slippage
-        if order.side in (OrderSide.BUY, OrderSide.COVER):
-            fill_price = close * (1 + self._slippage_bps / 10000)
+        # Get daily volume for market impact calculation
+        bar = self._store.get_bar(order.symbol, today)
+        daily_volume = bar.volume if bar and bar.volume > 0 else None
+
+        # Compute volume-aware slippage using square-root market impact model
+        if daily_volume and daily_volume > 0:
+            participation_rate = order.quantity / daily_volume
+
+            # Reject if order is too large relative to daily volume
+            if participation_rate > self._max_participation_rate:
+                return OrderResult(
+                    success=False,
+                    rejection_reason=(
+                        f"Exceeds max participation rate: "
+                        f"{participation_rate:.1%} > {self._max_participation_rate:.0%} "
+                        f"(qty={order.quantity:.0f}, vol={daily_volume:,.0f})"
+                    ),
+                )
+
+            # Square-root model: impact scales with sqrt of participation
+            # Normalized so that 1% participation = base slippage
+            effective_slippage_bps = self._slippage_bps * math.sqrt(
+                participation_rate / 0.01
+            )
         else:
-            fill_price = close * (1 - self._slippage_bps / 10000)
+            # No volume data: use base slippage as fallback
+            effective_slippage_bps = self._slippage_bps
+
+        # Apply slippage direction
+        if order.side in (OrderSide.BUY, OrderSide.COVER):
+            fill_price = close * (1 + effective_slippage_bps / 10000)
+        else:
+            fill_price = close * (1 - effective_slippage_bps / 10000)
 
         # Limit order checks
         if order.order_type == OrderType.LIMIT and order.limit_price is not None:
@@ -51,7 +92,7 @@ class BacktestBrokerAdapter(BrokerAdapter):
                         rejection_reason="Limit price not met",
                     )
 
-        slippage_amount = close * (self._slippage_bps / 10000)
+        slippage_amount = abs(fill_price - close)
 
         trade = Trade(
             id=str(uuid4()),

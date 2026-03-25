@@ -1,6 +1,11 @@
-"""Unit tests for the SEC EDGAR adapter."""
+"""Unit tests for the SEC EDGAR adapter.
 
+Tests mock the underlying SECEdgarClient to avoid real HTTP calls.
+"""
+
+import inspect
 from datetime import date
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,34 +15,72 @@ from app.modules.data_platform.adapters.sec_edgar import (
     SECEdgarAdapter,
 )
 
+# --- Fake XBRL company facts for AAPL (minimal structure) ---
 
-def _make_filing(**overrides) -> dict:
-    """Build a canned filing response dict."""
-    defaults = dict(
-        symbol="AAPL",
-        filing_type="10-K",
-        filing_date="2025-10-30",
-        period_end="2025-09-30",
-        url="https://www.sec.gov/Archives/edgar/data/320193/10-K.htm",
-    )
-    defaults.update(overrides)
-    return defaults
+_FAKE_CIK_MAP = {"AAPL": 320193, "MSFT": 789019}
 
-
-def _make_earnings(**overrides) -> dict:
-    """Build a canned quarterly earnings response dict."""
-    defaults = dict(
-        symbol="AAPL",
-        fiscal_quarter="Q3 2025",
-        revenue=94_836_000_000,
-        eps=1.64,
-        revenue_estimate=89_000_000_000,
-        eps_estimate=1.55,
-        revenue_surprise_pct=0.065,
-        eps_surprise_pct=0.058,
-    )
-    defaults.update(overrides)
-    return defaults
+_FAKE_COMPANY_FACTS = {
+    "cik": 320193,
+    "entityName": "Apple Inc",
+    "facts": {
+        "us-gaap": {
+            "Revenues": {
+                "units": {
+                    "USD": [
+                        {
+                            "val": 94_836_000_000,
+                            "end": "2025-06-30",
+                            "filed": "2025-07-30",
+                            "form": "10-Q",
+                            "fy": 2025,
+                            "fp": "Q3",
+                            "accn": "0000320193-25-000001",
+                        },
+                        {
+                            "val": 391_000_000_000,
+                            "end": "2025-09-30",
+                            "filed": "2025-10-30",
+                            "form": "10-K",
+                            "fy": 2025,
+                            "fp": "FY",
+                            "accn": "0000320193-25-000002",
+                        },
+                    ],
+                },
+            },
+            "NetIncomeLoss": {
+                "units": {
+                    "USD": [
+                        {
+                            "val": 24_000_000_000,
+                            "end": "2025-06-30",
+                            "filed": "2025-07-30",
+                            "form": "10-Q",
+                            "fy": 2025,
+                            "fp": "Q3",
+                            "accn": "0000320193-25-000001",
+                        },
+                    ],
+                },
+            },
+            "EarningsPerShareDiluted": {
+                "units": {
+                    "USD/shares": [
+                        {
+                            "val": 1.64,
+                            "end": "2025-06-30",
+                            "filed": "2025-07-30",
+                            "form": "10-Q",
+                            "fy": 2025,
+                            "fp": "Q3",
+                            "accn": "0000320193-25-000001",
+                        },
+                    ],
+                },
+            },
+        },
+    },
+}
 
 
 class TestFilingModel:
@@ -110,37 +153,83 @@ class TestQuarterlyEarningsModel:
 
 
 class TestGetRecentFilings:
-    async def test_stub_raises_not_implemented(self):
+    async def test_returns_filings_from_xbrl(self):
+        """With mocked client, get_recent_filings returns parsed Filing objects."""
         adapter = SECEdgarAdapter()
-        with pytest.raises(NotImplementedError):
-            await adapter.get_recent_filings("AAPL")
+        adapter._client.fetch_ticker_cik_map = AsyncMock(return_value=_FAKE_CIK_MAP)
+        adapter._client.fetch_company_facts = AsyncMock(return_value=_FAKE_COMPANY_FACTS)
+
+        filings = await adapter.get_recent_filings("AAPL")
+
+        assert len(filings) > 0
+        assert all(isinstance(f, Filing) for f in filings)
+        assert all(f.symbol == "AAPL" for f in filings)
 
     async def test_accepts_filing_types_param(self):
+        """Filing types parameter filters which forms are returned."""
         adapter = SECEdgarAdapter()
-        with pytest.raises(NotImplementedError):
-            await adapter.get_recent_filings("AAPL", filing_types=["10-K", "10-Q"], limit=4)
+        adapter._client.fetch_ticker_cik_map = AsyncMock(return_value=_FAKE_CIK_MAP)
+        adapter._client.fetch_company_facts = AsyncMock(return_value=_FAKE_COMPANY_FACTS)
+
+        filings = await adapter.get_recent_filings("AAPL", filing_types=["10-K"], limit=4)
+
+        # Should only contain 10-K filings
+        assert all(f.filing_type == "10-K" for f in filings)
+
+    async def test_unknown_symbol_returns_empty(self):
+        """Symbol not in CIK map returns empty list."""
+        adapter = SECEdgarAdapter()
+        adapter._client.fetch_ticker_cik_map = AsyncMock(return_value=_FAKE_CIK_MAP)
+
+        filings = await adapter.get_recent_filings("UNKNOWN")
+
+        assert filings == []
 
     async def test_accepts_custom_limit(self):
+        """Limit parameter is respected (no crash)."""
         adapter = SECEdgarAdapter()
-        with pytest.raises(NotImplementedError):
-            await adapter.get_recent_filings("MSFT", limit=10)
+        adapter._client.fetch_ticker_cik_map = AsyncMock(return_value=_FAKE_CIK_MAP)
+        adapter._client.fetch_company_facts = AsyncMock(return_value=_FAKE_COMPANY_FACTS)
+
+        filings = await adapter.get_recent_filings("AAPL", limit=1)
+
+        assert len(filings) <= 1
 
 
 class TestGetEarningsData:
-    async def test_stub_raises_not_implemented(self):
+    async def test_returns_quarterly_earnings(self):
+        """With mocked client, get_earnings_data returns parsed QuarterlyEarnings."""
         adapter = SECEdgarAdapter()
-        with pytest.raises(NotImplementedError):
-            await adapter.get_earnings_data("AAPL")
+        adapter._client.fetch_ticker_cik_map = AsyncMock(return_value=_FAKE_CIK_MAP)
+        adapter._client.fetch_company_facts = AsyncMock(return_value=_FAKE_COMPANY_FACTS)
+
+        earnings = await adapter.get_earnings_data("AAPL")
+
+        assert isinstance(earnings, list)
+        assert all(isinstance(e, QuarterlyEarnings) for e in earnings)
+        assert all(e.symbol == "AAPL" for e in earnings)
 
     async def test_respects_quarters_param(self):
+        """Quarters parameter limits the number of results."""
         adapter = SECEdgarAdapter()
-        with pytest.raises(NotImplementedError):
-            await adapter.get_earnings_data("AAPL", quarters=8)
+        adapter._client.fetch_ticker_cik_map = AsyncMock(return_value=_FAKE_CIK_MAP)
+        adapter._client.fetch_company_facts = AsyncMock(return_value=_FAKE_COMPANY_FACTS)
+
+        earnings = await adapter.get_earnings_data("AAPL", quarters=1)
+
+        assert len(earnings) <= 1
 
     async def test_default_quarters_is_four(self):
         """Verify the default param value by inspecting the signature."""
-        import inspect
-
         sig = inspect.signature(SECEdgarAdapter.get_earnings_data)
         quarters_param = sig.parameters["quarters"]
         assert quarters_param.default == 4
+
+    async def test_unknown_symbol_returns_empty(self):
+        """Symbol not in CIK map returns empty list."""
+        adapter = SECEdgarAdapter()
+        adapter._client.fetch_ticker_cik_map = AsyncMock(return_value=_FAKE_CIK_MAP)
+
+        earnings = await adapter.get_earnings_data("UNKNOWN")
+
+        assert earnings == []
