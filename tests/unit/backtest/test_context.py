@@ -32,16 +32,32 @@ def _configure_mock_store(mock_store_cls, trading_days=None):
     return mock_instance
 
 
+_CONTEXT_PATCHES = [
+    "app.modules.backtest.context.DataPlatformService",
+    "app.modules.backtest.context.HistoricalDataAdapter",
+    "app.modules.backtest.context.HistoricalPriceStore",
+    "app.modules.backtest.context.HistoricalFundamentalsStore",
+]
+
+
+def _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store, trading_days=None):
+    """Common mock setup for all context tests."""
+    mock_instance = _configure_mock_store(mock_store, trading_days)
+    mock_fund_store.return_value = AsyncMock()
+    mock_fund_store.return_value.preload = AsyncMock()
+    return mock_instance
+
+
 class TestBacktestContext:
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_creates_backtest_time_provider(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_creates_backtest_time_provider(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """BacktestTimeProvider should be created with start_date."""
-        _configure_mock_store(mock_store)
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store)
 
         config = _make_backtest_config()
         ctx = await BacktestContext.build(config, EquitiesConfig())
@@ -49,81 +65,79 @@ class TestBacktestContext:
         assert isinstance(ctx.time_provider, BacktestTimeProvider)
         assert ctx.time_provider.today() == config.start_date
 
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_uses_in_memory_repos_not_postgres(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_uses_in_memory_repos_not_postgres(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """Context should create in-memory repositories, not Postgres ones."""
-        _configure_mock_store(mock_store)
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store)
 
         config = _make_backtest_config()
         ctx = await BacktestContext.build(config, EquitiesConfig())
 
-        # Should not have any Postgres repository types
-        from app.modules.backtest.state import (
-            InMemoryEventLogRepository,
-        )
+        from app.modules.backtest.state import InMemoryEventLogRepository
         assert isinstance(ctx.event_log, InMemoryEventLogRepository)
 
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_creates_new_equities_service_instance(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_creates_new_equities_service_instance(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """A NEW EquitiesBranchService instance should be created, not the singleton."""
-        _configure_mock_store(mock_store)
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store)
 
         config = _make_backtest_config()
         ctx = await BacktestContext.build(config, EquitiesConfig())
 
         assert ctx.equities_service is not None
 
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_trading_days_computed(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_trading_days_computed(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """trading_days should be a sorted list of weekdays from the store."""
         expected_days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
-        _configure_mock_store(mock_store, trading_days=expected_days)
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store, trading_days=expected_days)
 
         config = _make_backtest_config()
         ctx = await BacktestContext.build(config, EquitiesConfig())
 
         assert ctx.trading_days == expected_days
 
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_rebalance_schedule_includes_first_day(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_rebalance_schedule_includes_first_day(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """First trading day must always be a rebalance day."""
         days = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
-        _configure_mock_store(mock_store, trading_days=days)
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store, trading_days=days)
 
         config = _make_backtest_config()
         ctx = await BacktestContext.build(config, EquitiesConfig())
 
         assert days[0] in ctx.rebalance_days
 
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_cancelled_event_initialized(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_cancelled_event_initialized(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """cancelled asyncio.Event should be initialized and not set."""
-        _configure_mock_store(mock_store, trading_days=[date(2024, 1, 2)])
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store,
+                     trading_days=[date(2024, 1, 2)])
 
         config = _make_backtest_config()
         ctx = await BacktestContext.build(config, EquitiesConfig())
@@ -131,15 +145,16 @@ class TestBacktestContext:
         assert isinstance(ctx.cancelled, asyncio.Event)
         assert not ctx.cancelled.is_set()
 
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_instrument_ids_deterministic(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_instrument_ids_deterministic(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """instrument_ids should use uuid5(NAMESPACE_DNS, symbol) for determinism."""
-        _configure_mock_store(mock_store, trading_days=[date(2024, 1, 2)])
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store,
+                     trading_days=[date(2024, 1, 2)])
 
         config = _make_backtest_config()
         ctx = await BacktestContext.build(config, EquitiesConfig())
@@ -149,17 +164,34 @@ class TestBacktestContext:
                 expected = str(uuid5(NAMESPACE_DNS, symbol))
                 assert uuid_str == expected
 
-    @patch("app.modules.backtest.context.HistoricalFundamentalsStore")
-    @patch("app.modules.backtest.context.HistoricalPriceStore")
-    @patch("app.modules.backtest.context.HistoricalDataAdapter")
-    @patch("app.modules.backtest.context.DataPlatformService")
-    async def test_store_preloaded(self, mock_dps, mock_adapter, mock_store, mock_fund_store):
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_store_preloaded(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
         """Store.preload() should be called during context build."""
-        mock_instance = _configure_mock_store(mock_store, trading_days=[date(2024, 1, 2)])
-        mock_fund_store.return_value = AsyncMock()
-        mock_fund_store.return_value.preload = AsyncMock()
+        mock_instance = _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store,
+                                     trading_days=[date(2024, 1, 2)])
 
         config = _make_backtest_config()
         await BacktestContext.build(config, EquitiesConfig())
 
         mock_instance.preload.assert_called_once()
+
+    @patch(_CONTEXT_PATCHES[0])
+    @patch(_CONTEXT_PATCHES[1])
+    @patch(_CONTEXT_PATCHES[2])
+    @patch(_CONTEXT_PATCHES[3])
+    async def test_equities_service_has_universe_provider(
+        self, mock_fund_store, mock_store, mock_adapter, mock_dps,
+    ):
+        """EquitiesBranchService should have a universe_provider."""
+        _setup_mocks(mock_dps, mock_adapter, mock_store, mock_fund_store,
+                     trading_days=[date(2024, 1, 2)])
+
+        config = _make_backtest_config()
+        ctx = await BacktestContext.build(config, EquitiesConfig())
+
+        assert ctx.equities_service.universe_provider is not None

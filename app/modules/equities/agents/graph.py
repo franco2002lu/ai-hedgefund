@@ -29,8 +29,11 @@ def build_equities_graph(branch_name: str):
     async def fetch_universe(state: EquitiesWorkflowState) -> dict:
         deps = state["deps"]
         provider = deps["universe_provider"]
+        as_of_date = deps.get("as_of_date")
         branch_name = state.get("branch_name", "")
-        holdings = await provider.get_holdings(branch_name)
+        holdings = await provider.get_holdings(
+            branch_name, as_of_date=as_of_date,
+        )
         logger.info("Fetched %d holdings for '%s' branch", len(holdings), branch_name)
         return {"universe": holdings}
 

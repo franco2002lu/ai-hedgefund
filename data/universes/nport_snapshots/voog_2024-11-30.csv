@@ -1,0 +1,216 @@
+symbol,name,weight
+AAPL,Apple Inc,12.3878
+NVDA,NVIDIA Corp,11.6757
+MSFT,Microsoft Corp,10.8059
+AMZN,Amazon.com Inc,6.6666
+META,Meta Platforms Inc,4.3076
+GOOGL,Alphabet Inc,3.3982
+TSLA,Tesla Inc,3.2878
+GOOG,Alphabet Inc,2.8114
+AVGO,Broadcom Inc,2.5901
+LLY,Eli Lilly & Co,2.1539
+NFLX,Netflix Inc,1.3065
+V,Visa Inc,1.1925
+CRM,Salesforce Inc,1.0977
+MA,Mastercard Inc,1.0868
+ORCL,Oracle Corp,1.0142
+ADBE,Adobe Inc,0.7853
+AMD,Advanced Micro Devices Inc,0.7622
+NOW,ServiceNow Inc,0.7422
+UNH,UnitedHealth Group Inc,0.7351
+COST,Costco Wholesale Corp,0.6214
+INTU,Intuit Inc,0.6159
+BKNG,Booking Holdings Inc,0.5985
+PG,Procter & Gamble Co/The,0.5651
+HD,Home Depot Inc/The,0.5406
+UBER,Uber Technologies Inc,0.5191
+AMAT,Applied Materials Inc,0.4967
+PLTR,Palantir Technologies Inc,0.4637
+ISRG,Intuitive Surgical Inc,0.4355
+PANW,Palo Alto Networks Inc,0.4310
+AXP,American Express Co,0.4112
+ABBV,AbbVie Inc,0.4103
+CAT,Caterpillar Inc,0.3921
+KKR,KKR & Co Inc,0.3770
+MRK,Merck & Co Inc,0.3539
+BX,Blackstone Inc,0.3400
+COP,ConocoPhillips,0.3346
+KO,Coca-Cola Co/The,0.3329
+LRCX,Lam Research Corp,0.3305
+MCD,McDonald's Corp,0.3208
+TJX,TJX Cos Inc/The,0.3169
+QCOM,QUALCOMM Inc,0.3152
+KLAC,KLA Corp,0.2987
+SYK,Stryker Corp,0.2952
+SNPS,Synopsys Inc,0.2938
+GE,General Electric Co,0.2915
+CMG,Chipotle Mexican Grill Inc,0.2891
+CDNS,Cadence Design Systems Inc,0.2885
+PEP,PepsiCo Inc,0.2774
+CRWD,Crowdstrike Holdings Inc,0.2742
+PGR,Progressive Corp/The,0.2703
+VRTX,Vertex Pharmaceuticals Inc,0.2655
+TMO,Thermo Fisher Scientific Inc,0.2638
+PM,Philip Morris International Inc,0.2627
+SPGI,S&P Global Inc,0.2528
+BSX,Boston Scientific Corp,0.2519
+PH,Parker-Hannifin Corp,0.2418
+TDG,TransDigm Group Inc,0.2413
+SBUX,Starbucks Corp,0.2350
+DE,Deere & Co,0.2337
+TXN,Texas Instruments Inc,0.2333
+MAR,Marriott International Inc/MD,0.2318
+UNP,Union Pacific Corp,0.2303
+FISV,Fiserv Inc,0.2271
+ADI,Analog Devices Inc,0.2193
+HLT,Hilton Worldwide Holdings Inc,0.2143
+FTNT,Fortinet Inc,0.2071
+MRSH,Marsh & McLennan Cos Inc,0.2046
+FICO,Fair Isaac Corp,0.1999
+URI,United Rentals Inc,0.1981
+CPRT,Copart Inc,0.1905
+VST,Vistra Corp,0.1886
+ORLY,O'Reilly Automotive Inc,0.1810
+ROST,Ross Stores Inc,0.1773
+EOG,EOG Resources Inc,0.1716
+BA,Boeing Co/The,0.1714
+DHI,DR Horton Inc,0.1700
+APH,Amphenol Corp,0.1681
+ADP,Automatic Data Processing Inc,0.1675
+MSI,Motorola Solutions Inc,0.1661
+REGN,Regeneron Pharmaceuticals Inc,0.1639
+AXON,Axon Enterprise Inc,0.1595
+SHW,Sherwin-Williams Co/The,0.1582
+TRGP,Targa Resources Corp,0.1538
+PCAR,PACCAR Inc,0.1536
+EQIX,Equinix Inc,0.1504
+ZTS,Zoetis Inc,0.1498
+CTAS,Cintas Corp,0.1462
+ODFL,Old Dominion Freight Line Inc,0.1458
+OKE,ONEOK Inc,0.1411
+NKE,NIKE Inc,0.1396
+GWW,WW Grainger Inc,0.1378
+AMT,American Tower Corp,0.1374
+IT,Gartner Inc,0.1368
+GEV,GE Vernova Inc,0.1355
+WM,Waste Management Inc,0.1346
+AZO,AutoZone Inc,0.1282
+LULU,Lululemon Athletica Inc,0.1265
+MCO,Moody's Corp,0.1263
+MDLZ,Mondelez International Inc,0.1250
+CEG,Constellation Energy Corp,0.1238
+CSX,CSX Corp,0.1215
+PWR,Quanta Services Inc,0.1200
+AJG,Arthur J Gallagher & Co,0.1196
+ITW,Illinois Tool Works Inc,0.1183
+FANG,Diamondback Energy Inc,0.1143
+ADSK,Autodesk Inc,0.1124
+IR,Ingersoll Rand Inc,0.1112
+ECL,Ecolab Inc,0.1104
+FCX,Freeport-McMoRan Inc,0.1089
+CARR,Carrier Global Corp,0.1069
+CME,CME Group Inc,0.1060
+CL,Colgate-Palmolive Co,0.1056
+DECK,Deckers Outdoor Corp,0.1027
+ABNB,Airbnb Inc,0.1027
+AMP,Ameriprise Financial Inc,0.1026
+HCA,HCA Healthcare Inc,0.1001
+MPC,Marathon Petroleum Corp,0.0986
+NVR,NVR Inc,0.0974
+PHM,PulteGroup Inc,0.0965
+HWM,Howmet Aerospace Inc,0.0963
+GDDY,GoDaddy Inc,0.0957
+WMB,Williams Cos Inc/The,0.0956
+FTV,Fortive Corp,0.0953
+MPWR,Monolithic Power Systems Inc,0.0949
+MSCI,MSCI Inc,0.0938
+TYL,Tyler Technologies Inc,0.0924
+CPAY,Corpay Inc,0.0909
+ROP,Roper Technologies Inc,0.0899
+RSG,Republic Services Inc,0.0873
+DLR,Digital Realty Trust Inc,0.0847
+VMC,Vulcan Materials Co,0.0837
+MLM,Martin Marietta Materials Inc,0.0831
+FAST,Fastenal Co,0.0820
+WST,West Pharmaceutical Services Inc,0.0812
+LEN,Lennar Corp,0.0811
+MNST,Monster Beverage Corp,0.0799
+NUE,Nucor Corp,0.0795
+EXPE,Expedia Group Inc,0.0791
+VRSK,Verisk Analytics Inc,0.0790
+PSA,Public Storage,0.0790
+DAL,Delta Air Lines Inc,0.0788
+BLDR,Builders FirstSource Inc,0.0746
+LYV,Live Nation Entertainment Inc,0.0744
+AME,AMETEK Inc,0.0743
+MCHP,Microchip Technology Inc,0.0740
+BRO,Brown & Brown Inc,0.0718
+SPG,Simon Property Group Inc,0.0714
+TPL,Texas Pacific Land Corp,0.0693
+IDXX,IDEXX Laboratories Inc,0.0669
+DELL,Dell Technologies Inc,0.0668
+DXCM,Dexcom Inc,0.0655
+PAYX,Paychex Inc,0.0644
+IRM,Iron Mountain Inc,0.0636
+CCL,Carnival Corp,0.0627
+YUM,Yum! Brands Inc,0.0617
+CHTR,Charter Communications Inc,0.0609
+EA,Electronic Arts Inc,0.0595
+SMCI,Super Micro Computer Inc,0.0565
+OTIS,Otis Worldwide Corp,0.0553
+ROK,Rockwell Automation Inc,0.0553
+EW,Edwards Lifesciences Corp,0.0547
+BR,Broadridge Financial Solutions Inc,0.0540
+TTWO,Take-Two Interactive Software Inc,0.0527
+CBOE,Cboe Global Markets Inc,0.0497
+PTC,PTC Inc,0.0496
+CSGP,CoStar Group Inc,0.0492
+ON,ON Semiconductor Corp,0.0461
+IQV,IQVIA Holdings Inc,0.0455
+STLD,Steel Dynamics Inc,0.0452
+CTRA,Coterra Energy Inc,0.0445
+TSCO,Tractor Supply Co,0.0441
+EFX,Equifax Inc,0.0434
+CHD,Church & Dwight Co Inc,0.0426
+ULTA,Ulta Beauty Inc,0.0419
+LVS,Las Vegas Sands Corp,0.0393
+HUBB,Hubbell Inc,0.0390
+DRI,Darden Restaurants Inc,0.0373
+MOH,Molina Healthcare Inc,0.0355
+MTD,Mettler-Toledo International Inc,0.0346
+HSY,Hershey Co/The,0.0340
+CDW,CDW Corp/DE,0.0339
+SBAC,SBA Communications Corp,0.0335
+MAS,Masco Corp,0.0326
+NTAP,NetApp Inc,0.0321
+ALGN,Align Technology Inc,0.0309
+WYNN,Wynn Resorts Ltd,0.0303
+SNA,Snap-on Inc,0.0301
+CF,CF Industries Holdings Inc,0.0300
+COO,Cooper Cos Inc/The,0.0300
+FDS,FactSet Research Systems Inc,0.0300
+WAT,Waters Corp,0.0291
+APA,APA Corp,0.0288
+JBL,Jabil Inc,0.0286
+POOL,Pool Corp,0.0282
+CE,Celanese Corp,0.0274
+HST,Host Hotels & Resorts Inc,0.0267
+VRSN,VeriSign Inc,0.0259
+LW,Lamb Weston Holdings Inc,0.0252
+PODD,Insulet Corp,0.0245
+GNRC,Generac Holdings Inc,0.0237
+DPZ,Domino's Pizza Inc,0.0230
+AKAM,Akamai Technologies Inc,0.0230
+ERIE,Erie Indemnity Co,0.0219
+EXPD,Expeditors International of Washington Inc,0.0218
+ROL,Rollins Inc,0.0209
+MGM,MGM Resorts International,0.0207
+AOS,A O Smith Corp,0.0193
+EPAM,EPAM Systems Inc,0.0191
+RL,Ralph Lauren Corp,0.0176
+PAYC,Paycom Software Inc,0.0167
+CZR,Caesars Entertainment Inc,0.0166
+DVA,DaVita Inc,0.0145
+ENPH,Enphase Energy Inc,0.0123
+NQZ4,N/A,0.0001
+ESZ4,N/A,0.0000

@@ -73,12 +73,29 @@ class BacktestContext:
         tp = BacktestTimeProvider(config.start_date)
         ctx.time_provider = tp
 
-        # 2. Load universe symbols
+        # 2. Load universe symbols from snapshots + branch CSV
         universe_provider = UniverseProvider()
-        universe_stocks = await universe_provider.get_holdings(config.branch_name)
-        symbols = [s.symbol for s in universe_stocks]
+
+        # 2a. Superset of symbols across all quarterly snapshots in the date range
+        snapshot_symbols = universe_provider.get_snapshot_symbols(
+            config.branch_name, config.start_date, config.end_date,
+        )
+
+        # 2b. Also read branch CSV symbols (if CSV exists)
+        csv_path = f"{universe_provider.csv_dir}/{config.branch_name}_universe.csv"
+        csv_symbols: list[str] = []
+        try:
+            csv_symbols = universe_provider._load_symbols(csv_path)
+        except Exception:
+            pass
+
+        # 2c. Union all symbols for OHLCV preload
+        symbols = list(set(snapshot_symbols + csv_symbols))
         all_symbols = list(set(symbols + config.benchmark_symbols))
-        logger.info("Universe loaded: %d stocks for branch '%s'", len(symbols), config.branch_name)
+        logger.info(
+            "Universe loaded: %d stocks for branch '%s' (%d from snapshots, %d from CSV)",
+            len(symbols), config.branch_name, len(snapshot_symbols), len(csv_symbols),
+        )
 
         # 3. Preload OHLCV from yfinance
         store = HistoricalPriceStore()
@@ -270,6 +287,7 @@ class BacktestContext:
             trade_execution_service=trade_execution_service,
             portfolio_service=portfolio_service,
             event_log=event_log_repo,
+            universe_provider=universe_provider,
             news_analyst=news_analyst,
             fundamentals_analyst=fundamentals_analyst,
             technical_analyst=technical_analyst,

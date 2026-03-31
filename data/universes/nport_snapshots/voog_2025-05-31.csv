@@ -1,0 +1,200 @@
+symbol,name,weight
+NVDA,NVIDIA Corp,12.4969
+MSFT,Microsoft Corp,6.7202
+META,Meta Platforms Inc,5.3545
+AAPL,Apple Inc,5.2411
+AVGO,Broadcom Inc,4.2848
+AMZN,Amazon.com Inc,4.2352
+GOOGL,Alphabet Inc,3.7829
+TSLA,Tesla Inc,3.6612
+GOOG,Alphabet Inc,3.0857
+V,Visa Inc,2.3766
+LLY,Eli Lilly & Co,2.1949
+NFLX,Netflix Inc,1.9501
+MA,Mastercard Inc,1.8008
+COST,Costco Wholesale Corp,1.7436
+BRK/B,Berkshire Hathaway Inc,1.7092
+JPM,JPMorgan Chase & Co,1.5889
+WMT,Walmart Inc,1.0835
+PLTR,Palantir Technologies Inc,1.0201
+ORCL,Oracle Corp,1.0140
+CRM,Salesforce Inc,0.9590
+IBM,International Business Machines Corp,0.9045
+INTU,Intuit Inc,0.7964
+NOW,ServiceNow Inc,0.7865
+ISRG,Intuitive Surgical Inc,0.7439
+BKNG,Booking Holdings Inc,0.6896
+UBER,Uber Technologies Inc,0.6639
+PGR,Progressive Corp/The,0.6302
+CAT,Caterpillar Inc,0.6281
+AXP,American Express Co,0.6163
+HD,Home Depot Inc/The,0.6078
+BSX,Boston Scientific Corp,0.5858
+PM,Philip Morris International Inc,0.5725
+ABBV,AbbVie Inc,0.5211
+GEV,GE Vernova Inc,0.4928
+PANW,Palo Alto Networks Inc,0.4811
+CRWD,Crowdstrike Holdings Inc,0.4385
+VRTX,Vertex Pharmaceuticals Inc,0.4286
+APH,Amphenol Corp,0.4113
+GE,General Electric Co,0.4086
+RTX,RTX Corp,0.3913
+KLAC,KLA Corp,0.3799
+NEE,NextEra Energy Inc,0.3675
+CEG,Constellation Energy Corp,0.3617
+FISV,Fiserv Inc,0.3498
+ANET,Arista Networks Inc,0.3380
+PH,Parker-Hannifin Corp,0.3232
+TJX,TJX Cos Inc/The,0.3178
+TDG,TransDigm Group Inc,0.3110
+ORLY,O'Reilly Automotive Inc,0.2968
+CTAS,Cintas Corp,0.2933
+SPGI,S&P Global Inc,0.2867
+ADBE,Adobe Inc,0.2866
+ADP,Automatic Data Processing Inc,0.2851
+MS,Morgan Stanley,0.2692
+DASH,DoorDash Inc,0.2673
+SYK,Stryker Corp,0.2629
+MSI,Motorola Solutions Inc,0.2621
+HWM,Howmet Aerospace Inc,0.2598
+CMG,Chipotle Mexican Grill Inc,0.2563
+AMGN,Amgen Inc,0.2513
+FTNT,Fortinet Inc,0.2445
+ADSK,Autodesk Inc,0.2404
+AZO,AutoZone Inc,0.2367
+TMUS,T-Mobile US Inc,0.2325
+MAR,Marriott International Inc/MD,0.2280
+HLT,Hilton Worldwide Holdings Inc,0.2258
+APO,Apollo Global Management Inc,0.2206
+DE,Deere & Co,0.2130
+ABNB,Airbnb Inc,0.2109
+VST,Vistra Corp,0.2063
+AXON,Axon Enterprise Inc,0.2052
+ICE,Intercontinental Exchange Inc,0.2029
+AMAT,Applied Materials Inc,0.2021
+RSG,Republic Services Inc,0.1972
+WELL,Welltower Inc,0.1918
+PWR,Quanta Services Inc,0.1910
+MRSH,Marsh & McLennan Cos Inc,0.1907
+SPG,Simon Property Group Inc,0.1889
+AMP,Ameriprise Financial Inc,0.1850
+PSA,Public Storage,0.1835
+GWW,WW Grainger Inc,0.1819
+SHW,Sherwin-Williams Co/The,0.1790
+MO,Altria Group Inc,0.1785
+WM,Waste Management Inc,0.1763
+PYPL,PayPal Holdings Inc,0.1759
+URI,United Rentals Inc,0.1747
+EMR,Emerson Electric Co,0.1729
+CPRT,Copart Inc,0.1705
+CMI,Cummins Inc,0.1669
+MSCI,MSCI Inc,0.1655
+CDNS,Cadence Design Systems Inc,0.1636
+FICO,Fair Isaac Corp,0.1593
+EQIX,Equinix Inc,0.1537
+HCA,HCA Healthcare Inc,0.1518
+AJG,Arthur J Gallagher & Co,0.1502
+MCO,Moody's Corp,0.1457
+WMB,Williams Cos Inc/The,0.1450
+SNPS,Synopsys Inc,0.1407
+CBRE,CBRE Group Inc,0.1394
+KKR,KKR & Co Inc,0.1364
+RMD,ResMed Inc,0.1358
+WAB,Westinghouse Air Brake Technologies Corp,0.1306
+TRGP,Targa Resources Corp,0.1300
+BK,Bank of New York Mellon Corp/The,0.1298
+IT,Gartner Inc,0.1265
+CL,Colgate-Palmolive Co,0.1253
+IR,Ingersoll Rand Inc,0.1241
+ECL,Ecolab Inc,0.1238
+MPWR,Monolithic Power Systems Inc,0.1196
+NRG,NRG Energy Inc,0.1194
+DAL,Delta Air Lines Inc,0.1173
+IRM,Iron Mountain Inc,0.1095
+OKE,ONEOK Inc,0.1060
+CSX,CSX Corp,0.1058
+CARR,Carrier Global Corp,0.1041
+PCAR,PACCAR Inc,0.1023
+FAST,Fastenal Co,0.1020
+ITW,Illinois Tool Works Inc,0.1013
+BRO,Brown & Brown Inc,0.1011
+UAL,United Airlines Holdings Inc,0.0986
+GDDY,GoDaddy Inc,0.0972
+COIN,Coinbase Global Inc,0.0959
+WDAY,Workday Inc,0.0940
+TYL,Tyler Technologies Inc,0.0934
+CCL,Carnival Corp,0.0918
+PAYX,Paychex Inc,0.0897
+EBAY,eBay Inc,0.0888
+PODD,Insulet Corp,0.0862
+CPAY,Corpay Inc,0.0856
+SYF,Synchrony Financial,0.0845
+VMC,Vulcan Materials Co,0.0819
+LYV,Live Nation Entertainment Inc,0.0812
+TPL,Texas Pacific Land Corp,0.0792
+HUBB,Hubbell Inc,0.0789
+EXPE,Expedia Group Inc,0.0777
+HIG,Hartford Financial Services Group Inc/The,0.0775
+SMCI,Super Micro Computer Inc,0.0760
+WSM,Williams-Sonoma Inc,0.0751
+PHM,PulteGroup Inc,0.0747
+MNST,Monster Beverage Corp,0.0743
+VRSK,Verisk Analytics Inc,0.0737
+AME,AMETEK Inc,0.0733
+PEG,Public Service Enterprise Group Inc,0.0716
+LII,Lennox International Inc,0.0682
+MLM,Martin Marietta Materials Inc,0.0656
+RJF,Raymond James Financial Inc,0.0634
+YUM,Yum! Brands Inc,0.0621
+LULU,Lululemon Athletica Inc,0.0616
+DELL,Dell Technologies Inc,0.0615
+TPR,Tapestry Inc,0.0613
+DECK,Deckers Outdoor Corp,0.0604
+DXCM,Dexcom Inc,0.0545
+EXR,Extra Space Storage Inc,0.0544
+NDAQ,Nasdaq Inc,0.0534
+LVS,Las Vegas Sands Corp,0.0534
+TSCO,Tractor Supply Co,0.0527
+ODFL,Old Dominion Freight Line Inc,0.0523
+NVR,NVR Inc,0.0521
+EA,Electronic Arts Inc,0.0515
+PPL,PPL Corp,0.0503
+AVB,AvalonBay Communities Inc,0.0488
+CINF,Cincinnati Financial Corp,0.0473
+BR,Broadridge Financial Solutions Inc,0.0472
+WRB,W R Berkley Corp,0.0466
+PAYC,Paycom Software Inc,0.0460
+VLTO,Veralto Corp,0.0452
+RL,Ralph Lauren Corp,0.0416
+DOV,Dover Corp,0.0415
+DRI,Darden Restaurants Inc,0.0407
+TKO,TKO Group Holdings Inc,0.0396
+LDOS,Leidos Holdings Inc,0.0382
+MTD,Mettler-Toledo International Inc,0.0374
+PTC,PTC Inc,0.0361
+WAT,Waters Corp,0.0360
+NTAP,NetApp Inc,0.0357
+ROL,Rollins Inc,0.0353
+ERIE,Erie Indemnity Co,0.0338
+FSLR,First Solar Inc,0.0338
+GEN,Gen Digital Inc,0.0338
+ESS,Essex Property Trust Inc,0.0331
+PKG,Packaging Corp of America,0.0325
+WYNN,Wynn Resorts Ltd,0.0306
+FDS,FactSet Research Systems Inc,0.0295
+TRMB,Trimble Inc,0.0291
+FFIV,F5 Inc,0.0285
+MAA,Mid-America Apartment Communities Inc,0.0284
+DPZ,Domino's Pizza Inc,0.0260
+HST,Host Hotels & Resorts Inc,0.0259
+ZBRA,Zebra Technologies Corp,0.0253
+BLDR,Builders FirstSource Inc,0.0244
+CPT,Camden Property Trust,0.0240
+INCY,Incyte Corp,0.0237
+DVA,DaVita Inc,0.0226
+UDR,UDR Inc,0.0211
+MAS,Masco Corp,0.0205
+JKHY,Jack Henry & Associates Inc,0.0199
+GNRC,Generac Holdings Inc,0.0170
+NQM5,N/A,0.0050
+ESM5,N/A,0.0008

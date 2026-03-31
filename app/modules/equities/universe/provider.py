@@ -4,7 +4,7 @@ import asyncio
 import csv
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import yfinance as yf
@@ -16,16 +16,18 @@ logger = logging.getLogger(__name__)
 # Default CSV directory relative to project root
 _DEFAULT_CSV_DIR = str(Path(__file__).resolve().parents[4] / "data" / "universes")
 
+# Branch name → ETF symbol (used for snapshot lookup and yfinance fallback)
+_ETF_MAP = {"growth": "VOOG", "value": "VOOV"}
+
 
 class UniverseProvider:
     """Loads stock universe from CSV files and hydrates metadata from Yahoo Finance.
 
-    Primary path: reads symbols from ``{csv_dir}/{branch_name}_universe.csv``,
-    then concurrently fetches company_name / sector / industry via
-    ``data_service.get_company_facts()``.
+    For backtests with ``as_of_date``, loads the nearest pre-baked N-PORT snapshot
+    from ``data/universes/nport_snapshots/{etf}_{report_date}.csv``.
 
-    Fallback: if no CSV exists for the branch, falls back to yfinance
-    ``Ticker.funds_data.top_holdings`` (limited to ~10 stocks).
+    Otherwise loads from ``data/universes/{branch_name}_universe.csv`` and hydrates
+    with company metadata.  Falls back to yfinance top_holdings if no CSV exists.
     """
 
     def __init__(
@@ -38,32 +40,147 @@ class UniverseProvider:
         self._cache: dict[str, tuple[list[UniverseStock], datetime]] = {}
         self._cache_ttl_days = 90
 
-    async def get_holdings(self, branch_name: str) -> list[UniverseStock]:
+    async def get_holdings(
+        self,
+        branch_name: str,
+        *,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
         """Returns the stock universe for a branch (e.g. 'growth' or 'value').
 
-        Checks the 90-day in-memory cache first, then loads from CSV + hydrates.
+        Args:
+            branch_name: Branch identifier (e.g. 'growth', 'test_growth').
+            as_of_date: If provided, loads the nearest N-PORT snapshot on or
+                before this date. Otherwise loads the branch CSV.
+
+        Checks the 90-day in-memory cache first, then loads from disk.
         """
-        cached = self._cache.get(branch_name)
+        cache_key = f"{branch_name}:{as_of_date}"
+        cached = self._cache.get(cache_key)
         if cached:
             holdings, cached_at = cached
             age_days = (datetime.now(UTC) - cached_at).days
             if age_days < self._cache_ttl_days:
                 return holdings
-        return await self.refresh(branch_name)
+        return await self.refresh(branch_name, as_of_date=as_of_date)
 
-    async def refresh(self, branch_name: str) -> list[UniverseStock]:
-        """Force-refresh universe from CSV + hydration (or yfinance fallback)."""
+    async def refresh(
+        self,
+        branch_name: str,
+        *,
+        as_of_date: date | None = None,
+    ) -> list[UniverseStock]:
+        """Force-refresh universe from snapshot CSV, branch CSV, or yfinance fallback."""
+
+        # 1. Try N-PORT snapshot (for backtest path with as_of_date)
+        if as_of_date is not None:
+            snapshot_path = self._find_snapshot_csv(branch_name, as_of_date)
+            if snapshot_path:
+                stocks = self._load_snapshot(snapshot_path)
+                if stocks:
+                    cache_key = f"{branch_name}:{as_of_date}"
+                    self._cache[cache_key] = (stocks, datetime.now(UTC))
+                    logger.info("Universe '%s' as_of %s: %d stocks from snapshot %s",
+                                branch_name, as_of_date, len(stocks), snapshot_path.name)
+                    return stocks
+
+        # 2. Load branch CSV
         csv_path = os.path.join(self.csv_dir, f"{branch_name}_universe.csv")
-
         if os.path.isfile(csv_path):
             stocks = await self._load_and_hydrate(csv_path)
         else:
             logger.warning("No CSV at %s — falling back to yfinance top_holdings", csv_path)
             stocks = await self._fallback_yfinance(branch_name)
 
-        self._cache[branch_name] = (stocks, datetime.now(UTC))
+        cache_key = f"{branch_name}:{as_of_date}"
+        self._cache[cache_key] = (stocks, datetime.now(UTC))
         logger.info("Universe '%s': %d stocks", branch_name, len(stocks))
         return stocks
+
+    # ------------------------------------------------------------------
+    # N-PORT snapshot loading
+    # ------------------------------------------------------------------
+
+    def _find_snapshot_csv(self, branch_name: str, as_of_date: date) -> Path | None:
+        """Find the most recent snapshot CSV on or before as_of_date.
+
+        Snapshots live at ``data/universes/nport_snapshots/{etf}_{report_date}.csv``.
+        """
+        clean = branch_name.removeprefix("test_")
+        etf_symbol = _ETF_MAP.get(clean)
+        if etf_symbol is None:
+            return None
+
+        snapshot_dir = Path(self.csv_dir) / "nport_snapshots"
+        if not snapshot_dir.is_dir():
+            return None
+
+        prefix = etf_symbol.lower() + "_"
+        best_path: Path | None = None
+        best_date: date | None = None
+
+        for entry in snapshot_dir.iterdir():
+            if not entry.name.startswith(prefix) or not entry.name.endswith(".csv"):
+                continue
+            # Parse report_date from filename: voog_2025-03-31.csv
+            date_str = entry.stem[len(prefix):]
+            try:
+                report_date = date.fromisoformat(date_str)
+            except ValueError:
+                continue
+            if report_date <= as_of_date and (best_date is None or report_date > best_date):
+                best_date = report_date
+                best_path = entry
+
+        return best_path
+
+    @staticmethod
+    def _load_snapshot(path: Path) -> list[UniverseStock]:
+        """Load a snapshot CSV (columns: symbol, name, weight)."""
+        stocks: list[UniverseStock] = []
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                sym = row.get("symbol", "").strip()
+                if not sym:
+                    continue
+                stocks.append(UniverseStock(
+                    symbol=sym,
+                    company_name=row.get("name", sym),
+                    weight=float(row.get("weight", 0.0)),
+                ))
+        return stocks
+
+    def get_snapshot_symbols(self, branch_name: str, start: date, end: date) -> list[str]:
+        """Return the superset of symbols across all snapshots in [start, end].
+
+        Used by BacktestContext to determine which symbols need OHLCV preloading.
+        """
+        clean = branch_name.removeprefix("test_")
+        etf_symbol = _ETF_MAP.get(clean)
+        if etf_symbol is None:
+            return []
+
+        snapshot_dir = Path(self.csv_dir) / "nport_snapshots"
+        if not snapshot_dir.is_dir():
+            return []
+
+        prefix = etf_symbol.lower() + "_"
+        all_symbols: set[str] = set()
+
+        for entry in snapshot_dir.iterdir():
+            if not entry.name.startswith(prefix) or not entry.name.endswith(".csv"):
+                continue
+            date_str = entry.stem[len(prefix):]
+            try:
+                report_date = date.fromisoformat(date_str)
+            except ValueError:
+                continue
+            if start <= report_date <= end:
+                stocks = self._load_snapshot(entry)
+                all_symbols.update(s.symbol for s in stocks)
+
+        return sorted(all_symbols)
 
     # ------------------------------------------------------------------
     # CSV loading + hydration
@@ -118,8 +235,8 @@ class UniverseProvider:
     async def _fallback_yfinance(self, branch_name: str) -> list[UniverseStock]:
         """Legacy path: fetch ETF top_holdings from yfinance."""
         # Map branch name to ETF symbol for fallback
-        etf_map = {"growth": "VOOG", "value": "VOOV"}
-        etf_symbol = etf_map.get(branch_name, branch_name)
+        clean = branch_name.removeprefix("test_")
+        etf_symbol = _ETF_MAP.get(clean, branch_name)
 
         try:
             ticker = yf.Ticker(etf_symbol)
