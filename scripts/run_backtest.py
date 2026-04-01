@@ -155,6 +155,33 @@ async def main():
             print(f"  {'Alpha (SPY)':<22s} {gb.alpha:>+9.2%} {vb.alpha:>+9.2%}")
             print(f"  {'Beta (SPY)':<22s} {gb.beta:>10.2f} {vb.beta:>10.2f}")
 
+    # --- Strategy vs. ETF benchmark (Growth vs VOOG, Value vs VOOV) ---
+    etf_map = {"growth": "VOOG", "value": "VOOV"}
+    for branch, etf in etf_map.items():
+        r = results.get(branch)
+        if r is None or r.metrics is None:
+            continue
+        bench = next((b for b in r.benchmarks if b.benchmark_symbol == etf), None)
+        if bench is None:
+            continue
+        m = r.metrics
+        print(f"\n{'='*60}")
+        print(f"  {branch.upper()} BRANCH vs {etf}")
+        print(f"{'='*60}")
+        print(f"  {'Metric':<22s} {branch.upper():>10s} {etf:>10s}")
+        print(f"  {'-'*44}")
+        print(f"  {'Total Return':<22s} {m.total_return:>+9.2%} {bench.benchmark_total_return:>+9.2%}")
+        print(f"  {'Ann. Return':<22s} {m.annualized_return:>+9.2%} {bench.benchmark_annualized_return:>+9.2%}")
+        print(f"  {'Sharpe Ratio':<22s} {m.sharpe_ratio:>10.2f} {bench.benchmark_sharpe:>10.2f}")
+        print(f"  {'Max Drawdown':<22s} {m.max_drawdown:>9.2%} {bench.benchmark_max_drawdown:>9.2%}")
+        print(f"  {'-'*44}")
+        print(f"  {'Alpha':<22s} {bench.alpha:>+9.2%}")
+        print(f"  {'Beta':<22s} {bench.beta:>10.2f}")
+        print(f"  {'Info Ratio':<22s} {bench.information_ratio:>10.2f}")
+        print(f"  {'Tracking Error':<22s} {bench.tracking_error:>9.2%}")
+        print(f"  {'Up Capture':<22s} {bench.up_capture_ratio:>9.1f}%")
+        print(f"  {'Down Capture':<22s} {bench.down_capture_ratio:>9.1f}%")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
