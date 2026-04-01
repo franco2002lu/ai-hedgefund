@@ -1,9 +1,10 @@
-"""Run backtests using test universes (~20 stocks each).
+"""Run backtests using N-PORT ETF holdings (VOOG for growth, VOOV for value).
 
 Usage:
-    python scripts/run_backtest.py 2025-01-01 2025-12-31              # both branches
+    python scripts/run_backtest.py 2025-01-01 2025-12-31              # both branches, full universe
     python scripts/run_backtest.py 2025-01-01 2025-06-30 growth       # growth only
-    python scripts/run_backtest.py 2025-01-01 2025-06-30 value        # value only
+    python scripts/run_backtest.py 2025-01-01 2025-06-30 --top-n 30   # top 30 holdings for both
+    python scripts/run_backtest.py 2025-01-01 2025-06-30 --growth-top-n 30 --value-top-n 50
     python scripts/run_backtest.py 2025-01-01 2025-06-30 --capital 10000
 """
 
@@ -19,11 +20,11 @@ logging.basicConfig(level=logging.WARNING)
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 
-async def run_one(branch: str, start: date, end: date, capital: float):
-    test_branch = f"test_{branch}"
+async def run_one(branch: str, start: date, end: date, capital: float, top_n: int | None = None):
+    universe_desc = f"top-{top_n}" if top_n is not None else "full"
 
     print(f"\n{'='*60}")
-    print(f"  BACKTEST: {branch.upper()} BRANCH (20-stock test universe)")
+    print(f"  BACKTEST: {branch.upper()} BRANCH ({universe_desc} universe)")
     print(f"  Period: {start} to {end} | Weekly Rebalance")
     print(f"  Capital: ${capital:,.0f} | Quantitative Analysts")
     print(f"{'='*60}")
@@ -33,9 +34,10 @@ async def run_one(branch: str, start: date, end: date, capital: float):
         end_date=end,
         initial_capital=capital,
         rebalance_frequency=RebalanceFrequency.WEEKLY,
-        branch_name=test_branch,
+        branch_name=branch,
         use_llm_agents=False,
-        benchmark_symbols=["SPY", "VOOG" if "growth" in test_branch else "VOOV"],
+        benchmark_symbols=["SPY", "VOOG" if "growth" in branch else "VOOV"],
+        top_n=top_n,
     )
 
     engine = BacktestEngine()
@@ -106,23 +108,35 @@ async def run_one(branch: str, start: date, end: date, capital: float):
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Run backtests with test universes")
+    parser = argparse.ArgumentParser(description="Run backtests with ETF-based universes")
     parser.add_argument("start_date", help="Start date (YYYY-MM-DD)")
     parser.add_argument("end_date", help="End date (YYYY-MM-DD)")
     parser.add_argument("branches", nargs="*", default=["growth", "value"],
                         help="Branches to run (default: both)")
     parser.add_argument("--capital", type=float, default=1_000.0,
                         help="Initial capital (default: 1000)")
+    parser.add_argument("--top-n", type=int, default=None,
+                        help="Top N holdings by weight for all branches (default: all)")
+    parser.add_argument("--growth-top-n", type=int, default=None,
+                        help="Top N holdings for growth branch (overrides --top-n)")
+    parser.add_argument("--value-top-n", type=int, default=None,
+                        help="Top N holdings for value branch (overrides --top-n)")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start_date)
     end = date.fromisoformat(args.end_date)
 
+    per_branch_top_n = {
+        "growth": args.growth_top_n,
+        "value": args.value_top_n,
+    }
+
     results = {}
     for branch in args.branches:
-        results[branch] = await run_one(branch, start, end, args.capital)
+        top_n = per_branch_top_n.get(branch) if per_branch_top_n.get(branch) is not None else args.top_n
+        results[branch] = await run_one(branch, start, end, args.capital, top_n=top_n)
 
-    if len(results) == 2 and all(r.metrics for r in results.values()):
+    if "growth" in results and "value" in results and results["growth"].metrics and results["value"].metrics:
         g, v = results["growth"].metrics, results["value"].metrics
         print(f"\n{'='*60}")
         print(f"  COMPARISON: GROWTH vs VALUE")

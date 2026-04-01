@@ -34,9 +34,11 @@ class UniverseProvider:
         self,
         data_service=None,
         csv_dir: str | None = None,
+        top_n: int | None = None,
     ) -> None:
         self.data_service = data_service
         self.csv_dir = csv_dir or _DEFAULT_CSV_DIR
+        self.top_n = top_n
         self._cache: dict[str, tuple[list[UniverseStock], datetime]] = {}
         self._cache_ttl_days = 90
 
@@ -55,7 +57,7 @@ class UniverseProvider:
 
         Checks the 90-day in-memory cache first, then loads from disk.
         """
-        cache_key = f"{branch_name}:{as_of_date}"
+        cache_key = f"{branch_name}:{as_of_date}:{self.top_n}"
         cached = self._cache.get(cache_key)
         if cached:
             holdings, cached_at = cached
@@ -76,9 +78,9 @@ class UniverseProvider:
         if as_of_date is not None:
             snapshot_path = self._find_snapshot_csv(branch_name, as_of_date)
             if snapshot_path:
-                stocks = self._load_snapshot(snapshot_path)
+                stocks = self._load_snapshot(snapshot_path, top_n=self.top_n)
                 if stocks:
-                    cache_key = f"{branch_name}:{as_of_date}"
+                    cache_key = f"{branch_name}:{as_of_date}:{self.top_n}"
                     self._cache[cache_key] = (stocks, datetime.now(UTC))
                     logger.info("Universe '%s' as_of %s: %d stocks from snapshot %s",
                                 branch_name, as_of_date, len(stocks), snapshot_path.name)
@@ -92,7 +94,11 @@ class UniverseProvider:
             logger.warning("No CSV at %s — falling back to yfinance top_holdings", csv_path)
             stocks = await self._fallback_yfinance(branch_name)
 
-        cache_key = f"{branch_name}:{as_of_date}"
+        if self.top_n is not None:
+            stocks.sort(key=lambda s: s.weight, reverse=True)
+            stocks = stocks[:self.top_n]
+
+        cache_key = f"{branch_name}:{as_of_date}:{self.top_n}"
         self._cache[cache_key] = (stocks, datetime.now(UTC))
         logger.info("Universe '%s': %d stocks", branch_name, len(stocks))
         return stocks
@@ -135,8 +141,13 @@ class UniverseProvider:
         return best_path
 
     @staticmethod
-    def _load_snapshot(path: Path) -> list[UniverseStock]:
-        """Load a snapshot CSV (columns: symbol, name, weight)."""
+    def _load_snapshot(path: Path, top_n: int | None = None) -> list[UniverseStock]:
+        """Load a snapshot CSV (columns: symbol, name, weight).
+
+        Args:
+            path: Path to the snapshot CSV file.
+            top_n: If set, return only the top N holdings by weight.
+        """
         stocks: list[UniverseStock] = []
         with open(path, newline="", encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -149,6 +160,9 @@ class UniverseProvider:
                     company_name=row.get("name", sym),
                     weight=float(row.get("weight", 0.0)),
                 ))
+        if top_n is not None:
+            stocks.sort(key=lambda s: s.weight, reverse=True)
+            stocks = stocks[:top_n]
         return stocks
 
     def get_snapshot_symbols(self, branch_name: str, start: date, end: date) -> list[str]:
@@ -177,7 +191,7 @@ class UniverseProvider:
             except ValueError:
                 continue
             if start <= report_date <= end:
-                stocks = self._load_snapshot(entry)
+                stocks = self._load_snapshot(entry, top_n=self.top_n)
                 all_symbols.update(s.symbol for s in stocks)
 
         return sorted(all_symbols)

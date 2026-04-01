@@ -39,6 +39,7 @@ class BacktestConfig(BaseModel):
     max_participation_rate: float = 0.25  # reject orders > 25% of daily volume
     benchmark_symbols: list[str] = ["SPY"]
     equities_config_override: EquitiesConfig | None = None
+    top_n: int | None = None  # None = all holdings; positive int = top N by weight
 
     @model_validator(mode="after")
     def _validate(self) -> "BacktestConfig":
@@ -48,4 +49,6 @@ class BacktestConfig(BaseModel):
             raise ValueError("initial_capital must be positive")
         if self.slippage_bps < 0:
             raise ValueError("slippage_bps must be non-negative")
+        if self.top_n is not None and self.top_n < 1:
+            raise ValueError("top_n must be a positive integer or None")
         return self

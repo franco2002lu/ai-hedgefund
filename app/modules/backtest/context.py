@@ -74,27 +74,28 @@ class BacktestContext:
         ctx.time_provider = tp
 
         # 2. Load universe symbols from snapshots + branch CSV
-        universe_provider = UniverseProvider()
+        universe_provider = UniverseProvider(top_n=config.top_n)
 
         # 2a. Superset of symbols across all quarterly snapshots in the date range
         snapshot_symbols = universe_provider.get_snapshot_symbols(
             config.branch_name, config.start_date, config.end_date,
         )
 
-        # 2b. Also read branch CSV symbols (if CSV exists)
-        csv_path = f"{universe_provider.csv_dir}/{config.branch_name}_universe.csv"
+        # 2b. Fall back to branch CSV only if no snapshots were found
         csv_symbols: list[str] = []
-        try:
-            csv_symbols = universe_provider._load_symbols(csv_path)
-        except Exception:
-            pass
+        if not snapshot_symbols:
+            csv_path = f"{universe_provider.csv_dir}/{config.branch_name}_universe.csv"
+            try:
+                csv_symbols = universe_provider._load_symbols(csv_path)
+            except Exception:
+                pass
 
         # 2c. Union all symbols for OHLCV preload
         symbols = list(set(snapshot_symbols + csv_symbols))
         all_symbols = list(set(symbols + config.benchmark_symbols))
         logger.info(
-            "Universe loaded: %d stocks for branch '%s' (%d from snapshots, %d from CSV)",
-            len(symbols), config.branch_name, len(snapshot_symbols), len(csv_symbols),
+            "Universe loaded: %d stocks for branch '%s' (top_n=%s, %d from snapshots, %d from CSV)",
+            len(symbols), config.branch_name, config.top_n, len(snapshot_symbols), len(csv_symbols),
         )
 
         # 3. Preload OHLCV from yfinance
