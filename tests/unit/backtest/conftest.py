@@ -63,7 +63,7 @@ def _make_backtest_config(**overrides) -> BacktestConfig:
         rebalance_frequency="weekly",
         branch_name="growth",
         use_llm_agents=False,
-        slippage_bps=5.0,
+        slippage_bps=10.0,
         commission_per_trade=0.0,
         benchmark_symbols=["SPY"],
     )

@@ -34,12 +34,13 @@ class BacktestConfig(BaseModel):
     branch_name: str = "growth"
     use_llm_agents: bool = False
     llm_config: LLMBacktestConfig = LLMBacktestConfig()
-    slippage_bps: float = 5.0
+    slippage_bps: float = 10.0
     commission_per_trade: float = 0.0
-    max_participation_rate: float = 0.25  # reject orders > 25% of daily volume
+    max_participation_rate: float = 0.10  # reject orders > 10% of daily volume
     benchmark_symbols: list[str] = ["SPY"]
     equities_config_override: EquitiesConfig | None = None
     top_n: int | None = None  # None = all holdings; positive int = top N by weight
+    cash_yield_rate: float = 0.04  # annualized rate earned on uninvested cash
 
     @model_validator(mode="after")
     def _validate(self) -> "BacktestConfig":
@@ -51,4 +52,6 @@ class BacktestConfig(BaseModel):
             raise ValueError("slippage_bps must be non-negative")
         if self.top_n is not None and self.top_n < 1:
             raise ValueError("top_n must be a positive integer or None")
+        if self.cash_yield_rate < 0:
+            raise ValueError("cash_yield_rate must be non-negative")
         return self

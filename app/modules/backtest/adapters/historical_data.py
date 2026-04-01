@@ -57,6 +57,46 @@ class HistoricalPriceStore:
                 break
         return result
 
+    def get_next_trading_day(self, symbol: str, after: date) -> date | None:
+        """Return the first trading day strictly after `after` for the given symbol."""
+        bars = self._sorted.get(symbol, [])
+        for bar in bars:
+            if bar.timestamp > after:
+                return bar.timestamp
+        return None
+
+    def get_open(self, symbol: str, dt: date) -> float | None:
+        """Return the open price for a symbol on a specific date."""
+        bar = self.get_bar(symbol, dt)
+        return bar.open if bar is not None else None
+
+    def get_latest_close_with_staleness(
+        self, symbol: str, as_of: date, max_stale_days: int = 10,
+    ) -> float | None:
+        """Return the latest close price, or None if data is stale beyond threshold.
+
+        A stock with no price data for more than `max_stale_days` trading days
+        is considered delisted/halted. Returns None so the caller can force-
+        liquidate the position at the last known price.
+        """
+        bars = self._sorted.get(symbol, [])
+        result_bar: PriceBar | None = None
+        for bar in bars:
+            if bar.timestamp <= as_of:
+                result_bar = bar
+            else:
+                break
+        if result_bar is None:
+            return None
+        # Count trading days between last bar and as_of
+        stale_days = sum(
+            1 for b_date in self.get_trading_days(result_bar.timestamp, as_of)
+            if b_date > result_bar.timestamp
+        )
+        if stale_days > max_stale_days:
+            return None
+        return result_bar.close
+
     async def preload(
         self,
         symbols: list[str],

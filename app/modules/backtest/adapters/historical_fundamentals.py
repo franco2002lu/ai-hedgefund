@@ -218,6 +218,17 @@ class HistoricalFundamentalsStore:
         # Days since last filing
         days_since_earnings = self._days_since_last_filing(snapshots, as_of_date)
 
+        # Gross margin declining quarters (for GrossMarginTrendFilter)
+        gross_margin_declining_quarters = self._compute_gross_margin_declining_quarters(
+            snapshots, as_of_date,
+        )
+
+        # Earnings surprise % (for EarningsSurpriseFilter)
+        latest_eps, prior_eps, _ = self.get_latest_eps(symbol, as_of_date)
+        earnings_surprise_pct: float | None = None
+        if latest_eps is not None and prior_eps is not None and prior_eps != 0:
+            earnings_surprise_pct = (latest_eps - prior_eps) / abs(prior_eps)
+
         # --- Build output dict matching YahooFinanceAdapter schema ---
         result = {
             "symbol": symbol,
@@ -263,6 +274,8 @@ class HistoricalFundamentalsStore:
             "volatility90d": price_metrics.get("volatility_90d"),
             "return6m": price_metrics.get("return_6m"),
             "daysSinceLastEarnings": days_since_earnings,
+            "grossMarginDecliningQuarters": gross_margin_declining_quarters,
+            "lastEarningsSurprisePct": earnings_surprise_pct,
         }
 
         # Remove None values to match YahooFinanceAdapter behavior
@@ -366,6 +379,36 @@ class HistoricalFundamentalsStore:
             if snap.filed_date <= as_of_date:
                 return (as_of_date - snap.filed_date).days
         return None
+
+    @staticmethod
+    def _compute_gross_margin_declining_quarters(
+        snapshots: list[QuarterlySnapshot],
+        as_of_date: date,
+    ) -> int:
+        """Count consecutive most-recent quarters of declining gross margin.
+
+        Walks backward from the most recent available quarter. A quarter
+        counts as "declining" if its gross margin is lower than the
+        previous quarter's. Stops at the first non-decline.
+        """
+        available = [
+            s for s in snapshots
+            if s.filed_date <= as_of_date
+            and "gross_profit" in s.values
+            and "revenue" in s.values
+            and s.values["revenue"] not in (0, None)
+        ]
+        if len(available) < 2:
+            return 0
+
+        margins = [s.values["gross_profit"] / s.values["revenue"] for s in available]
+        declining = 0
+        for i in range(len(margins) - 1, 0, -1):
+            if margins[i] < margins[i - 1]:
+                declining += 1
+            else:
+                break
+        return declining
 
 
 def _safe_div(numerator: float | None, denominator: float | None) -> float | None:

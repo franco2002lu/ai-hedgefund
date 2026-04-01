@@ -55,10 +55,12 @@ class TestBacktestConfig:
         assert config.rebalance_frequency == RebalanceFrequency.WEEKLY
         assert config.branch_name == "growth"
         assert config.use_llm_agents is False
-        assert config.slippage_bps == 5.0
+        assert config.slippage_bps == 10.0
         assert config.commission_per_trade == 0.0
+        assert config.max_participation_rate == 0.10
         assert config.benchmark_symbols == ["SPY"]
         assert config.equities_config_override is None
+        assert config.top_n is None
 
     def test_end_date_must_be_after_start_date(self):
         with pytest.raises(ValueError):

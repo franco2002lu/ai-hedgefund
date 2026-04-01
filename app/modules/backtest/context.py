@@ -107,8 +107,9 @@ class BacktestContext:
         )
         ctx.store = store
 
-        # 3b. Survivorship bias filter: remove symbols that weren't traded
-        #     at the start of the backtest or have insufficient data coverage
+        # 3b. Exclude symbols not yet traded at backtest start (IPOs after start_date).
+        #     Do NOT exclude stocks that delist mid-backtest — removing them would
+        #     introduce survivorship bias by systematically dropping losers.
         excluded: list[str] = []
         for sym in list(symbols):
             first_date = store.get_first_trading_date(sym)
@@ -119,18 +120,9 @@ class BacktestContext:
                     "Excluded %s: first traded %s, backtest starts %s",
                     sym, first_date, config.start_date,
                 )
-                continue
-            coverage = store.get_data_coverage(sym, config.start_date, config.end_date)
-            if coverage < 0.80:
-                excluded.append(sym)
-                symbols.remove(sym)
-                logger.info(
-                    "Excluded %s: only %.0f%% data coverage in backtest range",
-                    sym, coverage * 100,
-                )
         if excluded:
             logger.info(
-                "Survivorship filter: excluded %d/%d symbols",
+                "IPO filter: excluded %d/%d symbols (not traded at backtest start)",
                 len(excluded), len(excluded) + len(symbols),
             )
 

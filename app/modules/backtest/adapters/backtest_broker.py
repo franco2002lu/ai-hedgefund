@@ -1,10 +1,15 @@
 """Backtest broker adapter that simulates order fills using historical prices.
 
-Uses a square-root market impact model for volume-aware slippage:
+Fills at T+1 open (market-on-open) to avoid look-ahead bias:
+  - Orders placed on day T are filled at T+1's opening price.
+  - Slippage is applied on top of the open price using a square-root
+    market impact model based on day T's volume.
+
+Square-root impact model:
   impact_bps = base_slippage_bps × sqrt(participation_rate / 0.01)
 
 This means:
-  - participation_rate < 1%  → impact ≈ base slippage (5 bps default)
+  - participation_rate < 1%  → impact ≈ base slippage (10 bps default)
   - participation_rate = 10% → impact ≈ 3× base slippage
   - participation_rate > max_participation_rate → order rejected
 """
@@ -27,9 +32,9 @@ class BacktestBrokerAdapter(BrokerAdapter):
         self,
         store: HistoricalPriceStore,
         time_provider: BacktestTimeProvider,
-        slippage_bps: float = 5.0,
+        slippage_bps: float = 10.0,
         commission_per_trade: float = 0.0,
-        max_participation_rate: float = 0.25,
+        max_participation_rate: float = 0.10,
     ) -> None:
         self._store = store
         self._time_provider = time_provider
@@ -39,11 +44,17 @@ class BacktestBrokerAdapter(BrokerAdapter):
 
     async def submit_order(self, order: OrderRequest) -> OrderResult:
         today = self._time_provider.today()
-        close = self._store.get_latest_close(order.symbol, today)
-        if close is None:
-            return OrderResult(success=False, rejection_reason="No price available")
 
-        # Get daily volume for market impact calculation
+        # T+1 execution: fill at next trading day's open (market-on-open)
+        next_day = self._store.get_next_trading_day(order.symbol, today)
+        if next_day is None:
+            return OrderResult(success=False, rejection_reason="No next trading day for T+1 execution")
+
+        open_price = self._store.get_open(order.symbol, next_day)
+        if open_price is None:
+            return OrderResult(success=False, rejection_reason="No open price for next trading day")
+
+        # Use today's volume for market impact estimation (known at order time)
         bar = self._store.get_bar(order.symbol, today)
         daily_volume = bar.volume if bar and bar.volume > 0 else None
 
@@ -71,11 +82,11 @@ class BacktestBrokerAdapter(BrokerAdapter):
             # No volume data: use base slippage as fallback
             effective_slippage_bps = self._slippage_bps
 
-        # Apply slippage direction
+        # Apply slippage direction on top of T+1 open price
         if order.side in (OrderSide.BUY, OrderSide.COVER):
-            fill_price = close * (1 + effective_slippage_bps / 10000)
+            fill_price = open_price * (1 + effective_slippage_bps / 10000)
         else:
-            fill_price = close * (1 - effective_slippage_bps / 10000)
+            fill_price = open_price * (1 - effective_slippage_bps / 10000)
 
         # Limit order checks
         if order.order_type == OrderType.LIMIT and order.limit_price is not None:
@@ -92,7 +103,7 @@ class BacktestBrokerAdapter(BrokerAdapter):
                         rejection_reason="Limit price not met",
                     )
 
-        slippage_amount = abs(fill_price - close)
+        slippage_amount = abs(fill_price - open_price)
 
         trade = Trade(
             id=str(uuid4()),
