@@ -197,7 +197,7 @@ def compose_system_prompt(
 1. Read `base/{analyst_type}.md` — required, warns if missing
 2. Strip `test_` prefix from `branch_name` → read `branches/{branch}/{analyst_type}.md` — optional
 3. Normalize sector name → read `sectors/{sector_key}.md` — optional
-4. Append hardcoded `_OUTPUT_INSTRUCTION` (JSON format requirement)
+4. Append shared `output_format.md` layer (JSON schema + pre-response checklist) — required, raises `MissingSkillError` if absent
 5. Join all layers with `\n\n---\n\n` separators
 
 **Caching:** `@lru_cache(maxsize=64)` — the same (analyst_type, branch_name, sector) tuple always returns the same string object. In a 20-stock batch with ~8 sectors, this means ~8 unique prompts cached and reused.

@@ -2,7 +2,9 @@
 
 import pytest
 
+from app.modules.equities.agents.skills import loader
 from app.modules.equities.agents.skills.loader import (
+    MissingSkillError,
     compose_system_prompt,
     get_available_skills,
 )
@@ -162,3 +164,56 @@ class TestGetAvailableSkills:
         assert "fundamentals" in value
         assert "technical" in value
         assert "news" in value
+
+
+# ---------------------------------------------------------------------------
+# Output format layer tests
+# ---------------------------------------------------------------------------
+
+
+class TestOutputFormatLayer:
+    """Tests for the shared output_format.md layer extracted from loader.py."""
+
+    def test_load_output_format_returns_non_empty_content(self):
+        content = loader._load_output_format()
+        assert content
+        assert "bullish_score" in content
+        assert "confidence" in content
+        assert "summary" in content
+
+    def test_output_format_contains_pre_response_checklist(self):
+        content = loader._load_output_format()
+        assert "Before You Respond" in content
+
+    def test_missing_output_format_raises_missing_skill_error(self, monkeypatch, tmp_path):
+        """If output_format.md is missing, _load_output_format raises MissingSkillError."""
+        loader._load_output_format.cache_clear()
+        monkeypatch.setattr(loader, "_SKILLS_DIR", tmp_path)
+        with pytest.raises(MissingSkillError, match="output format"):
+            loader._load_output_format()
+        # Restore the real cache for downstream tests
+        loader._load_output_format.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Critical Reminders section tests
+# ---------------------------------------------------------------------------
+
+
+class TestCriticalReminders:
+    """All base analyst skills must surface critical reminders near the top."""
+
+    @pytest.mark.parametrize("analyst_type", ["fundamentals", "news", "technical"])
+    def test_critical_reminders_section_present(self, analyst_type):
+        prompt = compose_system_prompt(analyst_type)
+        assert "## Critical Reminders" in prompt
+
+    @pytest.mark.parametrize("analyst_type", ["fundamentals", "news", "technical"])
+    def test_critical_reminders_appear_before_analysis_framework(self, analyst_type):
+        """The reminders block must come before the framework so the model reads it first."""
+        prompt = compose_system_prompt(analyst_type)
+        reminders_idx = prompt.find("## Critical Reminders")
+        framework_idx = prompt.find("## Analysis Framework")
+        assert reminders_idx != -1
+        assert framework_idx != -1
+        assert reminders_idx < framework_idx

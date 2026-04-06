@@ -19,22 +19,9 @@ _SKILLS_DIR = Path(__file__).parent
 
 _SEPARATOR = "\n\n---\n\n"
 
-_OUTPUT_INSTRUCTION = (
-    "## Before You Respond\n\n"
-    "1. Count your bullish vs bearish signals from the analysis above.\n"
-    "2. Check your score against the Score Calibration table — "
-    "does the label match your reasoning?\n"
-    "3. Check your confidence against the Confidence Calibration table.\n"
-    "4. Ensure your summary cites at least 2 specific data points "
-    "(e.g., exact metric values, headline text).\n\n"
-    "## Output Format\n\n"
-    "Respond ONLY with a JSON object containing exactly three keys:\n"
-    '  "bullish_score": integer 1-10 (1=very bearish, 10=very bullish)\n'
-    '  "confidence": integer 1-10 (1=very uncertain, 10=very certain)\n'
-    '  "summary": string (2-4 sentences citing specific data points '
-    "from the analysis)\n\n"
-    "Do not include any text outside the JSON object."
-)
+
+class MissingSkillError(Exception):
+    """Raised when a required skill file is missing from the skills directory."""
 
 
 def _read_skill(path: Path) -> str | None:
@@ -42,6 +29,24 @@ def _read_skill(path: Path) -> str | None:
     if path.is_file():
         return path.read_text(encoding="utf-8").strip()
     return None
+
+
+@lru_cache(maxsize=1)
+def _load_output_format() -> str:
+    """Load the shared output format layer.
+
+    This layer is required — every composed prompt must end with it so analysts
+    know the JSON schema and pre-response checklist. Cached because the file
+    contents never change at runtime, and identical strings are needed for
+    Anthropic prompt caching.
+    """
+    path = _SKILLS_DIR / "output_format.md"
+    content = _read_skill(path)
+    if content is None:
+        raise MissingSkillError(
+            f"Required output format skill not found at {path}"
+        )
+    return content
 
 
 def _normalize_branch(branch_name: str) -> str:
@@ -99,8 +104,8 @@ def compose_system_prompt(
         if sector_skill:
             layers.append(sector_skill)
 
-    # 4. Output format (always last)
-    layers.append(_OUTPUT_INSTRUCTION)
+    # 4. Output format (always last, required)
+    layers.append(_load_output_format())
 
     return _SEPARATOR.join(layers)
 
