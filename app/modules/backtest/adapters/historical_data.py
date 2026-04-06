@@ -180,8 +180,28 @@ class HistoricalPriceStore:
                 for sym in batch:
                     self.failed_symbols.add(sym)
 
+    # Precision at which OHLC prices are normalized at ingest. See comment in
+    # _ingest_symbol for the reasoning — yfinance returns float32-precision
+    # jitter in auto-adjusted prices (differences of ~1e-5 across identical
+    # calls). Rounding at 2 decimals (cents) leaves ~500x headroom over the
+    # observed jitter, which is enough that jitter never crosses a rounding
+    # boundary in practice. Cent precision matches how stocks actually trade;
+    # the only precision lost is dividend/split adjustment sub-cent fractions,
+    # which are an artifact of yfinance's vectorized adjustment math rather
+    # than real market information.
+    _PRICE_PRECISION = 2
+
     def _ingest_symbol(self, symbol: str, sym_df: pd.DataFrame) -> None:
-        """Convert a single-symbol DataFrame into PriceBar dicts."""
+        """Convert a single-symbol DataFrame into PriceBar dicts.
+
+        OHLC values are rounded to `_PRICE_PRECISION` decimals to normalize
+        float precision jitter from yfinance's auto-adjusted prices. Without
+        this, the same historical price can arrive as (e.g.) 130.2808074951172
+        in one call and 130.2808380126953 in another — a ~3e-5 difference from
+        numpy's split-adjustment vectorization running at different effective
+        precision. That jitter flows into share-quantity calculations and
+        flips strategy decisions across otherwise-identical runs.
+        """
         bars_by_date: dict[date, PriceBar] = {}
         for ts, row in sym_df.iterrows():
             try:
@@ -191,10 +211,10 @@ class HistoricalPriceStore:
                     continue
                 bar = PriceBar(
                     timestamp=d,
-                    open=float(row.get("Open", close_val)),
-                    high=float(row.get("High", close_val)),
-                    low=float(row.get("Low", close_val)),
-                    close=close_val,
+                    open=round(float(row.get("Open", close_val)), self._PRICE_PRECISION),
+                    high=round(float(row.get("High", close_val)), self._PRICE_PRECISION),
+                    low=round(float(row.get("Low", close_val)), self._PRICE_PRECISION),
+                    close=round(close_val, self._PRICE_PRECISION),
                     volume=int(row.get("Volume", 0)) if not math.isnan(row.get("Volume", 0)) else 0,
                 )
                 bars_by_date[d] = bar

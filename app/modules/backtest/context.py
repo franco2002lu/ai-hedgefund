@@ -90,9 +90,12 @@ class BacktestContext:
             except Exception:
                 pass
 
-        # 2c. Union all symbols for OHLCV preload
-        symbols = list(set(snapshot_symbols + csv_symbols))
-        all_symbols = list(set(symbols + config.benchmark_symbols))
+        # 2c. Union all symbols for OHLCV preload.
+        # sorted() is required: list(set(...)) produces hash-randomized order for
+        # string elements (PYTHONHASHSEED), which cascades into non-deterministic
+        # trade decisions across runs. See also portfolio_manager.py:129.
+        symbols = sorted(set(snapshot_symbols + csv_symbols))
+        all_symbols = sorted(set(symbols + config.benchmark_symbols))
         logger.info(
             "Universe loaded: %d stocks for branch '%s' (top_n=%s, %d from snapshots, %d from CSV)",
             len(symbols), config.branch_name, config.top_n, len(snapshot_symbols), len(csv_symbols),

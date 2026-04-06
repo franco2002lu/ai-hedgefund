@@ -126,7 +126,11 @@ class PortfolioManager:
         orders = []
         threshold = self.portfolio_config.min_rebalance_threshold
         target_map = {s.symbol: s.target_weight for s in target}
-        all_symbols = set(target_map.keys()) | set(current_positions.keys())
+        # sorted() is required: iterating a set of symbol strings produces
+        # hash-randomized order (PYTHONHASHSEED), which causes the resulting
+        # orders list to vary across runs. Downstream execution consumes cash
+        # and participation budget in list order, so this flips trade outcomes.
+        all_symbols = sorted(set(target_map.keys()) | set(current_positions.keys()))
         for symbol in all_symbols:
             target_weight = target_map.get(symbol, 0.0)
             current_weight = current_positions.get(symbol, 0.0)
