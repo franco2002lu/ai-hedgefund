@@ -1,5 +1,6 @@
 from datetime import date
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel, model_validator
 
@@ -22,7 +23,28 @@ class BacktestStatus(StrEnum):
 
 
 class LLMBacktestConfig(BaseModel):
+    """Per-run config for LLM-mode backtests."""
+
     cache_signals: bool = True
+    """Controls the in-memory ctx.llm_cache that CachedAnalystWrapper writes
+    to during a run. When True, every (date, symbol, analyst_type) tuple is
+    stored as it is generated, and BacktestEngine reads the cache at end-of-run
+    to populate BacktestResult.signals.
+
+    When False, the wrapper bypasses the in-memory cache entirely. The LLM
+    analysts still run and trades still execute normally, but
+    BacktestResult.signals will be EMPTY because there is nothing for the
+    engine to harvest at end-of-run. This is intentional for variance probes
+    that want to make every API call fresh — see Phase 3 — but it is a
+    silent footgun for any other caller. Leave this True unless you have a
+    specific reason to disable it. The CLI hardcodes True (see
+    scripts/run_backtest.py).
+
+    Note: this is INDEPENDENT of BacktestConfig.use_llm_response_cache, which
+    controls the persistent SQLite cache (data/llm_response_cache.db) that
+    deduplicates real API calls across runs.
+    """
+
     max_llm_calls_per_rebalance: int = 60
 
 
@@ -41,6 +63,9 @@ class BacktestConfig(BaseModel):
     equities_config_override: EquitiesConfig | None = None
     top_n: int | None = None  # None = all holdings; positive int = top N by weight
     cash_yield_rate: float = 0.04  # annualized rate earned on uninvested cash
+    skills_bundle: str | None = None  # bundle name to load from data/skill_bundles/
+    use_llm_response_cache: bool = True  # whether to use the persistent LLM response cache
+    llm_response_cache_path: Path = Path("data/llm_response_cache.db")  # cache db location
 
     @model_validator(mode="after")
     def _validate(self) -> "BacktestConfig":

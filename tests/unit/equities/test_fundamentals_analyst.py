@@ -181,3 +181,27 @@ class TestFundamentalsAnalyst:
         assert "AAPL" in user_prompt
         # Should NOT contain the old format instruction
         assert "bullish_score (1-10)" not in user_prompt
+
+
+# ---------------------------------------------------------------------------
+# skills_dir parameter tests
+# ---------------------------------------------------------------------------
+
+
+class TestFundamentalsAnalystSkillsDir:
+    def test_stores_skills_dir_on_init(self, tmp_path):
+        from app.modules.equities.agents.fundamentals_analyst import FundamentalsAnalyst
+        from app.modules.equities.config import AnalystLLMConfig
+
+        analyst = FundamentalsAnalyst(
+            config=AnalystLLMConfig(),
+            skills_dir=tmp_path,
+        )
+        assert analyst.skills_dir == tmp_path
+
+    def test_default_skills_dir_is_none(self):
+        from app.modules.equities.agents.fundamentals_analyst import FundamentalsAnalyst
+        from app.modules.equities.config import AnalystLLMConfig
+
+        analyst = FundamentalsAnalyst(config=AnalystLLMConfig())
+        assert analyst.skills_dir is None

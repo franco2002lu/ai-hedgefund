@@ -175,14 +175,14 @@ class TestOutputFormatLayer:
     """Tests for the shared output_format.md layer extracted from loader.py."""
 
     def test_load_output_format_returns_non_empty_content(self):
-        content = loader._load_output_format()
+        content = loader._load_output_format("")
         assert content
         assert "bullish_score" in content
         assert "confidence" in content
         assert "summary" in content
 
     def test_output_format_contains_pre_response_checklist(self):
-        content = loader._load_output_format()
+        content = loader._load_output_format("")
         assert "Before You Respond" in content
 
     def test_missing_output_format_raises_missing_skill_error(self, monkeypatch, tmp_path):
@@ -190,7 +190,7 @@ class TestOutputFormatLayer:
         loader._load_output_format.cache_clear()
         monkeypatch.setattr(loader, "_SKILLS_DIR", tmp_path)
         with pytest.raises(MissingSkillError, match="output format"):
-            loader._load_output_format()
+            loader._load_output_format("")
         # Restore the real cache for downstream tests
         loader._load_output_format.cache_clear()
 
@@ -217,3 +217,62 @@ class TestCriticalReminders:
         assert reminders_idx != -1
         assert framework_idx != -1
         assert reminders_idx < framework_idx
+
+
+# ---------------------------------------------------------------------------
+# skills_dir parameter tests
+# ---------------------------------------------------------------------------
+
+
+class TestSkillsDirParameter:
+    """compose_system_prompt must accept an optional skills_dir override so
+    backtests can load alternate skill bundles without mutating the module-level
+    _SKILLS_DIR constant."""
+
+    def test_default_none_uses_package_skills(self):
+        """Passing skills_dir=None behaves identically to omitting it."""
+        loader._load_output_format.cache_clear()
+        compose_system_prompt.cache_clear()
+        prompt_default = compose_system_prompt("fundamentals", "growth")
+        prompt_explicit_none = compose_system_prompt("fundamentals", "growth", None, None)
+        assert prompt_default == prompt_explicit_none
+
+    def test_alternate_skills_dir_loads_different_content(self, tmp_path):
+        """Pointing skills_dir at a directory with different files produces
+        a different composed prompt."""
+        loader._load_output_format.cache_clear()
+        compose_system_prompt.cache_clear()
+
+        # Build a minimal alternate bundle
+        (tmp_path / "base").mkdir()
+        (tmp_path / "base" / "fundamentals.md").write_text(
+            "# Alternate Fundamentals Skill\n\nAlternate instructions."
+        )
+        (tmp_path / "output_format.md").write_text(
+            '## Output Format\n\nReturn JSON with "bullish_score".'
+        )
+
+        prompt = compose_system_prompt("fundamentals", "", None, tmp_path)
+        assert "Alternate Fundamentals Skill" in prompt
+        assert "Alternate instructions" in prompt
+        # Output format layer still appended
+        assert "bullish_score" in prompt
+
+    def test_different_skills_dirs_cached_separately(self, tmp_path):
+        """The lru_cache key must include skills_dir so two bundles don't collide."""
+        loader._load_output_format.cache_clear()
+        compose_system_prompt.cache_clear()
+
+        # Build two minimal alternate bundles
+        dir_a = tmp_path / "bundle_a"
+        dir_b = tmp_path / "bundle_b"
+        for d, label in ((dir_a, "A"), (dir_b, "B")):
+            (d / "base").mkdir(parents=True)
+            (d / "base" / "fundamentals.md").write_text(f"# Bundle {label}")
+            (d / "output_format.md").write_text("## Output Format\n\nReturn JSON with bullish_score.")
+
+        prompt_a = compose_system_prompt("fundamentals", "", None, dir_a)
+        prompt_b = compose_system_prompt("fundamentals", "", None, dir_b)
+        assert "Bundle A" in prompt_a
+        assert "Bundle B" in prompt_b
+        assert prompt_a != prompt_b

@@ -1,6 +1,10 @@
 from datetime import date
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from app.modules.backtest.result_store import StockSignalRecord
 
 
 class DailySnapshot(BaseModel):
@@ -77,6 +81,9 @@ class BacktestResult(BaseModel):
     rebalance_count: int
     duration_seconds: float
     error_message: str | None = None
+    signals: list["StockSignalRecord"] = []
+    llm_cache_hits: int = 0
+    llm_cache_misses: int = 0
 
 
 class ScreeningSnapshot(BaseModel):
@@ -84,3 +91,10 @@ class ScreeningSnapshot(BaseModel):
     passed_symbols: list[str]
     filter_results: dict[str, list[str]]
     forward_returns: dict[str, dict[str, float]] | None = None
+
+
+# Rebuild to resolve the forward reference once result_store is importable
+def _rebuild_backtest_result() -> None:
+    from app.modules.backtest.result_store import StockSignalRecord  # noqa: F401
+
+    BacktestResult.model_rebuild()

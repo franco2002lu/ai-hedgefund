@@ -32,6 +32,11 @@ python scripts/run_backtest.py 2025-01-01 2025-06-30 growth       # growth only
 python scripts/run_backtest.py 2025-01-01 2025-06-30 --top-n 30   # top 30 holdings by weight
 python scripts/run_backtest.py 2025-01-01 2025-06-30 --growth-top-n 30 --value-top-n 50
 python scripts/run_backtest.py 2025-01-01 2025-06-30 --capital 10000  # custom capital
+# LLM-mode backtesting (Phase 1 — reproducible via persistent cache)
+python -m scripts.bundle_skills baseline_v1                      # snapshot current skills
+python -m scripts.run_backtest 2025-01-01 2025-06-30 growth --top-n 20 --llm --save
+python -m scripts.run_backtest 2025-01-01 2025-06-30 growth --top-n 20 --llm --skills-bundle baseline_v1 --save
+# Second run with same args is bit-identical (100% cache hit). Disable cache with --no-llm-cache.
 pytest tests/unit/backtest/ -q                  # backtest unit tests
 
 # Lint and format (ruff)

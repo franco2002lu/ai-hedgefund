@@ -1,6 +1,7 @@
 """Tests for BacktestConfig, RebalanceFrequency, BacktestStatus, LLMBacktestConfig."""
 
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -125,3 +126,27 @@ class TestBacktestConfig:
             end_date=date(2024, 6, 28),
         )
         assert config.llm_config.cache_signals is True
+
+
+class TestLLMModeConfigFields:
+    def test_defaults(self):
+        cfg = BacktestConfig(start_date=date(2025, 1, 1), end_date=date(2025, 12, 31))
+        assert cfg.skills_bundle is None
+        assert cfg.use_llm_response_cache is True
+        assert cfg.llm_response_cache_path == Path("data/llm_response_cache.db")
+
+    def test_override_skills_bundle(self):
+        cfg = BacktestConfig(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            skills_bundle="baseline_v1",
+        )
+        assert cfg.skills_bundle == "baseline_v1"
+
+    def test_disable_response_cache(self):
+        cfg = BacktestConfig(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            use_llm_response_cache=False,
+        )
+        assert cfg.use_llm_response_cache is False

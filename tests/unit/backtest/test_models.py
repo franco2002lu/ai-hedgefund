@@ -242,3 +242,53 @@ class TestScreeningSnapshot:
             },
         )
         assert snap.forward_returns["AAPL"]["5d"] == pytest.approx(0.02)
+
+
+class TestBacktestResultLLMFields:
+    def test_signals_defaults_to_empty_list(self):
+        from app.modules.backtest.models import BacktestResult
+
+        result = BacktestResult(
+            backtest_id="test",
+            status="completed",
+            config={},
+            metrics=None,
+            snapshots=[],
+            trades=[],
+            rebalance_count=0,
+            duration_seconds=1.0,
+        )
+        assert result.signals == []
+        assert result.llm_cache_hits == 0
+        assert result.llm_cache_misses == 0
+
+    def test_populated_signals_round_trip(self):
+        from datetime import date
+
+        from app.modules.backtest.models import BacktestResult
+        from app.modules.backtest.result_store import StockSignalRecord
+
+        signal = StockSignalRecord(
+            date=date(2025, 6, 15),
+            symbol="AAPL",
+            analyst_type="fundamentals",
+            bullish_score=7,
+            confidence=8,
+            summary="good",
+        )
+        result = BacktestResult(
+            backtest_id="test",
+            status="completed",
+            config={},
+            metrics=None,
+            snapshots=[],
+            trades=[],
+            rebalance_count=0,
+            duration_seconds=1.0,
+            signals=[signal],
+            llm_cache_hits=5,
+            llm_cache_misses=3,
+        )
+        assert len(result.signals) == 1
+        assert result.signals[0].symbol == "AAPL"
+        assert result.llm_cache_hits == 5

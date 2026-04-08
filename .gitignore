@@ -37,6 +37,21 @@ coverage.xml
 # Docker volumes
 infrastructure/pgdata/
 
+# Backtest runtime artifacts (Phase 1 LLM-mode attribution)
+# Saved runs, LLM response cache, and snapshotted skill bundles are
+# per-developer state and get regenerated from the source tree.
+# Reference data under data/universes/ is NOT ignored.
+data/backtest_runs/
+data/skill_bundles/
+data/llm_response_cache.db
+data/llm_response_cache.db-journal
+data/llm_response_cache.db-wal
+data/llm_response_cache.db-shm
+data/noise_floor_cache.db
+data/noise_floor_cache.db-journal
+data/noise_floor_cache.db-wal
+data/noise_floor_cache.db-shm
+
 # Alembic
 *.pyc
 

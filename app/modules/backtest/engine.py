@@ -39,6 +39,39 @@ def compute_rebalance_schedule(
 class BacktestEngine:
     """Runs a backtest simulation over historical data."""
 
+    @staticmethod
+    def _collect_signals_from_context(ctx) -> list:
+        """Convert ctx.llm_cache entries to StockSignalRecord instances.
+
+        ctx.llm_cache is a dict[(date, symbol, analyst_type), StockSignal]
+        populated by CachedAnalystWrapper during the run. Returns an empty
+        list if the cache is empty or missing.
+        """
+        from app.modules.backtest.result_store import StockSignalRecord
+
+        llm_cache = getattr(ctx, "llm_cache", None) or {}
+        records: list[StockSignalRecord] = []
+        for (sig_date, symbol, analyst_type), signal in llm_cache.items():
+            records.append(
+                StockSignalRecord(
+                    date=sig_date,
+                    symbol=symbol,
+                    analyst_type=analyst_type,
+                    bullish_score=signal.bullish_score,
+                    confidence=signal.confidence,
+                    summary=signal.summary,
+                )
+            )
+        return records
+
+    @staticmethod
+    def _collect_cache_stats_from_context(ctx) -> tuple[int, int]:
+        """Return (hits, misses) from ctx.llm_response_cache, or (0, 0) if absent."""
+        cache = getattr(ctx, "llm_response_cache", None)
+        if cache is None:
+            return (0, 0)
+        return (cache.hits, cache.misses)
+
     # Keep backward-compatible instance method that delegates to module function
     def _compute_rebalance_schedule(
         self,
@@ -240,6 +273,9 @@ class BacktestEngine:
             rebalance_count=actual_rebalances,
             duration_seconds=duration,
             error_message=error_message,
+            signals=BacktestEngine._collect_signals_from_context(ctx),
+            llm_cache_hits=BacktestEngine._collect_cache_stats_from_context(ctx)[0],
+            llm_cache_misses=BacktestEngine._collect_cache_stats_from_context(ctx)[1],
         )
 
     async def run(
@@ -254,8 +290,18 @@ class BacktestEngine:
         from app.modules.equities.config import EquitiesConfig
 
         ctx = await BacktestContext.build(config, live_config or EquitiesConfig())
-        return await self._run_simulation(
-            ctx, config,
-            backtest_id=backtest_id,
-            progress_callback=progress_callback,
-        )
+        try:
+            return await self._run_simulation(
+                ctx, config,
+                backtest_id=backtest_id,
+                progress_callback=progress_callback,
+            )
+        finally:
+            # _run_simulation reads ctx.llm_response_cache.hits/misses while
+            # constructing BacktestResult, so by the time we reach this finally
+            # block the stats have already been captured. Closing here releases
+            # the SQLite file handle so multiple sequential backtest runs in
+            # one process (e.g. Phase 3 variance probes) don't accumulate them.
+            cache = getattr(ctx, "llm_response_cache", None)
+            if cache is not None:
+                cache.close()

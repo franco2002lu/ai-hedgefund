@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import timedelta
+from pathlib import Path
 
 from app.common.interfaces.time import TimeProvider
 from app.modules.backtest.time_provider import LiveTimeProvider
@@ -26,12 +27,14 @@ class TechnicalAnalyst:
         llm_client=None,
         time_provider: TimeProvider | None = None,
         branch_name: str = "",
+        skills_dir: Path | None = None,
     ) -> None:
         self.config = config
         self.data_service = data_service
         self.llm_client = llm_client
         self.time_provider = time_provider or LiveTimeProvider()
         self.branch_name = branch_name
+        self.skills_dir = skills_dir
 
     async def analyze(self, stock: UniverseStock) -> StockSignal:
         end_date = self.time_provider.today()
@@ -49,7 +52,7 @@ class TechnicalAnalyst:
             as_of_date=end_date,
         )
         system_prompt = compose_system_prompt(
-            self.ANALYST_TYPE, self.branch_name, stock.sector
+            self.ANALYST_TYPE, self.branch_name, stock.sector, self.skills_dir
         )
         prompt = (
             f"{context}\n\n"

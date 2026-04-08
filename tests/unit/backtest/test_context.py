@@ -5,6 +5,9 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import NAMESPACE_DNS, uuid5
 
+import pytest
+
+from app.modules.backtest.config import BacktestConfig
 from app.modules.backtest.context import BacktestContext
 from app.modules.backtest.time_provider import BacktestTimeProvider
 from app.modules.equities.config import EquitiesConfig
@@ -195,3 +198,41 @@ class TestBacktestContext:
         ctx = await BacktestContext.build(config, EquitiesConfig())
 
         assert ctx.equities_service.universe_provider is not None
+
+
+class TestBundleResolutionAndCache:
+    def test_missing_skills_bundle_raises_value_error(self, tmp_path):
+        """If config.skills_bundle is set but the directory doesn't exist, setup raises."""
+        config = BacktestConfig(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            use_llm_agents=True,
+            skills_bundle="nonexistent_bundle",
+        )
+        with pytest.raises(ValueError, match="Skill bundle not found"):
+            asyncio.run(BacktestContext.resolve_skills_bundle(config, bundles_root=tmp_path))
+
+    def test_none_skills_bundle_returns_none(self, tmp_path):
+        config = BacktestConfig(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            use_llm_agents=True,
+            skills_bundle=None,
+        )
+        path = asyncio.run(BacktestContext.resolve_skills_bundle(config, bundles_root=tmp_path))
+        assert path is None
+
+    def test_existing_skills_bundle_returns_path(self, tmp_path):
+        bundle_dir = tmp_path / "my_bundle"
+        (bundle_dir / "base").mkdir(parents=True)
+        (bundle_dir / "base" / "fundamentals.md").write_text("# x")
+        (bundle_dir / "output_format.md").write_text("## out")
+
+        config = BacktestConfig(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            use_llm_agents=True,
+            skills_bundle="my_bundle",
+        )
+        path = asyncio.run(BacktestContext.resolve_skills_bundle(config, bundles_root=tmp_path))
+        assert path == bundle_dir

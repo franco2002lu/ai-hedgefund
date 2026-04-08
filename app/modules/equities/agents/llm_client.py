@@ -5,6 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.modules.backtest.llm_response_cache import LLMResponseCache
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +21,16 @@ class AnthropicAnalystClient:
     where result is a dict with keys: bullish_score, confidence, summary.
     """
 
-    def __init__(self, model: str = "claude-sonnet-4-6", temperature: float = 0.3):
+    def __init__(
+        self,
+        model: str = "claude-sonnet-4-6",
+        temperature: float = 0.3,
+        response_cache: LLMResponseCache | None = None,
+    ):
         self._client = None
         self.model = model
         self.temperature = temperature
+        self._response_cache = response_cache
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -52,6 +62,14 @@ class AnthropicAnalystClient:
         """
         if self._client is None:
             raise RuntimeError("ANTHROPIC_API_KEY not set — cannot invoke LLM analyst")
+
+        # Cache lookup — only when both a cache and a system_prompt are present
+        if self._response_cache is not None and system_prompt is not None:
+            cached = self._response_cache.get(
+                system_prompt, prompt, self.model, self.temperature
+            )
+            if cached is not None:
+                return cached
 
         if system_prompt is not None:
             system = [
@@ -98,4 +116,9 @@ class AnthropicAnalystClient:
         if "summary" not in parsed or not parsed["summary"]:
             parsed["summary"] = "No analysis available."
 
+        # Store in cache on miss
+        if self._response_cache is not None and system_prompt is not None:
+            self._response_cache.put(
+                system_prompt, prompt, self.model, self.temperature, parsed
+            )
         return parsed

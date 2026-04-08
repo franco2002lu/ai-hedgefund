@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from app.common.interfaces.time import TimeProvider
 from app.modules.backtest.time_provider import LiveTimeProvider
@@ -26,6 +27,7 @@ class FundamentalsAnalyst:
         llm_client=None,
         time_provider: TimeProvider | None = None,
         branch_name: str = "",
+        skills_dir: Path | None = None,
     ) -> None:
         self.config = config
         self.data_service = data_service
@@ -34,6 +36,7 @@ class FundamentalsAnalyst:
         self._explicit_time_provider = time_provider is not None
         self.time_provider = time_provider or LiveTimeProvider()
         self.branch_name = branch_name
+        self.skills_dir = skills_dir
 
     async def analyze(self, stock: UniverseStock) -> StockSignal:
         kwargs: dict = {}
@@ -55,7 +58,7 @@ class FundamentalsAnalyst:
             earnings=earnings[:4],
         )
         system_prompt = compose_system_prompt(
-            self.ANALYST_TYPE, self.branch_name, stock.sector
+            self.ANALYST_TYPE, self.branch_name, stock.sector, self.skills_dir
         )
         prompt = (
             f"{context}\n\n"

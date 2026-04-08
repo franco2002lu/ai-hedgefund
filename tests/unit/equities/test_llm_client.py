@@ -26,6 +26,7 @@ def _make_client_with_mock(response_text: str) -> tuple[AnthropicAnalystClient, 
     client = AnthropicAnalystClient.__new__(AnthropicAnalystClient)
     client.model = "claude-sonnet-4-6"
     client.temperature = 0.3
+    client._response_cache = None
     mock_api = AsyncMock()
     mock_api.messages.create = AsyncMock(return_value=_make_response(response_text))
     client._client = mock_api
@@ -146,3 +147,99 @@ class TestAnthropicAnalystClient:
 
         call_kwargs = mock_api.messages.create.call_args.kwargs
         assert call_kwargs["max_tokens"] == 512
+
+
+# ---------------------------------------------------------------------------
+# response_cache integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicAnalystClientResponseCache:
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_api_call(self, tmp_path):
+        from unittest.mock import AsyncMock
+
+        from app.modules.backtest.llm_response_cache import LLMResponseCache
+        from app.modules.equities.agents.llm_client import AnthropicAnalystClient
+
+        cache = LLMResponseCache(tmp_path / "cache.db")
+        try:
+            cache.put(
+                system_prompt="sys",
+                user_prompt="usr",
+                model="claude-sonnet-4-6",
+                temperature=0.0,
+                response={"bullish_score": 9, "confidence": 8, "summary": "cached"},
+            )
+            client = AnthropicAnalystClient(
+                model="claude-sonnet-4-6",
+                temperature=0.0,
+                response_cache=cache,
+            )
+            # Swap in a mock that would FAIL the test if called
+            client._client = AsyncMock()
+            client._client.messages.create.side_effect = AssertionError(
+                "should not hit API on cache hit"
+            )
+
+            result = await client.invoke("usr", system_prompt="sys")
+            assert result == {"bullish_score": 9, "confidence": 8, "summary": "cached"}
+            assert cache.hits == 1
+            assert cache.misses == 0
+        finally:
+            cache.close()
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_calls_api_and_stores_result(self, tmp_path):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.modules.backtest.llm_response_cache import LLMResponseCache
+        from app.modules.equities.agents.llm_client import AnthropicAnalystClient
+
+        cache = LLMResponseCache(tmp_path / "cache.db")
+        try:
+            client = AnthropicAnalystClient(
+                model="claude-sonnet-4-6",
+                temperature=0.0,
+                response_cache=cache,
+            )
+            # Mock the API response
+            fake_response = MagicMock()
+            fake_response.content = [MagicMock(text='{"bullish_score": 6, "confidence": 5, "summary": "mock"}')]
+            client._client = AsyncMock()
+            client._client.messages.create = AsyncMock(return_value=fake_response)
+
+            result = await client.invoke("usr", system_prompt="sys")
+            assert result == {"bullish_score": 6, "confidence": 5, "summary": "mock"}
+            assert cache.misses == 1
+            # Second call should hit cache, not API
+            client._client.messages.create.reset_mock()
+            client._client.messages.create.side_effect = AssertionError("should be cached now")
+            result2 = await client.invoke("usr", system_prompt="sys")
+            assert result2 == result
+            assert cache.hits == 1
+        finally:
+            cache.close()
+
+    @pytest.mark.asyncio
+    async def test_no_cache_when_response_cache_is_none(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.modules.equities.agents.llm_client import AnthropicAnalystClient
+
+        client = AnthropicAnalystClient(
+            model="claude-sonnet-4-6",
+            temperature=0.0,
+            response_cache=None,
+        )
+        fake_response = MagicMock()
+        fake_response.content = [MagicMock(text='{"bullish_score": 5, "confidence": 5, "summary": "no cache"}')]
+        client._client = AsyncMock()
+        client._client.messages.create = AsyncMock(return_value=fake_response)
+
+        result = await client.invoke("usr", system_prompt="sys")
+        assert result["bullish_score"] == 5
+        # Second call should hit API again (no cache)
+        result2 = await client.invoke("usr", system_prompt="sys")
+        assert result2["bullish_score"] == 5
+        assert client._client.messages.create.call_count == 2

@@ -153,3 +153,22 @@ class TestTechnicalAnalyst:
         user_prompt = llm_client.invoke.call_args.args[0]
         assert "AAPL" in user_prompt
         assert "bullish_score (1-10)" not in user_prompt
+
+
+class TestTechnicalAnalystSkillsDir:
+    def test_stores_skills_dir_on_init(self, tmp_path):
+        from app.modules.equities.agents.technical_analyst import TechnicalAnalyst
+        from app.modules.equities.config import AnalystLLMConfig
+
+        analyst = TechnicalAnalyst(
+            config=AnalystLLMConfig(),
+            skills_dir=tmp_path,
+        )
+        assert analyst.skills_dir == tmp_path
+
+    def test_default_skills_dir_is_none(self):
+        from app.modules.equities.agents.technical_analyst import TechnicalAnalyst
+        from app.modules.equities.config import AnalystLLMConfig
+
+        analyst = TechnicalAnalyst(config=AnalystLLMConfig())
+        assert analyst.skills_dir is None

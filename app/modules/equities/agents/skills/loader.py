@@ -31,16 +31,20 @@ def _read_skill(path: Path) -> str | None:
     return None
 
 
-@lru_cache(maxsize=1)
-def _load_output_format() -> str:
+@lru_cache(maxsize=8)
+def _load_output_format(skills_dir_str: str = "") -> str:
     """Load the shared output format layer.
 
-    This layer is required — every composed prompt must end with it so analysts
-    know the JSON schema and pre-response checklist. Cached because the file
-    contents never change at runtime, and identical strings are needed for
-    Anthropic prompt caching.
+    Takes a string path argument (not Path) so lru_cache can hash it. Empty
+    string means "use the package default _SKILLS_DIR".
+
+    maxsize=8 (not 1) so multiple skill bundles can coexist in cache when
+    the same Python process runs backtests against different bundles, which
+    Phase 3 variance probing requires. Identical strings remain stable
+    across calls — Anthropic prompt caching needs that for cache hits.
     """
-    path = _SKILLS_DIR / "output_format.md"
+    root = Path(skills_dir_str) if skills_dir_str else _SKILLS_DIR
+    path = root / "output_format.md"
     content = _read_skill(path)
     if content is None:
         raise MissingSkillError(
@@ -68,6 +72,7 @@ def compose_system_prompt(
     analyst_type: str,
     branch_name: str = "",
     sector: str | None = None,
+    skills_dir: Path | None = None,
 ) -> str:
     """Compose system prompt by layering: base + branch + sector + output format.
 
@@ -75,14 +80,19 @@ def compose_system_prompt(
         analyst_type: "fundamentals" | "technical" | "news"
         branch_name: "growth" | "value" | "test_growth" | "" etc.
         sector: GICS sector from UniverseStock (optional, for future sector overlays)
+        skills_dir: Override the package-default skills directory. When None,
+            uses the live app/modules/equities/agents/skills/ files. When set,
+            all layer files are read from this alternate directory — used by
+            backtests to load alternate skill bundles.
 
     Returns:
         Composed system prompt string with all applicable layers joined by --- separators.
     """
+    root = skills_dir if skills_dir is not None else _SKILLS_DIR
     layers: list[str] = []
 
     # 1. Base skill (required)
-    base = _read_skill(_SKILLS_DIR / "base" / f"{analyst_type}.md")
+    base = _read_skill(root / "base" / f"{analyst_type}.md")
     if base:
         layers.append(base)
     else:
@@ -92,7 +102,7 @@ def compose_system_prompt(
     if branch_name:
         branch_key = _normalize_branch(branch_name)
         branch_skill = _read_skill(
-            _SKILLS_DIR / "branches" / branch_key / f"{analyst_type}.md"
+            root / "branches" / branch_key / f"{analyst_type}.md"
         )
         if branch_skill:
             layers.append(branch_skill)
@@ -100,12 +110,12 @@ def compose_system_prompt(
     # 3. Sector overlay (optional, Phase 2)
     if sector:
         sector_key = _normalize_sector(sector)
-        sector_skill = _read_skill(_SKILLS_DIR / "sectors" / f"{sector_key}.md")
+        sector_skill = _read_skill(root / "sectors" / f"{sector_key}.md")
         if sector_skill:
             layers.append(sector_skill)
 
     # 4. Output format (always last, required)
-    layers.append(_load_output_format())
+    layers.append(_load_output_format(str(skills_dir) if skills_dir is not None else ""))
 
     return _SEPARATOR.join(layers)
 

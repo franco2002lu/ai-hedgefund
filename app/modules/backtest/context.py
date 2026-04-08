@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import NAMESPACE_DNS, uuid5
+
+if TYPE_CHECKING:
+    from app.modules.backtest.llm_response_cache import LLMResponseCache
 
 from app.modules.backtest.adapters.backtest_broker import BacktestBrokerAdapter
 from app.modules.backtest.adapters.historical_data import (
@@ -60,6 +66,27 @@ class BacktestContext:
         self.llm_cache: dict = {}
         self.llm_counter: list[int] = [0]
         self.llm_wrappers: list[CachedAnalystWrapper] = []
+        self.llm_response_cache: LLMResponseCache | None = None
+
+    @staticmethod
+    async def resolve_skills_bundle(
+        config: BacktestConfig,
+        bundles_root: Path = Path("data/skill_bundles"),
+    ) -> Path | None:
+        """Resolve config.skills_bundle to a concrete directory path.
+
+        Returns None if skills_bundle is None or equal to "live".
+        Raises ValueError if the bundle is set but the directory doesn't exist.
+        """
+        if config.skills_bundle is None or config.skills_bundle == "live":
+            return None
+        path = bundles_root / config.skills_bundle
+        if not path.is_dir():
+            raise ValueError(
+                f"Skill bundle not found: {path}. "
+                f"Run: python -m scripts.bundle_skills {config.skills_bundle}"
+            )
+        return path
 
     @classmethod
     async def build(
@@ -85,10 +112,8 @@ class BacktestContext:
         csv_symbols: list[str] = []
         if not snapshot_symbols:
             csv_path = f"{universe_provider.csv_dir}/{config.branch_name}_universe.csv"
-            try:
+            with contextlib.suppress(Exception):
                 csv_symbols = universe_provider._load_symbols(csv_path)
-            except Exception:
-                pass
 
         # 2c. Union all symbols for OHLCV preload.
         # sorted() is required: list(set(...)) produces hash-randomized order for
@@ -202,6 +227,7 @@ class BacktestContext:
         effective_config = config.equities_config_override or live_config
 
         if config.use_llm_agents:
+            from app.modules.backtest.llm_response_cache import LLMResponseCache
             from app.modules.equities.agents.fundamentals_analyst import FundamentalsAnalyst
             from app.modules.equities.agents.llm_client import AnthropicAnalystClient
             from app.modules.equities.agents.news_analyst import NewsAnalyst
@@ -209,13 +235,24 @@ class BacktestContext:
 
             llm_cfg = effective_config.agents
 
+            # Resolve the optional skill bundle (raises if misconfigured)
+            skills_dir = await BacktestContext.resolve_skills_bundle(config)
+
+            # Construct the response cache once if enabled; pass it to all three clients
+            response_cache: LLMResponseCache | None = None
+            if config.use_llm_response_cache:
+                response_cache = LLMResponseCache(config.llm_response_cache_path)
+                ctx.llm_response_cache = response_cache  # keep a reference for end-of-run stats
+
             raw_news = NewsAnalyst(
                 config=llm_cfg.news_analyst,
                 data_service=data_service,
                 llm_client=AnthropicAnalystClient(
                     model=llm_cfg.news_analyst.model,
                     temperature=llm_cfg.news_analyst.temperature,
+                    response_cache=response_cache,
                 ),
+                skills_dir=skills_dir,
             )
             raw_fundamentals = FundamentalsAnalyst(
                 config=llm_cfg.fundamentals_analyst,
@@ -223,8 +260,10 @@ class BacktestContext:
                 llm_client=AnthropicAnalystClient(
                     model=llm_cfg.fundamentals_analyst.model,
                     temperature=llm_cfg.fundamentals_analyst.temperature,
+                    response_cache=response_cache,
                 ),
                 time_provider=tp,
+                skills_dir=skills_dir,
             )
             raw_technical = TechnicalAnalyst(
                 config=llm_cfg.technical_analyst,
@@ -232,8 +271,10 @@ class BacktestContext:
                 llm_client=AnthropicAnalystClient(
                     model=llm_cfg.technical_analyst.model,
                     temperature=llm_cfg.technical_analyst.temperature,
+                    response_cache=response_cache,
                 ),
                 time_provider=tp,
+                skills_dir=skills_dir,
             )
 
             cache_cfg = config.llm_config

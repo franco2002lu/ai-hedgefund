@@ -331,3 +331,63 @@ class TestErrorHandling:
 
         # Should have snapshots for days 0-4 (before the crash on day 5)
         assert len(result.snapshots) >= 5
+
+
+# ---------------------------------------------------------------------------
+# TestEngineLLMSignalCapture
+# ---------------------------------------------------------------------------
+
+
+class TestEngineLLMSignalCapture:
+    async def test_signals_populated_from_ctx_llm_cache(self, monkeypatch):
+        """When ctx.llm_cache has entries at end-of-run, they land in result.signals."""
+        from app.modules.backtest.context import BacktestContext
+        from app.modules.equities.models import StockSignal
+
+        # Fake a minimal BacktestContext with a populated llm_cache
+        fake_ctx = MagicMock(spec=BacktestContext)
+        fake_ctx.llm_cache = {
+            (date(2025, 6, 15), "AAPL", "fundamentals"): StockSignal(
+                symbol="AAPL",
+                analyst_type="fundamentals",
+                bullish_score=7,
+                confidence=8,
+                summary="strong margin",
+            ),
+            (date(2025, 6, 15), "AAPL", "news"): StockSignal(
+                symbol="AAPL",
+                analyst_type="news",
+                bullish_score=6,
+                confidence=5,
+                summary="mixed",
+            ),
+        }
+        fake_cache = MagicMock()
+        fake_cache.hits = 2
+        fake_cache.misses = 0
+        fake_ctx.llm_response_cache = fake_cache
+
+        signals = BacktestEngine._collect_signals_from_context(fake_ctx)
+        hits, misses = BacktestEngine._collect_cache_stats_from_context(fake_ctx)
+
+        assert len(signals) == 2
+        symbols = {s.symbol for s in signals}
+        assert symbols == {"AAPL"}
+        analyst_types = {s.analyst_type for s in signals}
+        assert analyst_types == {"fundamentals", "news"}
+        assert hits == 2
+        assert misses == 0
+
+    def test_no_llm_cache_returns_empty_signals(self):
+        from app.modules.backtest.context import BacktestContext
+
+        fake_ctx = MagicMock(spec=BacktestContext)
+        fake_ctx.llm_cache = {}
+        fake_ctx.llm_response_cache = None
+
+        signals = BacktestEngine._collect_signals_from_context(fake_ctx)
+        hits, misses = BacktestEngine._collect_cache_stats_from_context(fake_ctx)
+
+        assert signals == []
+        assert hits == 0
+        assert misses == 0

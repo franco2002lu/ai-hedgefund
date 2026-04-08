@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from app.modules.equities.agents.context_formatters import format_news_context
 from app.modules.equities.agents.skills.loader import compose_system_prompt
@@ -22,11 +23,13 @@ class NewsAnalyst:
         data_service=None,
         llm_client=None,
         branch_name: str = "",
+        skills_dir: Path | None = None,
     ) -> None:
         self.config = config
         self.data_service = data_service
         self.llm_client = llm_client
         self.branch_name = branch_name
+        self.skills_dir = skills_dir
 
     async def analyze(self, stock: UniverseStock) -> StockSignal:
         news_data = await self.data_service.get_news(symbols=[stock.symbol])
@@ -38,7 +41,7 @@ class NewsAnalyst:
             articles=articles[:20],
         )
         system_prompt = compose_system_prompt(
-            self.ANALYST_TYPE, self.branch_name, stock.sector
+            self.ANALYST_TYPE, self.branch_name, stock.sector, self.skills_dir
         )
         prompt = (
             f"{context}\n\n"

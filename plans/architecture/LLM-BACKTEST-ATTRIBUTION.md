@@ -259,6 +259,15 @@ New flags:
 
 When `--save` is used, the script computes the prompt fingerprint, builds a `BacktestRun` from the engine output, calls `save_run`, and prints the resulting `run_id` so it can be referenced later.
 
+### 6.10. Phase 1 Implementation Notes
+
+Phase 1 was implemented in commits on 2026-04-07 per the implementation plan at `plans/implementation/2026-04-07-llm-backtest-attribution-phase1.md`. Deltas from the original spec:
+
+- **`_load_output_format` now takes a string-path argument** (not `Path`) so `lru_cache` can hash it. Empty string means "use the package default". This is an internal detail; callers of `compose_system_prompt` pass `Path | None` as specified.
+- **`resolve_skills_bundle` accepts `"live"` as a synonym for `None`.** This gives the CLI a way to explicitly say "use the current skills directory" without defaulting.
+- **`LLMResponseCache.hits`/`misses` are instance counters, not persistent columns.** They track the current process's cache activity and are read at end-of-run to populate `BacktestResult.llm_cache_hits`/`llm_cache_misses`. Per-row `hit_count` remains in the SQL schema for future stats queries.
+- **`BacktestEngine._collect_signals_from_context` and `_collect_cache_stats_from_context`** are new static helpers that translate runtime context state into the result schema. Kept static to make them individually unit-testable.
+
 ---
 
 ## 7. Phase 2: Comparison Primitives + Drill-Down
