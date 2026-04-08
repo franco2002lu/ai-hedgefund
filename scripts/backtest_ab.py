@@ -221,7 +221,7 @@ def _diff_trades(a_trades: list[dict], b_trades: list[dict], strict: bool) -> bo
     print(f"    Added (only current):     {len(only_b)}")
 
     if modified:
-        print(f"\n    Modified examples (first 5):")
+        print("\n    Modified examples (first 5):")
         for ta, tb in modified[:5]:
             qty_delta = tb["quantity"] - ta["quantity"]
             price_delta = tb["price"] - ta["price"]
@@ -231,15 +231,21 @@ def _diff_trades(a_trades: list[dict], b_trades: list[dict], strict: bool) -> bo
                 f"price ${ta['price']:>10.4f} → ${tb['price']:<10.4f} (Δ {price_delta:+.4f})"
             )
     if only_a:
-        print(f"\n    Removed examples (first 5):")
+        print("\n    Removed examples (first 5):")
         for k in only_a[:5]:
             t = a_by_key[k]
-            print(f"      {t['trade_date']} {t['side']:4s} {t['symbol']:<6s} qty {t['quantity']:>10.6f} @ ${t['price']:>10.4f}")
+            print(
+                f"      {t['trade_date']} {t['side']:4s} {t['symbol']:<6s} "
+                f"qty {t['quantity']:>10.6f} @ ${t['price']:>10.4f}"
+            )
     if only_b:
-        print(f"\n    Added examples (first 5):")
+        print("\n    Added examples (first 5):")
         for k in only_b[:5]:
             t = b_by_key[k]
-            print(f"      {t['trade_date']} {t['side']:4s} {t['symbol']:<6s} qty {t['quantity']:>10.6f} @ ${t['price']:>10.4f}")
+            print(
+                f"      {t['trade_date']} {t['side']:4s} {t['symbol']:<6s} "
+                f"qty {t['quantity']:>10.6f} @ ${t['price']:>10.4f}"
+            )
 
     return bool(modified or only_a or only_b)
 
@@ -270,7 +276,7 @@ def _diff_nav(a_snaps: list[dict], b_snaps: list[dict], strict: bool) -> bool:
     b_last = b_by_date[last_d]["nav"]
     final_delta = b_last - a_last
 
-    print(f"\n  NAV:")
+    print("\n  NAV:")
     if first_diff_date is None:
         tol_label = "bit-exact" if strict else f"|Δ|≤${nav_tol:.2f}"
         print(f"    No divergence — NAVs match across all {len(common_dates)} days ({tol_label})")
@@ -287,7 +293,7 @@ def run_diff(baseline_path: Path, current_path: Path, strict: bool) -> int:
     a = json.loads(baseline_path.read_text())
     b = json.loads(current_path.read_text())
 
-    print(f"Comparing:")
+    print("Comparing:")
     print(f"  baseline: {baseline_path}")
     print(f"  current:  {current_path}")
     print(f"  mode:     {'strict (bit-exact)' if strict else 'tolerance (ignores float-precision noise)'}")

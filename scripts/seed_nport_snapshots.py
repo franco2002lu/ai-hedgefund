@@ -21,7 +21,7 @@ import os
 from datetime import date, timedelta
 from pathlib import Path
 
-from app.modules.data_platform.adapters.nport_client import NPortClient, SERIES_MAP, VANGUARD_CIK
+from app.modules.data_platform.adapters.nport_client import SERIES_MAP, VANGUARD_CIK, NPortClient
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)

@@ -254,7 +254,9 @@ class NPortClient:
                 )
                 continue
 
-            for cusip, result in zip(batch, results):
+            # strict=True: OpenFIGI returns exactly one result per requested
+            # CUSIP (empty data field on failure, never missing entries).
+            for cusip, result in zip(batch, results, strict=True):
                 data = result.get("data", [])
                 if data:
                     ticker = data[0].get("ticker")
