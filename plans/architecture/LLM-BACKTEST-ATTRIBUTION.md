@@ -557,6 +557,16 @@ Experiment saved: data/experiments/2026-04-06T14-32-15_abc123de.json
 ================================================================
 ```
 
+### 8.8. Phase 3 Implementation Notes
+
+Phase 3 was implemented per the implementation plan at `plans/implementation/2026-04-09-llm-backtest-attribution-phase3.md`. Deltas from the original spec:
+
+- **Verdict thresholds support opt-in t-distribution correction** via `--t-correction` flag on `run_experiment.py`. Default remains fixed 1σ/2σ per the spec. The t-critical values are hardcoded for df=2..29 (no scipy dependency); beyond df=29, t ≈ z and the fixed thresholds apply. This was added because N=5 probe runs don't satisfy normality assumptions, and the t-correction is the conservative alternative.
+- **`hash_experiment_config` takes an `AgentsConfig` parameter** in addition to `BacktestConfig`, because per-analyst model and temperature are on `AgentsConfig`, not `BacktestConfig`. The spec listed model/temperature as included fields but didn't specify how to access them. `initial_capital` was added to the hash (spec was ambiguous); `benchmark_symbols` was excluded (post-hoc computation, doesn't affect noise).
+- **Cost estimation uses a per-analyst model lookup table** (`_COST_PER_CALL_BY_MODEL`) instead of a single flat rate. The probe_noise cost confirmation shows per-analyst model + cost breakdown. Unknown models fall back to `_DEFAULT_COST_PER_CALL = 0.012` with a warning note.
+- **Low-sample footnote on verdict table** when N < 5 (e.g., `--runs 3`). The `--runs` flag has guardrails: min=3 (hard error), warn above 10 (diminishing returns). No "LOW CONFIDENCE" verdict label — a single footnote is cleaner.
+- **`ExperimentRunner._run_backtest` is abstract** (raises `NotImplementedError`). The CLI scripts subclass it with real engine wiring. This avoids the runner importing heavy backtest infrastructure at module load time and makes unit testing trivial (mock the method).
+
 ---
 
 ## 9. Data Flow — One Full Experiment Cycle

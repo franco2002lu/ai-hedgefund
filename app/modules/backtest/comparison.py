@@ -504,7 +504,8 @@ _METRIC_BANNER = (
     "═══════════════════════════════════════════════════════════════════\n"
     "  RAW METRIC DELTAS — NO NOISE FLOOR, NO SIGNIFICANCE TESTING\n"
     "  A small delta may be indistinguishable from run-to-run noise.\n"
-    "  Phase 3 (not yet shipped) will add per-metric verdict labels.\n"
+    "  Use `run_experiment` for per-metric verdict labels (LIKELY /\n"
+    "  POSSIBLE / WITHIN NOISE) backed by a noise floor estimate.\n"
     "═══════════════════════════════════════════════════════════════════"
 )
 

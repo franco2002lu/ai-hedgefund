@@ -701,7 +701,7 @@ class TestFormatMetricTable:
         assert "RAW METRIC DELTAS" in output
         assert "NO NOISE FLOOR" in output
         assert "NO SIGNIFICANCE TESTING" in output
-        assert "Phase 3" in output
+        assert "run_experiment" in output
 
     def test_uses_delta_raw_column_label(self) -> None:
         baseline = _make_backtest_run(run_id="b")

@@ -1,10 +1,16 @@
-from datetime import date
+from datetime import date, timedelta
 from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, model_validator
 
 from app.modules.equities.config import EquitiesConfig
+
+
+class BacktestTier(StrEnum):
+    QUICK = "quick"  # top 20, 6 months, weekly
+    MEDIUM = "medium"  # top 50, 1 year, weekly
+    FULL = "full"  # top 100, 2 years, weekly
 
 
 class RebalanceFrequency(StrEnum):
@@ -80,3 +86,51 @@ class BacktestConfig(BaseModel):
         if self.cash_yield_rate < 0:
             raise ValueError("cash_yield_rate must be non-negative")
         return self
+
+
+# ── Phase 3: Tier presets ──────────────────────────────────────────────────
+
+TIER_PRESETS: dict[BacktestTier, dict] = {
+    BacktestTier.QUICK: {
+        "top_n": 20,
+        "duration_days": 180,
+        "rebalance_frequency": RebalanceFrequency.WEEKLY,
+    },
+    BacktestTier.MEDIUM: {
+        "top_n": 50,
+        "duration_days": 365,
+        "rebalance_frequency": RebalanceFrequency.WEEKLY,
+    },
+    BacktestTier.FULL: {
+        "top_n": 100,
+        "duration_days": 730,
+        "rebalance_frequency": RebalanceFrequency.WEEKLY,
+    },
+}
+
+
+def config_from_preset(
+    preset: BacktestTier,
+    branch_name: str,
+    end_date: date | None = None,
+    **overrides,
+) -> BacktestConfig:
+    """Build a BacktestConfig from a tier preset.
+
+    start_date is computed as end_date - duration_days from the preset.
+    end_date defaults to today if not provided. use_llm_agents is forced
+    True (tier presets exist only for LLM-mode experiments).
+    """
+    tier = TIER_PRESETS[preset]
+    if end_date is None:
+        end_date = date.today()
+    start_date = end_date - timedelta(days=tier["duration_days"])
+    return BacktestConfig(
+        start_date=start_date,
+        end_date=end_date,
+        top_n=tier["top_n"],
+        rebalance_frequency=tier["rebalance_frequency"],
+        branch_name=branch_name,
+        use_llm_agents=True,
+        **overrides,
+    )

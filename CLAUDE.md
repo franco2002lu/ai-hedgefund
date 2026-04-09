@@ -37,6 +37,12 @@ python -m scripts.bundle_skills baseline_v1                      # snapshot curr
 python -m scripts.run_backtest 2025-01-01 2025-06-30 growth --top-n 20 --llm --save
 python -m scripts.run_backtest 2025-01-01 2025-06-30 growth --top-n 20 --llm --skills-bundle baseline_v1 --save
 # Second run with same args is bit-identical (100% cache hit). Disable cache with --no-llm-cache.
+# Phase 3 — variance probing and experiment harness
+python -m scripts.probe_noise --preset medium --branch growth --end-date 2025-12-31 --runs 5 --yes
+python -m scripts.run_experiment --preset medium --branch growth --end-date 2025-12-31 \
+    --baseline-bundle baseline_v1 --treatment-bundle live
+python -m scripts.run_experiment --preset quick --branch growth --end-date 2025-06-30 \
+    --baseline-bundle baseline_v1 --treatment-bundle live --t-correction
 pytest tests/unit/backtest/ -q                  # backtest unit tests
 
 # Lint and format (ruff)
