@@ -58,6 +58,7 @@ def _make_mock_context(
     ctx.trade_execution_service = AsyncMock()
     ctx.event_log = AsyncMock()
     ctx.instrument_ids = {"AAPL": "uuid-aapl"}
+    ctx.effective_agents_config = None
     return ctx
 
 
@@ -391,3 +392,31 @@ class TestEngineLLMSignalCapture:
         assert signals == []
         assert hits == 0
         assert misses == 0
+
+
+class TestCollectAgentsConfigFromContext:
+    def test_reads_effective_agents_config_from_context(self) -> None:
+        from types import SimpleNamespace
+
+        from app.modules.equities.config import AgentsConfig, AnalystLLMConfig
+
+        agents = AgentsConfig(
+            news_analyst=AnalystLLMConfig(model="claude-sonnet-4-6", temperature=0.3),
+            fundamentals_analyst=AnalystLLMConfig(model="claude-sonnet-4-6", temperature=0.5),
+            technical_analyst=AnalystLLMConfig(model="claude-opus-4-6", temperature=0.2),
+        )
+        ctx = SimpleNamespace(effective_agents_config=agents)
+
+        result = BacktestEngine._collect_agents_config_from_context(ctx)
+
+        assert result is not None
+        assert result.news_analyst.model == "claude-sonnet-4-6"
+        assert result.fundamentals_analyst.temperature == 0.5
+        assert result.technical_analyst.model == "claude-opus-4-6"
+
+    def test_returns_none_when_attribute_missing(self) -> None:
+        from types import SimpleNamespace
+
+        ctx = SimpleNamespace()
+        result = BacktestEngine._collect_agents_config_from_context(ctx)
+        assert result is None

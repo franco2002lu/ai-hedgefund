@@ -330,6 +330,18 @@ python -m scripts.inspect_run <run_id>
 
 Single-run summary: config, prompt fingerprint, all metrics, signal count broken down by analyst type, LLM cache hit rate, git SHA, timestamp. Mirrors the existing `run_backtest.py` print format so old runs can be re-read in the same way.
 
+### 7.4. Phase 2 Implementation Notes
+
+Phase 2 was implemented per the implementation plan at `plans/implementation/2026-04-08-llm-backtest-attribution-phase2.md`. Deltas from the original spec:
+
+- **`SignalDivergence` carries both baseline and treatment confidence fields**, not just the `impact` scalar. This was necessary to render the drilldown with per-side confidence numbers and to power the `--min-confidence` filter and `--include-conviction-shifts` flag. The spec's original field list implicitly collapsed them into `impact`.
+- **Compatibility check's `model` and `temperature` comparison** was blocked by a Phase 1 gap: `BacktestConfig` doesn't store these values — they live on `EquitiesConfig.agents.{analyst}.{model,temperature}` and are resolved at runtime in `BacktestContext`. Phase 2 closes the gap by adding `effective_agents_config: AgentsConfig | None` to `BacktestRun` and `BacktestResult`, populated by a new `BacktestEngine._collect_agents_config_from_context` static helper that reads `ctx.effective_agents_config` (stashed during `BacktestContext.create`). Runs saved before Phase 2 have this field as `None` and emit a single "cannot verify model/temperature" warning during comparison instead of per-analyst mismatches.
+- **High-drift auto-warning threshold is 10%**, configured in `comparison._HIGH_DRIFT_THRESHOLD`. Chosen as a round number large enough to tolerate a few drift cells on small post-screening universes (the real Phase 1 saved run has 14 signals total) without firing on every comparison, while still loud enough to catch the scenario where screening output differs materially between runs.
+- **Conviction shifts (`score_delta == 0` but confidence moved) live in `RunComparison.conviction_shifts`**, a separate list from `signal_divergences`. They're excluded by default per the spec ("skip if score_delta == 0") and opted in via `--include-conviction-shifts`. Impact formula for conviction shifts is `|conf_delta| × score` (where `score` is the shared bullish_score), distinct from the main formula `|score_delta| × max(conf)`.
+- **`compare_runs --json` schema is curated**, not a full `BacktestRun` dump. The fields are: `baseline_run_id`, `treatment_run_id`, `baseline_skill_bundle_hash`, `treatment_skill_bundle_hash`, `generated_at`, `compatibility_warnings`, `metric_deltas`, `signal_divergences`, `conviction_shifts`, `universe_drift`. Consumers who need the full runs can reload them by run_id via `result_store.load_run` or `inspect_run --json`. Drilldown truncation (`--top-n`) does NOT apply to the JSON output — every divergence and drift cell is always included.
+- **`inspect_run` default output summarizes trades**, not dumps them. A weekly-rebalance run with top_n=20 over a year can have hundreds of trades; dumping by default would drown the header. `--trades` is the opt-in to see the full list. Same reasoning for `--signals`, `--snapshots`.
+- **`inspect_run --json` filters are preserved in the JSON payload** — `--symbol` and `--analyst-type` filter the signals/trades arrays even in JSON mode. All other text-section flags are ignored in `--json` mode.
+
 ---
 
 ## 8. Phase 3: Variance Probing + Experiment Harness + Statistical Reporting

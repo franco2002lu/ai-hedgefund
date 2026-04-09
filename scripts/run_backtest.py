@@ -202,6 +202,7 @@ async def run_one(
             signals=result.signals,
             llm_cache_hits=result.llm_cache_hits,
             llm_cache_misses=result.llm_cache_misses,
+            effective_agents_config=result.effective_agents_config,
         )
         save_path = save_run(run)
         print(f"\nSaved run: {run_id}")

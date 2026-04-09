@@ -63,3 +63,6 @@ data/noise_floor_cache.db-shm
 
 # Logs
 *.log
+
+# Git worktrees
+.worktrees/

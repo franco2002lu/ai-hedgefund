@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from app.modules.equities.config import AgentsConfig
+
 if TYPE_CHECKING:
     from app.modules.backtest.result_store import StockSignalRecord
 
@@ -84,6 +86,7 @@ class BacktestResult(BaseModel):
     signals: list["StockSignalRecord"] = []
     llm_cache_hits: int = 0
     llm_cache_misses: int = 0
+    effective_agents_config: AgentsConfig | None = None
 
 
 class ScreeningSnapshot(BaseModel):

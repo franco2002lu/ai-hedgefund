@@ -1,10 +1,17 @@
 """Shared test builders for the backtest module."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.common.interfaces.price_data import PriceBar
 from app.modules.backtest.config import BacktestConfig
-from app.modules.backtest.models import BacktestTrade, DailySnapshot
+from app.modules.backtest.models import (
+    BacktestTrade,
+    BenchmarkComparison,
+    DailySnapshot,
+    PerformanceMetrics,
+)
+from app.modules.backtest.result_store import BacktestRun, StockSignalRecord
+from app.modules.equities.config import AgentsConfig, AnalystLLMConfig
 
 
 def _make_price_bar(**overrides) -> PriceBar:
@@ -102,3 +109,93 @@ def _make_backtest_trade(**overrides) -> BacktestTrade:
     )
     defaults.update(overrides)
     return BacktestTrade(**defaults)
+
+
+def _make_performance_metrics(**overrides) -> PerformanceMetrics:
+    defaults = dict(
+        total_return=0.05,
+        annualized_return=0.12,
+        volatility=0.18,
+        sharpe_ratio=1.2,
+        sortino_ratio=1.8,
+        calmar_ratio=2.0,
+        max_drawdown=0.06,
+        max_drawdown_duration_days=14,
+        total_trades=10,
+        win_rate=0.6,
+        profit_factor=1.5,
+        avg_win=0.02,
+        avg_loss=0.01,
+        avg_position_count=5.0,
+        max_position_count=8,
+        avg_long_exposure=0.9,
+        turnover_rate=3.0,
+        value_at_risk_95=-0.015,
+        conditional_var_95=-0.022,
+        ulcer_index=0.03,
+    )
+    defaults.update(overrides)
+    return PerformanceMetrics(**defaults)
+
+
+def _make_benchmark_comparison(**overrides) -> BenchmarkComparison:
+    defaults = dict(
+        benchmark_symbol="SPY",
+        benchmark_total_return=0.04,
+        benchmark_annualized_return=0.10,
+        benchmark_sharpe=1.1,
+        benchmark_max_drawdown=0.05,
+        alpha=0.02,
+        beta=0.9,
+        information_ratio=0.3,
+        tracking_error=0.08,
+        up_capture_ratio=95.0,
+        down_capture_ratio=85.0,
+    )
+    defaults.update(overrides)
+    return BenchmarkComparison(**defaults)
+
+
+def _make_stock_signal_record(**overrides) -> StockSignalRecord:
+    defaults = dict(
+        date=date(2025, 6, 2),
+        symbol="AMZN",
+        analyst_type="fundamentals",
+        bullish_score=7,
+        confidence=6,
+        summary="Strong earnings growth offset by elevated P/E; moderate conviction.",
+    )
+    defaults.update(overrides)
+    return StockSignalRecord(**defaults)
+
+
+def _make_agents_config(
+    model: str = "claude-sonnet-4-6",
+    temperature: float = 0.3,
+) -> AgentsConfig:
+    return AgentsConfig(
+        news_analyst=AnalystLLMConfig(model=model, temperature=temperature),
+        fundamentals_analyst=AnalystLLMConfig(model=model, temperature=temperature),
+        technical_analyst=AnalystLLMConfig(model=model, temperature=temperature),
+    )
+
+
+def _make_backtest_run(**overrides) -> BacktestRun:
+    defaults = dict(
+        run_id="test_run",
+        timestamp=datetime(2026, 4, 8, 16, 5, 14),
+        git_sha="abc123def456",
+        config=_make_backtest_config(),
+        skill_bundle_name=None,
+        skill_bundle_hash="a" * 64,
+        metrics=_make_performance_metrics(),
+        benchmarks=[_make_benchmark_comparison()],
+        snapshots=[],
+        trades=[],
+        signals=[],
+        llm_cache_hits=0,
+        llm_cache_misses=0,
+        effective_agents_config=_make_agents_config(),
+    )
+    defaults.update(overrides)
+    return BacktestRun(**defaults)

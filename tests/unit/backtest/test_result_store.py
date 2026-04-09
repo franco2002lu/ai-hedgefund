@@ -171,3 +171,60 @@ class TestSaveLoadListRuns:
     def test_list_runs_empty_dir_returns_empty_list(self, tmp_path):
         entries = list_runs(runs_dir=tmp_path)
         assert entries == []
+
+
+class TestBacktestRunEffectiveAgentsConfig:
+    """effective_agents_config captures the per-analyst LLM settings that actually
+    ran, so compare_runs can detect model/temperature drift between runs."""
+
+    def test_round_trip_with_agents_config(self, tmp_path) -> None:
+        from app.modules.equities.config import AgentsConfig, AnalystLLMConfig
+
+        agents = AgentsConfig(
+            news_analyst=AnalystLLMConfig(model="claude-sonnet-4-6", temperature=0.3),
+            fundamentals_analyst=AnalystLLMConfig(model="claude-sonnet-4-6", temperature=0.3),
+            technical_analyst=AnalystLLMConfig(model="claude-sonnet-4-6", temperature=0.3),
+        )
+        run = BacktestRun(
+            run_id="test_run_with_agents",
+            timestamp=datetime(2026, 4, 8, 16, 5, 14),
+            git_sha="abc123",
+            config=BacktestConfig(
+                start_date=date(2025, 1, 1),
+                end_date=date(2025, 6, 30),
+                branch_name="growth",
+            ),
+            skill_bundle_name=None,
+            skill_bundle_hash="a" * 64,
+            metrics=None,
+            effective_agents_config=agents,
+        )
+
+        save_run(run, runs_dir=tmp_path)
+        loaded = load_run("test_run_with_agents", runs_dir=tmp_path)
+
+        assert loaded.effective_agents_config is not None
+        assert loaded.effective_agents_config.news_analyst.model == "claude-sonnet-4-6"
+        assert loaded.effective_agents_config.fundamentals_analyst.temperature == 0.3
+        assert loaded.effective_agents_config.technical_analyst.model == "claude-sonnet-4-6"
+
+    def test_legacy_run_without_agents_config_loads(self, tmp_path) -> None:
+        """Existing saved runs from Phase 1 have no effective_agents_config field;
+        they must still load, with the field defaulting to None."""
+        legacy_json = """{
+            "run_id": "legacy_run",
+            "timestamp": "2026-04-08T16:05:14",
+            "git_sha": "deadbeef",
+            "config": {
+                "start_date": "2025-01-01",
+                "end_date": "2025-06-30",
+                "branch_name": "growth"
+            },
+            "skill_bundle_name": null,
+            "skill_bundle_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "metrics": null
+        }"""
+        (tmp_path / "legacy_run.json").write_text(legacy_json)
+
+        loaded = load_run("legacy_run", runs_dir=tmp_path)
+        assert loaded.effective_agents_config is None

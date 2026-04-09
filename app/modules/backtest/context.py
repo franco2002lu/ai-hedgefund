@@ -225,6 +225,9 @@ class BacktestContext:
 
         # 9. Analysts (quantitative by default)
         effective_config = config.equities_config_override or live_config
+        # Expose effective per-analyst LLM config so BacktestEngine can record it
+        # in BacktestResult.effective_agents_config for Phase 2 compare_runs.
+        ctx.effective_agents_config = effective_config.agents
 
         if config.use_llm_agents:
             from app.modules.backtest.llm_response_cache import LLMResponseCache

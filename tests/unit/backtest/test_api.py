@@ -250,6 +250,7 @@ class TestBackgroundPersistence:
         mock_ctx.trading_days = []
         mock_ctx.rebalance_days = set()
         mock_ctx.trade_repo = None
+        mock_ctx.effective_agents_config = None
         mock_build.return_value = mock_ctx
 
         config = BacktestConfig(
@@ -285,6 +286,7 @@ class TestBackgroundPersistence:
         mock_ctx.trading_days = []
         mock_ctx.rebalance_days = set()
         mock_ctx.trade_repo = None
+        mock_ctx.effective_agents_config = None
         mock_build.return_value = mock_ctx
         mock_persist.side_effect = RuntimeError("DB connection lost")
 

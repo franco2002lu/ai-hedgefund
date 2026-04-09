@@ -19,6 +19,7 @@ from app.modules.backtest.models import (
     DailySnapshot,
     PerformanceMetrics,
 )
+from app.modules.equities.config import AgentsConfig
 
 _EXCLUDED_DIRS = {"__pycache__"}
 
@@ -87,6 +88,7 @@ class BacktestRun(BaseModel):
     signals: list[StockSignalRecord] = []
     llm_cache_hits: int = 0
     llm_cache_misses: int = 0
+    effective_agents_config: AgentsConfig | None = None
 
 
 def save_run(run: BacktestRun, runs_dir: Path = Path("data/backtest_runs")) -> Path:

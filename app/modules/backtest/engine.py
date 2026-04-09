@@ -72,6 +72,16 @@ class BacktestEngine:
             return (0, 0)
         return (cache.hits, cache.misses)
 
+    @staticmethod
+    def _collect_agents_config_from_context(ctx):
+        """Return ctx.effective_agents_config if set, else None.
+
+        Populated by BacktestContext.create() only in the use_llm_agents=True
+        branch; returns None for quantitative backtests where per-analyst LLM
+        config is not meaningful.
+        """
+        return getattr(ctx, "effective_agents_config", None)
+
     # Keep backward-compatible instance method that delegates to module function
     def _compute_rebalance_schedule(
         self,
@@ -276,6 +286,7 @@ class BacktestEngine:
             signals=BacktestEngine._collect_signals_from_context(ctx),
             llm_cache_hits=BacktestEngine._collect_cache_stats_from_context(ctx)[0],
             llm_cache_misses=BacktestEngine._collect_cache_stats_from_context(ctx)[1],
+            effective_agents_config=BacktestEngine._collect_agents_config_from_context(ctx),
         )
 
     async def run(
