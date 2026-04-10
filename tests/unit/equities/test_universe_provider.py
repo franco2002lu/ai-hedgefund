@@ -204,9 +204,12 @@ class TestYahooFinanceFallback:
 
     async def test_fallback_returns_empty_on_api_failure(self):
         """When no CSV and yfinance fails, returns empty list."""
-        with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "app.modules.equities.universe.provider.yf.Ticker",
-            side_effect=Exception("API down"),
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch(
+                "app.modules.equities.universe.provider.yf.Ticker",
+                side_effect=Exception("API down"),
+            ),
         ):
             provider = UniverseProvider(data_service=AsyncMock(), csv_dir=tmpdir)
             result = await provider.get_holdings("growth")
@@ -257,3 +260,76 @@ class TestRefresh:
 
             await provider.get_holdings("growth")  # cache hit
             assert data_service.get_company_facts.call_count == call_count_after_first
+
+
+# ---------------------------------------------------------------------------
+# N-PORT Snapshot Hydration
+# ---------------------------------------------------------------------------
+
+
+def _write_nport_snapshot(tmpdir: str, etf: str, report_date: str, holdings: list[tuple[str, str, float]]) -> None:
+    """Write an N-PORT snapshot CSV: symbol,name,weight."""
+    snapshot_dir = os.path.join(tmpdir, "nport_snapshots")
+    os.makedirs(snapshot_dir, exist_ok=True)
+    path = os.path.join(snapshot_dir, f"{etf.lower()}_{report_date}.csv")
+    with open(path, "w") as f:
+        f.write("symbol,name,weight\n")
+        for sym, name, weight in holdings:
+            f.write(f"{sym},{name},{weight}\n")
+
+
+class TestNPortSnapshotHydration:
+    async def test_snapshot_stocks_have_sector_populated(self):
+        """N-PORT snapshot stocks should be hydrated with sector from get_company_facts().
+
+        This is the critical fix: previously, _load_snapshot returned stocks with
+        sector=None, and they were never hydrated.
+        """
+        from datetime import date
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_nport_snapshot(
+                tmpdir,
+                "VOOG",
+                "2025-03-31",
+                [
+                    ("AAPL", "Apple Inc.", 8.0),
+                    ("MSFT", "Microsoft Corp.", 7.0),
+                ],
+            )
+            facts = {
+                "AAPL": _make_company_facts("AAPL", "Technology", "Consumer Electronics"),
+                "MSFT": _make_company_facts("MSFT", "Technology", "Software"),
+            }
+            data_service = _mock_data_service(facts)
+            provider = UniverseProvider(data_service=data_service, csv_dir=tmpdir)
+
+            result = await provider.get_holdings("growth", as_of_date=date(2025, 6, 15))
+
+        assert len(result) == 2
+        for stock in result:
+            assert stock.sector == "Technology", (
+                f"{stock.symbol} sector should be 'Technology' from hydration, got {stock.sector!r}"
+            )
+
+    async def test_snapshot_hydration_preserves_weight(self):
+        """Hydration should keep the weight from the N-PORT CSV."""
+        from datetime import date
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _write_nport_snapshot(
+                tmpdir,
+                "VOOG",
+                "2025-03-31",
+                [
+                    ("AAPL", "Apple Inc.", 8.0),
+                ],
+            )
+            facts = {"AAPL": _make_company_facts("AAPL")}
+            data_service = _mock_data_service(facts)
+            provider = UniverseProvider(data_service=data_service, csv_dir=tmpdir)
+
+            result = await provider.get_holdings("growth", as_of_date=date(2025, 6, 15))
+
+        assert len(result) == 1
+        assert result[0].weight == 8.0

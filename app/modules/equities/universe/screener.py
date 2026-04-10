@@ -250,10 +250,13 @@ class GrossMarginTrendFilter(ScreeningFilter):
                 data_service,
                 stock.symbol,
                 "grossMarginDecliningQuarters",
-                0,
+                None,
                 as_of_date=as_of_date,
             )
-            if quarters < self.margin_declining_quarters:
+            # Pass through when data is unavailable (e.g., Yahoo Finance live path
+            # doesn't compute this metric). Reject only when the metric is present
+            # and shows >= threshold declining quarters.
+            if quarters is None or quarters < self.margin_declining_quarters:
                 result.append(stock)
         return result
 

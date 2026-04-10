@@ -280,6 +280,21 @@ class TestGrossMarginTrendFilter:
         result = await f.apply([_make_stock("DECL")], data_service)
         assert len(result) == 0
 
+    async def test_passes_when_metric_missing(self):
+        """When grossMarginDecliningQuarters is absent (e.g., Yahoo Finance live path),
+        the stock should pass through (assume innocence).
+
+        The filter is only active in backtest mode where SEC EDGAR data provides
+        the metric. In live mode, the metric is never populated, so the filter
+        is transparent rather than rejecting the entire universe.
+        """
+        data_service = AsyncMock()
+        # Metrics dict has NO grossMarginDecliningQuarters key
+        data_service.get_metrics.return_value = _metrics_response("MISSING", {"grossMargins": 0.35})
+        f = GrossMarginTrendFilter(margin_declining_quarters=2)
+        result = await f.apply([_make_stock("MISSING")], data_service)
+        assert len(result) == 1
+
 
 class TestEarningsSurpriseFilter:
     """EarningsSurpriseFilter checks lastEarningsSurprisePct >= threshold."""

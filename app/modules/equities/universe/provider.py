@@ -80,10 +80,16 @@ class UniverseProvider:
             if snapshot_path:
                 stocks = self._load_snapshot(snapshot_path, top_n=self.top_n)
                 if stocks:
+                    stocks = await self._hydrate_stocks(stocks)
                     cache_key = f"{branch_name}:{as_of_date}:{self.top_n}"
                     self._cache[cache_key] = (stocks, datetime.now(UTC))
-                    logger.info("Universe '%s' as_of %s: %d stocks from snapshot %s",
-                                branch_name, as_of_date, len(stocks), snapshot_path.name)
+                    logger.info(
+                        "Universe '%s' as_of %s: %d stocks from snapshot %s",
+                        branch_name,
+                        as_of_date,
+                        len(stocks),
+                        snapshot_path.name,
+                    )
                     return stocks
 
         # 2. Load branch CSV
@@ -96,7 +102,7 @@ class UniverseProvider:
 
         if self.top_n is not None:
             stocks.sort(key=lambda s: s.weight, reverse=True)
-            stocks = stocks[:self.top_n]
+            stocks = stocks[: self.top_n]
 
         cache_key = f"{branch_name}:{as_of_date}:{self.top_n}"
         self._cache[cache_key] = (stocks, datetime.now(UTC))
@@ -129,7 +135,7 @@ class UniverseProvider:
             if not entry.name.startswith(prefix) or not entry.name.endswith(".csv"):
                 continue
             # Parse report_date from filename: voog_2025-03-31.csv
-            date_str = entry.stem[len(prefix):]
+            date_str = entry.stem[len(prefix) :]
             try:
                 report_date = date.fromisoformat(date_str)
             except ValueError:
@@ -155,11 +161,13 @@ class UniverseProvider:
                 sym = row.get("symbol", "").strip()
                 if not sym:
                     continue
-                stocks.append(UniverseStock(
-                    symbol=sym,
-                    company_name=row.get("name", sym),
-                    weight=float(row.get("weight", 0.0)),
-                ))
+                stocks.append(
+                    UniverseStock(
+                        symbol=sym,
+                        company_name=row.get("name", sym),
+                        weight=float(row.get("weight", 0.0)),
+                    )
+                )
         if top_n is not None:
             stocks.sort(key=lambda s: s.weight, reverse=True)
             stocks = stocks[:top_n]
@@ -185,7 +193,7 @@ class UniverseProvider:
         for entry in snapshot_dir.iterdir():
             if not entry.name.startswith(prefix) or not entry.name.endswith(".csv"):
                 continue
-            date_str = entry.stem[len(prefix):]
+            date_str = entry.stem[len(prefix) :]
             try:
                 report_date = date.fromisoformat(date_str)
             except ValueError:
@@ -241,6 +249,35 @@ class UniverseProvider:
 
         results = await asyncio.gather(*(_limited(s) for s in symbols))
         return [r for r in results if r is not None]
+
+    async def _hydrate_stocks(self, stocks: list[UniverseStock]) -> list[UniverseStock]:
+        """Hydrate existing UniverseStock objects with sector/industry from get_company_facts.
+
+        Preserves all existing fields (symbol, company_name, weight). Only fills
+        in sector and industry if they are currently None.
+        """
+        if self.data_service is None:
+            return stocks
+
+        sem = asyncio.Semaphore(10)
+
+        async def _hydrate(stock: UniverseStock) -> UniverseStock:
+            if stock.sector is not None:
+                return stock
+            async with sem:
+                try:
+                    facts = await self.data_service.get_company_facts(stock.symbol)
+                    return stock.model_copy(
+                        update={
+                            "sector": facts.get("sector"),
+                            "industry": facts.get("industry"),
+                        }
+                    )
+                except Exception:
+                    logger.warning("Hydration failed for %s — keeping without sector", stock.symbol)
+                    return stock
+
+        return list(await asyncio.gather(*(_hydrate(s) for s in stocks)))
 
     # ------------------------------------------------------------------
     # yfinance fallback (top 10 holdings only)
