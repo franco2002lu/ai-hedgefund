@@ -7,6 +7,8 @@ import asyncio
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from app.modules.backtest.config import RebalanceFrequency
 from app.modules.backtest.engine import BacktestEngine
 from app.modules.backtest.models import BacktestResult
@@ -42,19 +44,26 @@ def _make_mock_context(
     ctx.store = MagicMock()
     ctx.store.get_latest_close = MagicMock(return_value=100.0)
     ctx.equities_service = AsyncMock()
-    ctx.equities_service.run_pipeline = AsyncMock(return_value=MagicMock(
-        orders=[], scores=[], signals=[], trades_executed=0,
-    ))
+    ctx.equities_service.run_pipeline = AsyncMock(
+        return_value=MagicMock(
+            orders=[],
+            scores=[],
+            signals=[],
+            trades_executed=0,
+        )
+    )
     ctx.portfolio_service = AsyncMock()
-    ctx.portfolio_service.get_portfolio = AsyncMock(return_value=MagicMock(
-        nav=1_000_000.0,
-        cash=1_000_000.0,
-        positions=[],
-        total_long_exposure=0.0,
-        total_short_exposure=0.0,
-        unrealized_pnl=0.0,
-        realized_pnl=0.0,
-    ))
+    ctx.portfolio_service.get_portfolio = AsyncMock(
+        return_value=MagicMock(
+            nav=1_000_000.0,
+            cash=1_000_000.0,
+            positions=[],
+            total_long_exposure=0.0,
+            total_short_exposure=0.0,
+            unrealized_pnl=0.0,
+            realized_pnl=0.0,
+        )
+    )
     ctx.trade_execution_service = AsyncMock()
     ctx.event_log = AsyncMock()
     ctx.instrument_ids = {"AAPL": "uuid-aapl"}
@@ -170,6 +179,44 @@ class TestSimulationLoop:
         # Each snapshot should have a NAV value
         assert all(snap.nav > 0 for snap in result.snapshots)
 
+    async def test_mark_to_market_computes_unrealized_pnl(self):
+        """_mark_to_market should pass unrealized_pnl = market_value - cost_basis
+        to update_portfolio_fields, not leave it at 0."""
+        days = _make_trading_days(count=3)
+        ctx = _make_mock_context(trading_days=days)
+        # Give the portfolio a position with cost basis different from market value
+        position = MagicMock()
+        position.symbol = "AAPL"
+        position.long_quantity = 100.0
+        position.long_cost_basis = 15_000.0  # bought at $150/share
+        ctx.portfolio_service.get_portfolio = AsyncMock(
+            return_value=MagicMock(
+                nav=1_000_000.0,
+                cash=985_000.0,
+                positions=[position],
+                total_long_exposure=10_000.0,
+                total_short_exposure=0.0,
+                unrealized_pnl=0.0,
+                realized_pnl=0.0,
+            )
+        )
+        # Current price is $100 → market value = $10,000, cost = $15,000
+        # unrealized_pnl should be 10,000 - 15,000 = -5,000
+        ctx.store.get_latest_close = MagicMock(return_value=100.0)
+        ctx.store.get_latest_close_with_staleness = MagicMock(return_value=100.0)
+        engine = BacktestEngine()
+
+        await engine._run_simulation(ctx, _make_backtest_config())
+
+        # Verify _mark_to_market passed unrealized_pnl to update_portfolio_fields
+        calls = ctx.portfolio_service.portfolio_repo.update_portfolio_fields.call_args_list
+        # At least one call should include unrealized_pnl=-5000
+        unrealized_pnl_values = [call.kwargs.get("unrealized_pnl") for call in calls if "unrealized_pnl" in call.kwargs]
+        assert len(unrealized_pnl_values) > 0, "update_portfolio_fields was never called with unrealized_pnl"
+        assert any(v == pytest.approx(-5000.0) for v in unrealized_pnl_values), (
+            f"Expected unrealized_pnl=-5000 (market=$10k - cost=$15k), but got: {unrealized_pnl_values}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # TestCancellation
@@ -225,9 +272,7 @@ class TestBacktestId:
         ctx = _make_mock_context(trading_days=days)
         engine = BacktestEngine()
 
-        result = await engine._run_simulation(
-            ctx, _make_backtest_config(), backtest_id="my-custom-id"
-        )
+        result = await engine._run_simulation(ctx, _make_backtest_config(), backtest_id="my-custom-id")
         assert result.backtest_id == "my-custom-id"
 
     async def test_generates_uuid_when_not_provided(self):
@@ -254,7 +299,8 @@ class TestProgressCallback:
         calls: list[dict] = []
 
         await engine._run_simulation(
-            ctx, _make_backtest_config(),
+            ctx,
+            _make_backtest_config(),
             progress_callback=lambda p: calls.append(p),
         )
         assert len(calls) == 5
@@ -267,7 +313,8 @@ class TestProgressCallback:
         calls: list[dict] = []
 
         await engine._run_simulation(
-            ctx, _make_backtest_config(),
+            ctx,
+            _make_backtest_config(),
             progress_callback=lambda p: calls.append(p),
         )
         for p in calls:
@@ -282,7 +329,8 @@ class TestProgressCallback:
         calls: list[dict] = []
 
         await engine._run_simulation(
-            ctx, _make_backtest_config(),
+            ctx,
+            _make_backtest_config(),
             progress_callback=lambda p: calls.append(p),
         )
         assert calls[-1]["pct_complete"] == 100.0
@@ -297,9 +345,7 @@ class TestErrorHandling:
     async def test_pipeline_error_sets_failed_status(self):
         days = _make_trading_days(count=5)
         ctx = _make_mock_context(trading_days=days, rebalance_days={days[0]})
-        ctx.equities_service.run_pipeline = AsyncMock(
-            side_effect=RuntimeError("Pipeline exploded")
-        )
+        ctx.equities_service.run_pipeline = AsyncMock(side_effect=RuntimeError("Pipeline exploded"))
         engine = BacktestEngine()
 
         result = await engine._run_simulation(ctx, _make_backtest_config())
@@ -309,9 +355,7 @@ class TestErrorHandling:
     async def test_error_message_captured(self):
         days = _make_trading_days(count=5)
         ctx = _make_mock_context(trading_days=days, rebalance_days={days[0]})
-        ctx.equities_service.run_pipeline = AsyncMock(
-            side_effect=RuntimeError("Pipeline exploded")
-        )
+        ctx.equities_service.run_pipeline = AsyncMock(side_effect=RuntimeError("Pipeline exploded"))
         engine = BacktestEngine()
 
         result = await engine._run_simulation(ctx, _make_backtest_config())
@@ -323,9 +367,7 @@ class TestErrorHandling:
         days = _make_trading_days(count=10)
         # Rebalance only on day 5 where it will fail
         ctx = _make_mock_context(trading_days=days, rebalance_days={days[5]})
-        ctx.equities_service.run_pipeline = AsyncMock(
-            side_effect=RuntimeError("Crash")
-        )
+        ctx.equities_service.run_pipeline = AsyncMock(side_effect=RuntimeError("Crash"))
         engine = BacktestEngine()
 
         result = await engine._run_simulation(ctx, _make_backtest_config())

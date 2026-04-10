@@ -22,22 +22,25 @@ def _snapshots_from_navs(navs: list[float], start: date = date(2024, 1, 2)) -> l
     for i, nav in enumerate(navs):
         daily_ret = (nav / prev_nav - 1.0) if i > 0 else 0.0
         cum_return = nav / navs[0] - 1.0
-        snapshots.append(DailySnapshot(
-            date=current,
-            nav=nav,
-            cash=nav * 0.2,
-            total_long_exposure=nav * 0.8,
-            total_short_exposure=0.0,
-            unrealized_pnl=nav - navs[0],
-            realized_pnl=0.0,
-            position_count=10,
-            positions={"AAPL": nav * 0.5},
-            daily_return=daily_ret,
-            cumulative_return=cum_return,
-        ))
+        snapshots.append(
+            DailySnapshot(
+                date=current,
+                nav=nav,
+                cash=nav * 0.2,
+                total_long_exposure=nav * 0.8,
+                total_short_exposure=0.0,
+                unrealized_pnl=nav - navs[0],
+                realized_pnl=0.0,
+                position_count=10,
+                positions={"AAPL": nav * 0.5},
+                daily_return=daily_ret,
+                cumulative_return=cum_return,
+            )
+        )
         prev_nav = nav
         # Advance date, skip weekends
         from datetime import timedelta
+
         current += timedelta(days=1)
         while current.weekday() >= 5:
             current += timedelta(days=1)
@@ -99,8 +102,9 @@ class TestComputeMetrics:
     def test_max_drawdown(self):
         """NAV: 100→120→90→110 → max drawdown = (120-90)/120 = 25%."""
         navs = [
-            1_000_000, 1_200_000,  # peak
-            900_000,   # trough (25% drawdown from peak)
+            1_000_000,
+            1_200_000,  # peak
+            900_000,  # trough (25% drawdown from peak)
             1_100_000,
         ]
         snapshots = _snapshots_from_navs(navs)
@@ -111,7 +115,10 @@ class TestComputeMetrics:
     def test_calmar_ratio(self):
         """calmar = annualized_return / max_drawdown, clamped to [-10, 10]."""
         navs = [
-            1_000_000, 1_100_000, 900_000, 1_200_000,
+            1_000_000,
+            1_100_000,
+            900_000,
+            1_200_000,
         ]
         snapshots = _snapshots_from_navs(navs)
         calc = PerformanceCalculator()
@@ -390,8 +397,11 @@ class TestComputeBenchmarkComparison:
         """Up capture > 100% when strategy gains more than benchmark on up days."""
         # Strategy returns 2x benchmark → up capture ≈ 200%
         spy_series = _make_price_series(
-            "SPY", start=date(2024, 1, 2), days=126,
-            base_price=450.0, daily_return=0.0004,
+            "SPY",
+            start=date(2024, 1, 2),
+            days=126,
+            base_price=450.0,
+            daily_return=0.0004,
         )
         navs = [1_000_000]
         for _ in range(126):
@@ -420,8 +430,11 @@ class TestComputeBenchmarkComparison:
         """When strategy perfectly tracks benchmark, beta ≈ 1 and alpha ≈ 0."""
         # Build identical return streams for strategy and benchmark
         spy_series = _make_price_series(
-            "SPY", start=date(2024, 1, 2), days=126,
-            base_price=450.0, daily_return=0.0004,
+            "SPY",
+            start=date(2024, 1, 2),
+            days=126,
+            base_price=450.0,
+            daily_return=0.0004,
         )
         # Strategy NAV tracks the same returns
         navs = [1_000_000]
@@ -434,3 +447,124 @@ class TestComputeBenchmarkComparison:
         )
         assert comparison.beta == pytest.approx(1.0, abs=0.15)
         assert comparison.alpha == pytest.approx(0.0, abs=0.05)
+
+
+# ── Fix #1: Alpha should use Jensen's formula with risk-free rate ─────────
+
+
+class TestAlphaWithRiskFreeRate:
+    """Jensen's alpha = (R_p - R_f) - beta * (R_b - R_f).
+
+    The old formula omitted R_f: alpha = R_p - beta * R_b. When beta=1 both
+    formulas give the same result, so we test with the perfect-tracking
+    scenario and verify the formula explicitly.
+    """
+
+    def test_alpha_formula_uses_risk_free_rate(self):
+        """When beta != 1, the old formula (R_p - beta*R_b) differs from
+        Jensen's alpha ((R_p - R_f) - beta*(R_b - R_f)) by (1-beta)*R_f.
+
+        We construct a benchmark with real variance and a low-beta strategy.
+        """
+        from datetime import timedelta
+
+        from app.modules.backtest.analytics import RISK_FREE_RATE
+
+        # Build benchmark with real variance (alternating +1%/-0.5% days)
+        start = date(2024, 1, 2)
+        bench_returns = ([0.01, -0.005] * 63)[:126]
+        bench_prices = {}
+        price = 450.0
+        current = start
+        day_count = 0
+        while day_count <= 126:
+            while current.weekday() >= 5:
+                current += timedelta(days=1)
+            from app.common.interfaces.price_data import PriceBar
+
+            bench_prices[current] = PriceBar(
+                timestamp=current,
+                open=price * 0.999,
+                high=price * 1.005,
+                low=price * 0.995,
+                close=price,
+                volume=1_000_000,
+            )
+            if day_count < 126:
+                price *= 1 + bench_returns[day_count]
+            current += timedelta(days=1)
+            day_count += 1
+
+        # Strategy: 0.3× benchmark returns + constant alpha
+        bench_dates = sorted(bench_prices.keys())
+        navs = [1_000_000]
+        for i in range(1, len(bench_dates)):
+            br = bench_prices[bench_dates[i]].close / bench_prices[bench_dates[i - 1]].close - 1
+            strat_ret = 0.0003 + 0.3 * br
+            navs.append(navs[-1] * (1 + strat_ret))
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        comparison = calc.compute_benchmark_comparison(snapshots, bench_prices, "SPY", start, date(2024, 6, 28))
+        beta = comparison.beta
+        assert beta < 0.8, f"beta={beta} should be well below 1.0"
+
+        strat_ann = (navs[-1] / navs[0]) ** (252 / (len(navs) - 1)) - 1
+        bench_ann = comparison.benchmark_annualized_return
+
+        jensens = (strat_ann - RISK_FREE_RATE) - beta * (bench_ann - RISK_FREE_RATE)
+        old_formula = strat_ann - beta * bench_ann
+        # The two formulas should differ by (1 - beta) * R_f
+        assert abs(jensens - old_formula) > 0.005
+
+        # Implementation should match Jensen's
+        assert comparison.alpha == pytest.approx(jensens, abs=0.02)
+
+
+# ── Fix #2: Sortino should use sample variance (N-1) like Sharpe ──────────
+
+
+class TestSortinoVarianceConsistency:
+    """Sortino downside deviation should use (N-1) denominator, consistent with Sharpe."""
+
+    def test_sortino_uses_sample_variance(self):
+        """With known returns, verify Sortino uses sample stddev (N-1 denominator).
+
+        Use a SHORT series where the difference between /N and /(N-1)
+        is clearly distinguishable. Note: _snapshots_from_navs adds a
+        day-zero snapshot with daily_return=0.0, so we must include that
+        in our expected-value computation.
+        """
+        import math
+
+        # 10 daily returns — but the engine will see 11 (0.0 prepended)
+        raw_returns = [0.02, -0.015, 0.01, -0.02, 0.015, -0.01, 0.025, -0.018, 0.012, -0.014]
+        navs = [1_000_000]
+        for r in raw_returns:
+            navs.append(navs[-1] * (1 + r))
+        snapshots = _snapshots_from_navs(navs)
+        calc = PerformanceCalculator()
+        metrics = calc.compute_metrics(snapshots, [])
+
+        # The engine sees daily_returns including the day-zero 0.0
+        daily_returns = [0.0] + raw_returns
+        n = len(daily_returns)  # 11
+
+        risk_free_daily = 0.04 / 252
+        mean_daily = sum(daily_returns) / n
+        downside_diffs = [r - risk_free_daily for r in daily_returns if r - risk_free_daily < 0]
+
+        # Sample: divide by (N-1) — consistent with Sharpe's volatility
+        downside_var_sample = sum(d**2 for d in downside_diffs) / (n - 1)
+        downside_dev_sample = math.sqrt(downside_var_sample)
+        expected_sortino = (mean_daily - risk_free_daily) / downside_dev_sample * math.sqrt(252)
+
+        # Population: divide by N — the OLD inconsistent calculation
+        downside_var_pop = sum(d**2 for d in downside_diffs) / n
+        downside_dev_pop = math.sqrt(downside_var_pop)
+        wrong_sortino = (mean_daily - risk_free_daily) / downside_dev_pop * math.sqrt(252)
+
+        # With N=11, difference is ~5% — clearly distinguishable
+        assert abs(expected_sortino - wrong_sortino) / abs(wrong_sortino) > 0.03
+
+        # The implementation should match sample variance
+        assert metrics.sortino_ratio == pytest.approx(expected_sortino, rel=0.01)

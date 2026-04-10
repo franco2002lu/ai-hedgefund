@@ -77,7 +77,7 @@ class PerformanceCalculator:
         # Sortino ratio
         downside_diffs = [r - risk_free_daily for r in daily_returns if r - risk_free_daily < 0]
         if downside_diffs:
-            downside_var = sum(d**2 for d in downside_diffs) / len(daily_returns)
+            downside_var = sum(d**2 for d in downside_diffs) / (len(daily_returns) - 1)
             downside_dev = math.sqrt(downside_var)
             if downside_dev > 0:
                 sortino_ratio = (mean_daily - risk_free_daily) / downside_dev * math.sqrt(TRADING_DAYS_PER_YEAR)
@@ -267,8 +267,8 @@ class PerformanceCalculator:
         else:
             beta = 1.0
 
-        # Alpha (simplified Jensen's alpha)
-        alpha = strategy_annualized_return - beta * benchmark_annualized_return
+        # Alpha (Jensen's alpha): (R_p - R_f) - beta * (R_b - R_f)
+        alpha = (strategy_annualized_return - RISK_FREE_RATE) - beta * (benchmark_annualized_return - RISK_FREE_RATE)
 
         # Tracking error
         if min_len > 1:

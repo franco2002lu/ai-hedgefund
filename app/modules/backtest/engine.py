@@ -102,6 +102,7 @@ class BacktestEngine:
             return
         today = ctx.time_provider.today()
         total_long = 0.0
+        total_cost_basis = 0.0
         for p in portfolio.positions:
             price = ctx.store.get_latest_close_with_staleness(p.symbol, today)
             if price is None:
@@ -112,11 +113,14 @@ class BacktestEngine:
                 )
                 price = 0.0
             total_long += price * p.long_quantity
+            total_cost_basis += p.long_cost_basis
         new_nav = float(portfolio.cash) + total_long
+        unrealized_pnl = total_long - total_cost_basis
         await ctx.portfolio_service.portfolio_repo.update_portfolio_fields(
             branch_id,
             nav=new_nav,
             total_long_exposure=total_long,
+            unrealized_pnl=unrealized_pnl,
         )
 
     async def _accrue_cash_yield(self, ctx, config: BacktestConfig) -> None:
