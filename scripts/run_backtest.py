@@ -14,6 +14,10 @@ import asyncio
 import logging
 from datetime import date
 
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env so ANTHROPIC_API_KEY is available for LLM-mode backtests
+
 from app.modules.backtest.config import BacktestConfig, LLMBacktestConfig, RebalanceFrequency
 from app.modules.backtest.engine import BacktestEngine
 
