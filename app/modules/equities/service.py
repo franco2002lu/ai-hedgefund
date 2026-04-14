@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -112,6 +113,8 @@ class EquitiesBranchService:
         session: AsyncSession | None = None,
         instrument_ids: dict[str, str] | None = None,
         as_of_date=None,
+        news_window_days: int = 7,
+        manual_news_root: Path | None = Path("data/news/manual"),
     ) -> RunResult:
         """Run the full pipeline: universe -> screen -> analyze -> rebalance -> execute."""
         tes = trade_execution_service or self.trade_execution_service
@@ -277,6 +280,8 @@ class EquitiesBranchService:
                 "execute_trade_fn": execute_trade_fn,
                 "max_concurrent_analyses": self.config.agents.max_concurrent_analyses,
                 "as_of_date": as_of_date,
+                "news_window_days": news_window_days,
+                "manual_news_root": manual_news_root,
             },
         }
 

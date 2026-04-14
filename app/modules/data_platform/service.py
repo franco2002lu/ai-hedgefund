@@ -177,6 +177,60 @@ class DataPlatformService:
 
         raise DataUnavailableError("No adapter could serve news")
 
+    async def get_market_news(
+        self,
+        since: date | None = None,
+        limit: int = 20,
+    ) -> dict:
+        cache_key = f"market:{since}:{limit}"
+        cached = self.cache.get("news", cache_key)
+        if cached is not None:
+            return cached
+
+        adapters = self.registry.get("news", {}).get("all", [])
+        for adapter in adapters:
+            try:
+                await self.rate_limiter.acquire(adapter.name)
+                articles = await adapter.get_market_news(since, limit)
+                result = {
+                    "articles": [a.model_dump(mode="json") for a in articles],
+                    "source": adapter.name,
+                }
+                self.cache.set("news", cache_key, result)
+                return result
+            except Exception:
+                continue
+
+        raise DataUnavailableError("No adapter could serve market news")
+
+    async def get_sector_news(
+        self,
+        sector: str,
+        since: date | None = None,
+        limit: int = 20,
+    ) -> dict:
+        cache_key = f"sector:{sector}:{since}:{limit}"
+        cached = self.cache.get("news", cache_key)
+        if cached is not None:
+            return cached
+
+        adapters = self.registry.get("news", {}).get("all", [])
+        for adapter in adapters:
+            try:
+                await self.rate_limiter.acquire(adapter.name)
+                articles = await adapter.get_sector_news(sector, since, limit)
+                result = {
+                    "sector": sector,
+                    "articles": [a.model_dump(mode="json") for a in articles],
+                    "source": adapter.name,
+                }
+                self.cache.set("news", cache_key, result)
+                return result
+            except Exception:
+                continue
+
+        raise DataUnavailableError(f"No adapter could serve sector news for {sector}")
+
     @staticmethod
     def _instrument_to_dict(instrument) -> dict:
         return {

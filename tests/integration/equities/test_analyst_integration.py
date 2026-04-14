@@ -20,6 +20,14 @@ from app.modules.equities.models import StockSignal, UniverseStock
 
 pytestmark = pytest.mark.integration
 
+
+async def _fetch_news_articles_for(stock, data_service):
+    """Mimic the prefetch_news graph node for integration tests: fetch market + sector articles."""
+    market = await data_service.get_market_news(limit=10)
+    sector = await data_service.get_sector_news(stock.sector, limit=10) if stock.sector else {"articles": []}
+    return list(market.get("articles", [])) + list(sector.get("articles", []))
+
+
 TEST_STOCKS = [
     UniverseStock(symbol="AAPL", company_name="Apple Inc.", weight=0.07, sector="Technology"),
     UniverseStock(symbol="JPM", company_name="JPMorgan Chase & Co.", weight=0.04, sector="Financials"),
@@ -49,39 +57,41 @@ class TestNewsAnalystIntegration:
     async def test_returns_valid_signal_for_each_stock(self, stock, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
             config=AnalystLLMConfig(),
-            data_service=real_data_service,
             llm_client=real_llm_client,
         )
-        signal = await analyst.analyze(stock)
+        articles = await _fetch_news_articles_for(stock, real_data_service)
+        signal = await analyst.analyze(stock, articles=articles)
         _validate_signal(signal, stock.symbol, "news")
 
     async def test_scores_within_valid_range(self, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
             config=AnalystLLMConfig(),
-            data_service=real_data_service,
             llm_client=real_llm_client,
         )
         for stock in TEST_STOCKS:
-            signal = await analyst.analyze(stock)
+            articles = await _fetch_news_articles_for(stock, real_data_service)
+            signal = await analyst.analyze(stock, articles=articles)
             assert 1 <= signal.bullish_score <= 10, f"{stock.symbol}: bullish_score {signal.bullish_score} out of range"
             assert 1 <= signal.confidence <= 10, f"{stock.symbol}: confidence {signal.confidence} out of range"
 
     async def test_summary_is_nonempty(self, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
             config=AnalystLLMConfig(),
-            data_service=real_data_service,
             llm_client=real_llm_client,
         )
-        signal = await analyst.analyze(TEST_STOCKS[0])
+        articles = await _fetch_news_articles_for(TEST_STOCKS[0], real_data_service)
+        signal = await analyst.analyze(TEST_STOCKS[0], articles=articles)
         assert len(signal.summary.strip()) > 0, "Summary should be a non-empty string"
 
     async def test_batch_analysis_returns_all_signals(self, real_data_service, real_llm_client):
         analyst = NewsAnalyst(
             config=AnalystLLMConfig(),
-            data_service=real_data_service,
             llm_client=real_llm_client,
         )
-        signals = await analyst.analyze_batch(TEST_STOCKS)
+        articles_by_symbol = {}
+        for s in TEST_STOCKS:
+            articles_by_symbol[s.symbol] = await _fetch_news_articles_for(s, real_data_service)
+        signals = await analyst.analyze_batch(TEST_STOCKS, articles_by_symbol=articles_by_symbol)
         assert len(signals) == len(TEST_STOCKS)
         symbols = {s.symbol for s in signals}
         assert symbols == {"AAPL", "JPM", "JNJ"}

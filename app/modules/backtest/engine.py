@@ -7,6 +7,7 @@ import time as _time
 import uuid
 from collections.abc import Callable
 from datetime import date
+from pathlib import Path
 
 from app.modules.backtest.config import BacktestConfig, RebalanceFrequency
 from app.modules.backtest.models import (
@@ -14,6 +15,7 @@ from app.modules.backtest.models import (
     BacktestTrade,
     DailySnapshot,
 )
+from app.modules.equities.news_window import window_days_for_frequency
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +111,8 @@ class BacktestEngine:
                 # Stale/delisted: value position at zero (forced liquidation)
                 logger.info(
                     "Stale price for %s on %s — marking position to zero",
-                    p.symbol, today,
+                    p.symbol,
+                    today,
                 )
                 price = 0.0
             total_long += price * p.long_quantity
@@ -155,6 +158,9 @@ class BacktestEngine:
         started = _time.monotonic()
         total_days = len(ctx.trading_days)
 
+        window_days = window_days_for_frequency(config.rebalance_frequency.value)
+        manual_root = Path("data/news/manual")
+
         for i, day in enumerate(ctx.trading_days):
             # Check cancellation
             if ctx.cancelled.is_set():
@@ -186,6 +192,8 @@ class BacktestEngine:
                         session=None,
                         instrument_ids=ctx.instrument_ids,
                         as_of_date=day,
+                        news_window_days=window_days,
+                        manual_news_root=manual_root,
                     )
                     actual_rebalances += 1
                 except Exception as exc:
@@ -226,10 +234,12 @@ class BacktestEngine:
 
             # Report progress
             if progress_callback is not None:
-                progress_callback({
-                    "current_day": day.isoformat(),
-                    "pct_complete": (i + 1) / total_days * 100,
-                })
+                progress_callback(
+                    {
+                        "current_day": day.isoformat(),
+                        "pct_complete": (i + 1) / total_days * 100,
+                    }
+                )
 
         # Extract trades from in-memory store
         backtest_trades: list[BacktestTrade] = []
@@ -256,9 +266,7 @@ class BacktestEngine:
             metrics = calculator.compute_metrics(snapshots, backtest_trades)
 
             for bench_symbol in config.benchmark_symbols:
-                benchmark_bars = ctx.store.get_bars(
-                    bench_symbol, config.start_date, config.end_date
-                )
+                benchmark_bars = ctx.store.get_bars(bench_symbol, config.start_date, config.end_date)
                 if len(benchmark_bars) >= 2:
                     benchmark_prices = {b.timestamp: b for b in benchmark_bars}
                     try:
@@ -307,7 +315,8 @@ class BacktestEngine:
         ctx = await BacktestContext.build(config, live_config or EquitiesConfig())
         try:
             return await self._run_simulation(
-                ctx, config,
+                ctx,
+                config,
                 backtest_id=backtest_id,
                 progress_callback=progress_callback,
             )

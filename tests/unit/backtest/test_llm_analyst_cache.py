@@ -11,9 +11,7 @@ def _make_stock(symbol: str = "AAPL") -> UniverseStock:
     return UniverseStock(symbol=symbol, company_name=f"{symbol} Inc.")
 
 
-def _make_signal(
-    symbol: str = "AAPL", analyst_type: str = "news", score: int = 7
-) -> StockSignal:
+def _make_signal(symbol: str = "AAPL", analyst_type: str = "news", score: int = 7) -> StockSignal:
     return StockSignal(
         symbol=symbol,
         analyst_type=analyst_type,
@@ -34,9 +32,7 @@ def _make_wrapper(
 ) -> CachedAnalystWrapper:
     if analyst is None:
         analyst = AsyncMock()
-        analyst.analyze = AsyncMock(
-            return_value=_make_signal(analyst_type=analyst_type)
-        )
+        analyst.analyze = AsyncMock(return_value=_make_signal(analyst_type=analyst_type))
     return CachedAnalystWrapper(
         analyst=analyst,
         analyst_type=analyst_type,
@@ -136,9 +132,7 @@ class TestSafetyCap:
         mock_analyst = AsyncMock()
         mock_analyst.analyze = AsyncMock(return_value=_make_signal())
 
-        wrapper = _make_wrapper(
-            analyst=mock_analyst, counter=counter, cache_enabled=False
-        )
+        wrapper = _make_wrapper(analyst=mock_analyst, counter=counter, cache_enabled=False)
 
         await wrapper.analyze(_make_stock("AAPL"))
         await wrapper.analyze(_make_stock("MSFT"))
@@ -186,13 +180,9 @@ class TestCounterReset:
         shared_cache: dict = {}
 
         news_mock = AsyncMock()
-        news_mock.analyze = AsyncMock(
-            return_value=_make_signal(analyst_type="news")
-        )
+        news_mock.analyze = AsyncMock(return_value=_make_signal(analyst_type="news"))
         fund_mock = AsyncMock()
-        fund_mock.analyze = AsyncMock(
-            return_value=_make_signal(analyst_type="fundamentals")
-        )
+        fund_mock.analyze = AsyncMock(return_value=_make_signal(analyst_type="fundamentals"))
 
         news_wrapper = CachedAnalystWrapper(
             analyst=news_mock,
@@ -282,9 +272,7 @@ class TestAnalyzeBatch:
         mock_analyst.analyze = AsyncMock(return_value=_make_signal(score=5))
 
         wrapper = _make_wrapper(analyst=mock_analyst, cache=cache, today=today)
-        results = await wrapper.analyze_batch(
-            [_make_stock("AAPL"), _make_stock("MSFT")]
-        )
+        results = await wrapper.analyze_batch([_make_stock("AAPL"), _make_stock("MSFT")])
 
         aapl = next(r for r in results if r.symbol == "AAPL")
         assert aapl.bullish_score == 9  # from cache
@@ -293,7 +281,7 @@ class TestAnalyzeBatch:
         """If analyze() raises for one stock, others still succeed."""
         call_count = 0
 
-        async def _side_effect(stock):
+        async def _side_effect(stock, **kwargs):
             nonlocal call_count
             call_count += 1
             if stock.symbol == "BAD":
@@ -304,9 +292,7 @@ class TestAnalyzeBatch:
         mock_analyst.analyze = AsyncMock(side_effect=_side_effect)
 
         wrapper = _make_wrapper(analyst=mock_analyst, cache_enabled=False)
-        results = await wrapper.analyze_batch(
-            [_make_stock("AAPL"), _make_stock("BAD"), _make_stock("MSFT")]
-        )
+        results = await wrapper.analyze_batch([_make_stock("AAPL"), _make_stock("BAD"), _make_stock("MSFT")])
 
         assert len(results) == 3
         bad = next(r for r in results if r.symbol == "BAD")
@@ -319,3 +305,115 @@ class TestAnalyzeBatch:
         wrapper = _make_wrapper()
         results = await wrapper.analyze_batch([])
         assert results == []
+
+
+# ---------------------------------------------------------------------------
+# Article forwarding — news analyst only (Task 8)
+# ---------------------------------------------------------------------------
+
+
+def _stock(sym="AAPL"):
+    return UniverseStock(symbol=sym, company_name=f"{sym} Inc", weight=0.05, sector="Technology")
+
+
+async def test_news_wrapper_forwards_articles():
+    inner = AsyncMock()
+    inner.analyze.return_value = StockSignal(
+        symbol="AAPL",
+        analyst_type="news",
+        bullish_score=7,
+        confidence=7,
+        summary="ok",
+    )
+    w = CachedAnalystWrapper(
+        analyst=inner,
+        analyst_type="news",
+        cache={},
+        llm_counter=[0],
+        max_calls_per_rebalance=60,
+        cache_enabled=True,
+        current_date_fn=lambda: date(2026, 4, 14),
+    )
+
+    articles = [{"title": "X", "source": "R", "published_at": "2026-04-14T10:00:00Z"}]
+    await w.analyze_batch([_stock()], articles_by_symbol={"AAPL": articles}, max_concurrent=2)
+
+    inner.analyze.assert_awaited_once_with(_stock(), articles=articles)
+
+
+async def test_non_news_wrapper_ignores_articles():
+    inner = AsyncMock()
+    inner.analyze.return_value = StockSignal(
+        symbol="AAPL",
+        analyst_type="fundamentals",
+        bullish_score=6,
+        confidence=6,
+        summary="ok",
+    )
+    w = CachedAnalystWrapper(
+        analyst=inner,
+        analyst_type="fundamentals",
+        cache={},
+        llm_counter=[0],
+        max_calls_per_rebalance=60,
+        cache_enabled=True,
+        current_date_fn=lambda: date(2026, 4, 14),
+    )
+
+    await w.analyze_batch([_stock()], articles_by_symbol={"AAPL": [{"title": "X"}]}, max_concurrent=2)
+
+    # Fundamentals analyst should be called without the `articles` kwarg
+    inner.analyze.assert_awaited_once_with(_stock())
+
+
+async def test_news_wrapper_empty_articles_when_symbol_missing():
+    inner = AsyncMock()
+    inner.analyze.return_value = StockSignal(
+        symbol="ZZZ",
+        analyst_type="news",
+        bullish_score=5,
+        confidence=5,
+        summary="",
+    )
+    w = CachedAnalystWrapper(
+        analyst=inner,
+        analyst_type="news",
+        cache={},
+        llm_counter=[0],
+        max_calls_per_rebalance=60,
+        cache_enabled=True,
+        current_date_fn=lambda: date(2026, 4, 14),
+    )
+
+    await w.analyze_batch([_stock("ZZZ")], articles_by_symbol={}, max_concurrent=2)
+
+    inner.analyze.assert_awaited_once_with(_stock("ZZZ"), articles=[])
+
+
+async def test_cache_hit_does_not_invoke_inner_or_require_articles():
+    inner = AsyncMock()
+    cached = StockSignal(
+        symbol="AAPL",
+        analyst_type="news",
+        bullish_score=9,
+        confidence=9,
+        summary="cached",
+    )
+    w = CachedAnalystWrapper(
+        analyst=inner,
+        analyst_type="news",
+        cache={(date(2026, 4, 14), "AAPL", "news"): cached},
+        llm_counter=[0],
+        max_calls_per_rebalance=60,
+        cache_enabled=True,
+        current_date_fn=lambda: date(2026, 4, 14),
+    )
+
+    signals = await w.analyze_batch(
+        [_stock()],
+        articles_by_symbol={"AAPL": []},
+        max_concurrent=2,
+    )
+
+    inner.analyze.assert_not_awaited()
+    assert signals[0].summary == "cached"

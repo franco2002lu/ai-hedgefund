@@ -44,7 +44,11 @@ class CachedAnalystWrapper:
     def reset_rebalance_counter(self) -> None:
         self._llm_counter[0] = 0
 
-    async def analyze(self, stock: UniverseStock) -> StockSignal:
+    async def analyze(
+        self,
+        stock: UniverseStock,
+        articles: list[dict] | None = None,
+    ) -> StockSignal:
         today = self._current_date_fn()
         cache_key = (today, stock.symbol, self._analyst_type)
 
@@ -68,7 +72,10 @@ class CachedAnalystWrapper:
             )
 
         self._llm_counter[0] += 1
-        signal = await self._analyst.analyze(stock)
+        if self._analyst_type == "news":
+            signal = await self._analyst.analyze(stock, articles=articles or [])
+        else:
+            signal = await self._analyst.analyze(stock)
 
         if self._cache_enabled:
             self._cache[cache_key] = signal
@@ -78,15 +85,19 @@ class CachedAnalystWrapper:
     async def analyze_batch(
         self,
         stocks: list[UniverseStock],
+        articles_by_symbol: dict[str, list[dict]] | None = None,
         max_concurrent: int = 10,
     ) -> list[StockSignal]:
         if not stocks:
             return []
         sem = asyncio.Semaphore(max_concurrent)
+        mapping = articles_by_symbol or {}
 
         async def _limited(s: UniverseStock) -> StockSignal:
             async with sem:
                 try:
+                    if self._analyst_type == "news":
+                        return await self.analyze(s, articles=mapping.get(s.symbol, []))
                     return await self.analyze(s)
                 except Exception:
                     logger.warning(

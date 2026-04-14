@@ -24,6 +24,13 @@ from app.modules.equities.models import (
 pytestmark = pytest.mark.integration
 
 
+async def _fetch_news_articles_for(stock, data_service):
+    """Mimic the prefetch_news graph node for integration tests: fetch market + sector articles."""
+    market = await data_service.get_market_news(limit=10)
+    sector = await data_service.get_sector_news(stock.sector, limit=10) if stock.sector else {"articles": []}
+    return list(market.get("articles", [])) + list(sector.get("articles", []))
+
+
 # ---------------------------------------------------------------------------
 # Test data
 # ---------------------------------------------------------------------------
@@ -65,7 +72,7 @@ class TestPortfolioManagerWithRealSignals:
         llm_config = AnalystLLMConfig()
         stock = PIPELINE_STOCKS[0]  # AAPL
 
-        news = NewsAnalyst(config=llm_config, data_service=real_data_service, llm_client=real_llm_client)
+        news = NewsAnalyst(config=llm_config, llm_client=real_llm_client)
         funds = FundamentalsAnalyst(
             config=llm_config,
             data_service=real_data_service,
@@ -74,9 +81,13 @@ class TestPortfolioManagerWithRealSignals:
         )
         tech = TechnicalAnalyst(config=llm_config, data_service=real_data_service, llm_client=real_llm_client)
 
+        articles_for_stock = await _fetch_news_articles_for(stock, real_data_service)
         signals = []
         for analyst in [news, funds, tech]:
-            signal = await analyst.analyze(stock)
+            if isinstance(analyst, NewsAnalyst):
+                signal = await analyst.analyze(stock, articles=articles_for_stock)
+            else:
+                signal = await analyst.analyze(stock)
             signals.append(signal)
 
         assert len(signals) == 3
@@ -109,7 +120,6 @@ class TestFullPipelineIntegration:
 
         news = NewsAnalyst(
             config=llm_config,
-            data_service=real_data_service,
             llm_client=real_llm_client,
         )
         funds = FundamentalsAnalyst(
@@ -125,9 +135,15 @@ class TestFullPipelineIntegration:
         )
 
         # Run all three analysts on both stocks
+        articles_by_symbol = {}
+        for s in PIPELINE_STOCKS:
+            articles_by_symbol[s.symbol] = await _fetch_news_articles_for(s, real_data_service)
         all_signals: list[StockSignal] = []
         for analyst in [news, funds, tech]:
-            signals = await analyst.analyze_batch(PIPELINE_STOCKS)
+            if isinstance(analyst, NewsAnalyst):
+                signals = await analyst.analyze_batch(PIPELINE_STOCKS, articles_by_symbol=articles_by_symbol)
+            else:
+                signals = await analyst.analyze_batch(PIPELINE_STOCKS)
             all_signals.extend(signals)
 
         # 2 stocks * 3 analysts = 6 signals
@@ -183,7 +199,6 @@ class TestFullPipelineIntegration:
 
         news = NewsAnalyst(
             config=llm_config,
-            data_service=real_data_service,
             llm_client=real_llm_client,
         )
         funds = FundamentalsAnalyst(
@@ -198,9 +213,15 @@ class TestFullPipelineIntegration:
             llm_client=real_llm_client,
         )
 
+        articles_by_symbol = {}
+        for s in analysis_stocks:
+            articles_by_symbol[s.symbol] = await _fetch_news_articles_for(s, real_data_service)
         all_signals: list[StockSignal] = []
         for analyst in [news, funds, tech]:
-            signals = await analyst.analyze_batch(analysis_stocks)
+            if isinstance(analyst, NewsAnalyst):
+                signals = await analyst.analyze_batch(analysis_stocks, articles_by_symbol=articles_by_symbol)
+            else:
+                signals = await analyst.analyze_batch(analysis_stocks)
             all_signals.extend(signals)
 
         # 3 stocks * 3 analysts = 9 signals

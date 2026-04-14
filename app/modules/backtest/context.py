@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.modules.backtest.llm_response_cache import LLMResponseCache
 
 from app.modules.backtest.adapters.backtest_broker import BacktestBrokerAdapter
+from app.modules.backtest.adapters.backtest_news import BacktestNewsAdapter
 from app.modules.backtest.adapters.historical_data import (
     HistoricalDataAdapter,
     HistoricalPriceStore,
@@ -83,8 +84,7 @@ class BacktestContext:
         path = bundles_root / config.skills_bundle
         if not path.is_dir():
             raise ValueError(
-                f"Skill bundle not found: {path}. "
-                f"Run: python -m scripts.bundle_skills {config.skills_bundle}"
+                f"Skill bundle not found: {path}. Run: python -m scripts.bundle_skills {config.skills_bundle}"
             )
         return path
 
@@ -105,7 +105,9 @@ class BacktestContext:
 
         # 2a. Superset of symbols across all quarterly snapshots in the date range
         snapshot_symbols = universe_provider.get_snapshot_symbols(
-            config.branch_name, config.start_date, config.end_date,
+            config.branch_name,
+            config.start_date,
+            config.end_date,
         )
 
         # 2b. Fall back to branch CSV only if no snapshots were found
@@ -123,7 +125,11 @@ class BacktestContext:
         all_symbols = sorted(set(symbols + config.benchmark_symbols))
         logger.info(
             "Universe loaded: %d stocks for branch '%s' (top_n=%s, %d from snapshots, %d from CSV)",
-            len(symbols), config.branch_name, config.top_n, len(snapshot_symbols), len(csv_symbols),
+            len(symbols),
+            config.branch_name,
+            config.top_n,
+            len(snapshot_symbols),
+            len(csv_symbols),
         )
 
         # 3. Preload OHLCV from yfinance
@@ -146,12 +152,15 @@ class BacktestContext:
                 symbols.remove(sym)
                 logger.info(
                     "Excluded %s: first traded %s, backtest starts %s",
-                    sym, first_date, config.start_date,
+                    sym,
+                    first_date,
+                    config.start_date,
                 )
         if excluded:
             logger.info(
                 "IPO filter: excluded %d/%d symbols (not traded at backtest start)",
-                len(excluded), len(excluded) + len(symbols),
+                len(excluded),
+                len(excluded) + len(symbols),
             )
 
         # 4. Pre-load point-in-time fundamentals from SEC EDGAR
@@ -165,6 +174,7 @@ class BacktestContext:
             time_provider=tp,
             fundamentals_store=fundamentals_store,
         )
+        news_adapter = BacktestNewsAdapter()
         data_service = DataPlatformService(
             adapter_registry={
                 "prices": {
@@ -173,6 +183,9 @@ class BacktestContext:
                 },
                 "fundamentals": {
                     "equity": [adapter],
+                },
+                "news": {
+                    "all": [news_adapter],
                 },
             },
             cache=NoOpCache(),
@@ -249,7 +262,6 @@ class BacktestContext:
 
             raw_news = NewsAnalyst(
                 config=llm_cfg.news_analyst,
-                data_service=data_service,
                 llm_client=AnthropicAnalystClient(
                     model=llm_cfg.news_analyst.model,
                     temperature=llm_cfg.news_analyst.temperature,

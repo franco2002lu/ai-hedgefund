@@ -78,7 +78,6 @@ def init_services(data_platform_service: DataPlatformService) -> None:
         universe_provider=UniverseProvider(data_service=data_platform_service),
         news_analyst=NewsAnalyst(
             config=equities_config.agents.news_analyst,
-            data_service=data_platform_service,
             llm_client=news_llm,
         ),
         fundamentals_analyst=FundamentalsAnalyst(

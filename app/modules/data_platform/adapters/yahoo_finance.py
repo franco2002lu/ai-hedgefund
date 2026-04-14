@@ -1,6 +1,7 @@
 """Yahoo Finance adapter — primary data source for Phase 1."""
 
 import asyncio
+import logging
 from datetime import UTC, date, datetime
 
 import yfinance as yf
@@ -8,6 +9,8 @@ import yfinance as yf
 from app.common.interfaces.fundamentals import FundamentalsAdapter
 from app.common.interfaces.news import NewsAdapter, NewsArticle
 from app.common.interfaces.price_data import PriceBar, PriceDataAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
@@ -240,6 +243,20 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
 
     # --- News ---
 
+    _SECTOR_ETF_MAP: dict[str, str] = {
+        "Technology": "XLK",
+        "Financial Services": "XLF",
+        "Healthcare": "XLV",
+        "Consumer Cyclical": "XLY",
+        "Consumer Defensive": "XLP",
+        "Energy": "XLE",
+        "Industrials": "XLI",
+        "Basic Materials": "XLB",
+        "Real Estate": "XLRE",
+        "Utilities": "XLU",
+        "Communication Services": "XLC",
+    }
+
     async def get_news(
         self,
         symbols: list[str] | None = None,
@@ -247,13 +264,37 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
         since: date | None = None,
         limit: int = 100,
     ) -> list[NewsArticle]:
-        def _fetch():
-            articles = []
-            target_symbols = symbols or []
-            if not target_symbols and query:
-                target_symbols = [query]
+        target_symbols = symbols or ([query] if query else [])
+        return await self._fetch_news_for_symbols(target_symbols[:5], since, limit)
 
-            for symbol in target_symbols[:5]:  # Limit to avoid rate limiting
+    async def get_market_news(
+        self,
+        since: date | None = None,
+        limit: int = 20,
+    ) -> list[NewsArticle]:
+        return await self._fetch_news_for_symbols(["SPY"], since, limit)
+
+    async def get_sector_news(
+        self,
+        sector: str,
+        since: date | None = None,
+        limit: int = 20,
+    ) -> list[NewsArticle]:
+        etf = self._SECTOR_ETF_MAP.get(sector)
+        if etf is None:
+            logger.warning("YahooFinanceAdapter: no sector-ETF mapping for %r; returning []", sector)
+            return []
+        return await self._fetch_news_for_symbols([etf], since, limit)
+
+    async def _fetch_news_for_symbols(
+        self,
+        tickers: list[str],
+        since: date | None,
+        limit: int,
+    ) -> list[NewsArticle]:
+        def _fetch():
+            articles: list[NewsArticle] = []
+            for symbol in tickers:
                 ticker = yf.Ticker(symbol)
                 news = ticker.news or []
                 for item in news[:limit]:
@@ -270,17 +311,18 @@ class YahooFinanceAdapter(PriceDataAdapter, FundamentalsAdapter, NewsAdapter):
                     if since and published.date() < since:
                         continue
 
+                    provider_obj = content.get("provider") or {}
+                    provider_name = provider_obj.get("displayName")
                     articles.append(
                         NewsArticle(
                             title=content.get("title", ""),
-                            author=content.get("provider", {}).get("displayName"),
-                            source="yahoo_finance",
+                            author=None,
+                            source=provider_name or "Yahoo Finance",
                             published_at=published,
                             url=content.get("canonicalUrl", {}).get("url", ""),
                             symbols=[symbol],
                         )
                     )
-
             return articles[:limit]
 
         loop = asyncio.get_event_loop()

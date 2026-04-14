@@ -1,6 +1,6 @@
 """Unit tests for DataPlatformService — adapter routing, caching, and fallback logic."""
 
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -230,3 +230,142 @@ class TestGetNews:
 
         with pytest.raises(DataUnavailableError, match="news"):
             await svc.get_news()
+
+
+# ---------------------------------------------------------------------------
+# get_market_news / get_sector_news
+# ---------------------------------------------------------------------------
+
+from app.common.interfaces.news import NewsArticle  # noqa: E402
+from app.modules.data_platform.noop import NoOpCache, NoOpRateLimiter  # noqa: E402
+
+
+def _article(title="t"):
+    return NewsArticle(
+        title=title,
+        source="Reuters",
+        published_at=datetime(2026, 4, 14, 12, 0, 0),
+        url="https://x",
+    )
+
+
+async def test_get_market_news_returns_first_successful_adapter():
+    adapter = AsyncMock()
+    adapter.name = "mock_news"
+    adapter.get_market_news.return_value = [_article()]
+
+    svc = DataPlatformService(
+        adapter_registry={"news": {"all": [adapter]}},
+        cache=NoOpCache(),
+        rate_limiter=NoOpRateLimiter(),
+    )
+
+    result = await svc.get_market_news(since=date(2026, 4, 7), limit=10)
+
+    assert result["articles"][0]["title"] == "t"
+    assert result["source"] == "mock_news"
+    adapter.get_market_news.assert_awaited_once_with(date(2026, 4, 7), 10)
+
+
+async def test_get_sector_news_returns_sector_articles():
+    adapter = AsyncMock()
+    adapter.name = "mock_news"
+    adapter.get_sector_news.return_value = [_article("tech")]
+
+    svc = DataPlatformService(
+        adapter_registry={"news": {"all": [adapter]}},
+        cache=NoOpCache(),
+        rate_limiter=NoOpRateLimiter(),
+    )
+
+    result = await svc.get_sector_news("Technology", since=date(2026, 4, 7))
+
+    assert result["sector"] == "Technology"
+    assert result["articles"][0]["title"] == "tech"
+    adapter.get_sector_news.assert_awaited_once_with("Technology", date(2026, 4, 7), 20)
+
+
+async def test_get_market_news_raises_when_no_adapter_succeeds():
+    svc = DataPlatformService(
+        adapter_registry={},
+        cache=NoOpCache(),
+        rate_limiter=NoOpRateLimiter(),
+    )
+    with pytest.raises(DataUnavailableError):
+        await svc.get_market_news()
+
+
+async def test_get_sector_news_raises_when_no_adapter_succeeds():
+    svc = DataPlatformService(
+        adapter_registry={},
+        cache=NoOpCache(),
+        rate_limiter=NoOpRateLimiter(),
+    )
+    with pytest.raises(DataUnavailableError):
+        await svc.get_sector_news("Technology")
+
+
+async def test_get_market_news_caches_result():
+    adapter = AsyncMock()
+    adapter.name = "mock_news"
+    adapter.get_market_news.return_value = [_article()]
+    cache_store: dict = {}
+
+    class _StubCache:
+        def get(self, cat, key):
+            return cache_store.get((cat, key))
+
+        def set(self, cat, key, value):
+            cache_store[(cat, key)] = value
+
+    svc = DataPlatformService(
+        adapter_registry={"news": {"all": [adapter]}},
+        cache=_StubCache(),
+        rate_limiter=NoOpRateLimiter(),
+    )
+
+    await svc.get_market_news(since=date(2026, 4, 7), limit=10)
+    await svc.get_market_news(since=date(2026, 4, 7), limit=10)
+
+    # Second call should hit cache — adapter invoked only once.
+    adapter.get_market_news.assert_awaited_once()
+
+
+async def test_get_sector_news_falls_through_to_next_adapter_on_error():
+    failing = AsyncMock()
+    failing.name = "failing"
+    failing.get_sector_news.side_effect = Exception("down")
+
+    working = AsyncMock()
+    working.name = "working"
+    working.get_sector_news.return_value = [_article()]
+
+    svc = DataPlatformService(
+        adapter_registry={"news": {"all": [failing, working]}},
+        cache=NoOpCache(),
+        rate_limiter=NoOpRateLimiter(),
+    )
+
+    result = await svc.get_sector_news("Technology")
+
+    assert result["source"] == "working"
+
+
+async def test_get_market_news_falls_through_to_next_adapter_on_error():
+    failing = AsyncMock()
+    failing.name = "failing"
+    failing.get_market_news.side_effect = Exception("down")
+
+    working = AsyncMock()
+    working.name = "working"
+    working.get_market_news.return_value = [_article()]
+
+    svc = DataPlatformService(
+        adapter_registry={"news": {"all": [failing, working]}},
+        cache=NoOpCache(),
+        rate_limiter=NoOpRateLimiter(),
+    )
+
+    result = await svc.get_market_news()
+
+    assert result["source"] == "working"
