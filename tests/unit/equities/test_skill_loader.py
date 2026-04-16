@@ -419,3 +419,172 @@ class TestNewsValueOverlayNoMechanicalModifiers:
         pattern = re.compile(r"\*\*\s*[+-]\s*\d+\s*\*\*")
         matches = pattern.findall(prompt)
         assert not matches, f"Old mechanical-modifier pattern found: {matches}"
+
+
+# ---------------------------------------------------------------------------
+# Item 3 + 6 follow-up tests (post-2026-04-16 refinements)
+# ---------------------------------------------------------------------------
+
+
+class TestBaseNewsPromptGrounding:
+    """Item 3: base prompt has explicit grounding guidance for prior-knowledge use."""
+
+    def test_base_has_grounding_subsection(self):
+        prompt = compose_system_prompt("news")
+        assert "Grounding when using prior knowledge" in prompt
+
+    def test_grounding_requires_summary_disclosure(self):
+        """The grounding section must instruct the LLM to name its prior knowledge in the summary."""
+        prompt = compose_system_prompt("news")
+        idx = prompt.find("Grounding when using prior knowledge")
+        assert idx >= 0
+        section = prompt[idx : idx + 1500]
+        assert "summary" in section.lower()
+        assert "confidence" in section.lower()
+
+    def test_critical_reminders_mentions_prior_knowledge_grounding(self):
+        """A Critical Reminders bullet must call out prior-knowledge grounding."""
+        prompt = compose_system_prompt("news")
+        reminders_start = prompt.find("## Critical Reminders")
+        reminders_end = prompt.find("## Input Shape")
+        reminders = prompt[reminders_start:reminders_end]
+        assert "prior knowledge" in reminders.lower()
+
+
+class TestBaseNewsPromptFailureModeWarnings:
+    """Item 6: base prompt calls out three-layer-specific failure modes."""
+
+    def test_critical_reminders_warns_against_uniform_macro_application(self):
+        prompt = compose_system_prompt("news")
+        reminders_start = prompt.find("## Critical Reminders")
+        reminders_end = prompt.find("## Input Shape")
+        reminders = prompt[reminders_start:reminders_end]
+        assert "uniform" in reminders.lower() or "uniformly" in reminders.lower()
+
+    def test_critical_reminders_warns_about_sub_sector_themes(self):
+        prompt = compose_system_prompt("news")
+        reminders_start = prompt.find("## Critical Reminders")
+        reminders_end = prompt.find("## Input Shape")
+        reminders = prompt[reminders_start:reminders_end]
+        assert "sub-sector" in reminders.lower()
+
+    def test_failure_modes_warns_about_regime_classifier_collapse(self):
+        prompt = compose_system_prompt("news")
+        fm_start = prompt.find("## Common Failure Modes")
+        fm = prompt[fm_start:]
+        assert "regime classifier" in fm.lower()
+
+    def test_failure_modes_warns_about_article_classification(self):
+        prompt = compose_system_prompt("news")
+        fm_start = prompt.find("## Common Failure Modes")
+        fm = prompt[fm_start:]
+        assert "classify" in fm.lower()
+        assert "scope" in fm.lower()
+
+
+# ---------------------------------------------------------------------------
+# Item 4: growth overlay zone anchors tests
+# ---------------------------------------------------------------------------
+
+
+class TestNewsGrowthOverlayZoneAnchors:
+    """Item 4: growth overlay's Signals section has zone anchors tied to the calibration scale."""
+
+    def test_growth_overlay_has_moderately_bullish_zone(self):
+        prompt = compose_system_prompt("news", "growth")
+        assert "Moderately bullish" in prompt
+
+    def test_growth_overlay_has_moderately_bearish_zone(self):
+        prompt = compose_system_prompt("news", "growth")
+        assert "Moderately bearish" in prompt
+
+    def test_growth_overlay_anchors_strong_signals_to_calibration_zones(self):
+        """Strong signals must reference specific calibration zones (8-9, 2-3)."""
+        prompt = compose_system_prompt("news", "growth")
+        idx = prompt.find("## Signals That Warrant Strong Conviction")
+        assert idx >= 0
+        section = prompt[idx:]
+        assert "8-9" in section, "Missing strong-bullish zone anchor (8-9)"
+        assert "2-3" in section, "Missing strong-bearish zone anchor (2-3)"
+
+    def test_growth_overlay_anchors_moderate_signals_to_calibration_zones(self):
+        """Moderate signals must reference calibration zones (6-7 bullish)."""
+        prompt = compose_system_prompt("news", "growth")
+        idx = prompt.find("## Signals That Warrant Strong Conviction")
+        section = prompt[idx:]
+        assert "6-7" in section, "Missing moderate-bullish zone anchor (6-7)"
+
+    def test_growth_overlay_still_has_no_bold_numeric_modifiers(self):
+        """Zone anchors must not reintroduce the old **+N**/**-N** pattern."""
+        import re
+
+        prompt = compose_system_prompt("news", "growth")
+        pattern = re.compile(r"\*\*\s*[+-]\s*\d+\s*\*\*")
+        matches = pattern.findall(prompt)
+        assert not matches, f"Mechanical-modifier pattern reappeared: {matches}"
+
+
+class TestNewsValueOverlayZoneAnchors:
+    """Item 4: value overlay's Signals section has zone anchors tied to the calibration scale."""
+
+    def test_value_overlay_has_moderately_bullish_zone(self):
+        prompt = compose_system_prompt("news", "value")
+        assert "Moderately bullish" in prompt
+
+    def test_value_overlay_has_moderately_bearish_zone(self):
+        prompt = compose_system_prompt("news", "value")
+        assert "Moderately bearish" in prompt
+
+    def test_value_overlay_anchors_strong_signals_to_calibration_zones(self):
+        prompt = compose_system_prompt("news", "value")
+        idx = prompt.find("## Signals That Warrant Strong Conviction")
+        assert idx >= 0
+        section = prompt[idx:]
+        assert "8-9" in section, "Missing strong-bullish zone anchor (8-9)"
+        assert "2-3" in section, "Missing strong-bearish zone anchor (2-3)"
+
+    def test_value_overlay_anchors_moderate_signals_to_calibration_zones(self):
+        prompt = compose_system_prompt("news", "value")
+        idx = prompt.find("## Signals That Warrant Strong Conviction")
+        section = prompt[idx:]
+        assert "6-7" in section, "Missing moderate-bullish zone anchor (6-7)"
+
+    def test_value_overlay_still_has_no_bold_numeric_modifiers(self):
+        import re
+
+        prompt = compose_system_prompt("news", "value")
+        pattern = re.compile(r"\*\*\s*[+-]\s*\d+\s*\*\*")
+        matches = pattern.findall(prompt)
+        assert not matches, f"Mechanical-modifier pattern reappeared: {matches}"
+
+
+# ---------------------------------------------------------------------------
+# Item 5: Parallel structure invariant test
+# ---------------------------------------------------------------------------
+
+
+class TestOverlaysHaveParallelStructure:
+    """Item 5: growth and value overlays must have the same H2 section headers.
+
+    Prevents drift when someone edits one overlay but forgets to mirror
+    the change in the other.
+    """
+
+    def test_growth_and_value_overlay_sections_match(self):
+        import re
+
+        g_prompt = compose_system_prompt("news", "growth")
+        v_prompt = compose_system_prompt("news", "value")
+
+        # Extract H2 headers from the overlay portion. The overlay starts at
+        # the branch header (# Growth Branch / # Value Branch) and ends at
+        # the next --- separator that joins the output format layer.
+        g_overlay = g_prompt.split("# Growth Branch")[1].split("\n---\n")[0]
+        v_overlay = v_prompt.split("# Value Branch")[1].split("\n---\n")[0]
+
+        g_sections = re.findall(r"^## .+$", g_overlay, re.MULTILINE)
+        v_sections = re.findall(r"^## .+$", v_overlay, re.MULTILINE)
+
+        assert g_sections == v_sections, (
+            f"Overlay structure drift.\n  Growth sections: {g_sections}\n  Value sections:  {v_sections}"
+        )

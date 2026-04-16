@@ -22,14 +22,24 @@ Within a rallying sector, scores should skew more bullish for core secular benef
 
 ## Signals That Warrant Strong Conviction
 
-**Strongly bullish — score toward the high end of the calibration scale:**
+**Strongly bullish — typically an 8-9 signal zone when the signal is isolated, a 9 when multiple layers align:**
 - A dovish Fed pivot with the market visibly repricing (rate cuts getting pulled forward)
 - Sector outperformance driven by a secular theme the stock directly embodies
 - Stock-specific: major product launch, enterprise win with a named customer of meaningful size, or raised guidance
 
-**Strongly bearish — score toward the low end:**
+**Moderately bullish — typically a 6-7 signal zone when isolated:**
+- Falling-rate environment without a clear pivot signal
+- Sector outperformance without a clearly-identified secular theme
+- Stock-specific: positive analyst actions, incremental product announcements
+
+**Strongly bearish — typically a 2-3 signal zone, a 1-2 when multiple layers align:**
 - A hawkish surprise (hike or hawkish Fed speak) with the market repricing
 - Rotation OUT of growth sectors into value, defensives, or cash
 - Stock-specific: guidance cut, growth-slowdown signal, or evidence that the secular thesis the stock depends on is eroding
 
-The strength of the underlying signal determines the magnitude of the score move. A widely-corroborated hawkish surprise warrants a sharp bearish tilt; a single ambiguous rate-hike speculation article does not. Judge magnitude by signal strength and corroboration across the three layers.
+**Moderately bearish — typically a 4 signal zone when isolated:**
+- Mixed rate signals without a clear direction
+- Sector underperformance without a structural-decline narrative
+- Stock-specific: minor analyst downgrades, delayed product timelines
+
+Zones are reference points, not mechanical offsets. The LLM judges the final score by synthesizing all signals — a single moderately bullish signal with contradicting stock-specific headwinds may land at 4, not 6.

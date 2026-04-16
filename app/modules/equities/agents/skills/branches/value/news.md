@@ -22,15 +22,25 @@ Within sector tailwinds, favor established franchises with durable cash flows ov
 
 ## Signals That Warrant Strong Conviction
 
-**Strongly bullish — score toward the high end of the calibration scale:**
-- Insider buying with personal funds — this is the strongest conviction signal available, because insiders are betting their own capital on the business being undervalued.
+**Strongly bullish — typically an 8-9 signal zone when isolated, a 9 when multiple layers align:**
+- Insider buying with personal funds — the strongest conviction signal available, because insiders are betting their own capital
 - An activist investor taking a meaningful position with a public thesis
 - Dividend raise or a buyback announcement at a clearly depressed valuation
 - Macro rotation INTO the stock's sector with a clear underlying driver (rate-normalization tailwind for financials, commodity cycle for energy, onshoring capex for industrials)
 
-**Strongly bearish — score toward the low end:**
+**Moderately bullish — typically a 6-7 signal zone when isolated:**
+- Rising-rate environment without explicit growth-to-value rotation
+- Sector tailwind from a known driver but without stock-specific corroboration
+- Stock-specific: analyst upgrade off a neutral rating, modest capital-return increase
+
+**Strongly bearish — typically a 2-3 signal zone, a 1-2 when multiple layers align:**
 - Dividend cut — directly destroys the capital-return thesis, and usually signals deeper business distress
 - A structural-decline narrative dominating sector news (not a cyclical headwind but secular erosion of the business model)
 - A growth-euphoria melt-up environment where long-duration assets are rallying and value is being left behind
 
-The strength of the underlying signal determines the magnitude of the score move. A major insider buy corroborated by activist positioning warrants sharp bullishness; a single small insider purchase is a weaker signal. Judge magnitude by the strength of the underlying evidence and its corroboration across the three layers.
+**Moderately bearish — typically a 4 signal zone when isolated:**
+- Sector underperformance without a structural-decline narrative
+- Risk-on rally driven by speculative flows
+- Stock-specific: guidance at risk, modest cash-flow deterioration
+
+Zones are reference points, not mechanical offsets. The LLM judges the final score by synthesizing all signals — a strongly-bullish stock-specific event in a moderately-bearish sector may still land at 6-7.
