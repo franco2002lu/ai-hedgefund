@@ -245,12 +245,8 @@ class TestSkillsDirParameter:
 
         # Build a minimal alternate bundle
         (tmp_path / "base").mkdir()
-        (tmp_path / "base" / "fundamentals.md").write_text(
-            "# Alternate Fundamentals Skill\n\nAlternate instructions."
-        )
-        (tmp_path / "output_format.md").write_text(
-            '## Output Format\n\nReturn JSON with "bullish_score".'
-        )
+        (tmp_path / "base" / "fundamentals.md").write_text("# Alternate Fundamentals Skill\n\nAlternate instructions.")
+        (tmp_path / "output_format.md").write_text('## Output Format\n\nReturn JSON with "bullish_score".')
 
         prompt = compose_system_prompt("fundamentals", "", None, tmp_path)
         assert "Alternate Fundamentals Skill" in prompt
@@ -276,3 +272,150 @@ class TestSkillsDirParameter:
         assert "Bundle A" in prompt_a
         assert "Bundle B" in prompt_b
         assert prompt_a != prompt_b
+
+
+# ---------------------------------------------------------------------------
+# News-prompt-specific structural tests (post-2026-04-16 redesign)
+# ---------------------------------------------------------------------------
+
+
+class TestNewsPromptStructure:
+    """Structural tests for the rewritten news analyst base prompt."""
+
+    def test_news_base_contains_new_section_markers(self):
+        """The rewritten news base prompt has the 8-section structure."""
+        prompt = compose_system_prompt("news")
+        assert "# News Analyst" in prompt
+        assert "## Role" in prompt
+        assert "## Critical Reminders" in prompt
+        assert "## Input Shape" in prompt
+        assert "## Analysis Framework" in prompt
+        assert "## Stock-Exposure Assessment" in prompt
+        assert "## Score Calibration" in prompt
+        assert "## Confidence Calibration" in prompt
+        assert "## Worked Examples" in prompt
+        assert "## Common Failure Modes" in prompt
+
+    def test_news_base_section_order(self):
+        """Sections appear in the documented order."""
+        prompt = compose_system_prompt("news")
+        order = [
+            "# News Analyst",
+            "## Role",
+            "## Critical Reminders",
+            "## Input Shape",
+            "## Analysis Framework",
+            "## Stock-Exposure Assessment",
+            "## Score Calibration",
+            "## Confidence Calibration",
+            "## Worked Examples",
+            "## Common Failure Modes",
+        ]
+        positions = [prompt.find(marker) for marker in order]
+        assert all(p >= 0 for p in positions), (
+            f"Missing markers: {[m for m, p in zip(order, positions, strict=False) if p < 0]}"
+        )
+        assert positions == sorted(positions), f"Out of order: {positions}"
+
+    def test_news_base_references_three_layers(self):
+        """The base prompt explicitly names the three input layers."""
+        prompt = compose_system_prompt("news").lower()
+        assert "market" in prompt
+        assert "sector" in prompt
+        assert "stock-specific" in prompt
+
+
+class TestNewsPromptStalePhraseRegression:
+    """Prevent known-stale phrases from reappearing in the news base prompt."""
+
+    _STALE_PHRASES = [
+        "absence of news is mildly positive",
+        "press releases",
+        "SEC investigation",
+        "Tim Cook",
+        "antitrust probe",
+    ]
+
+    @pytest.mark.parametrize("phrase", _STALE_PHRASES)
+    def test_base_news_does_not_contain_stale_phrase(self, phrase):
+        prompt = compose_system_prompt("news")
+        assert phrase.lower() not in prompt.lower(), f"Stale phrase '{phrase}' still present in news base prompt"
+
+
+# ---------------------------------------------------------------------------
+# News overlay structural tests (post-2026-04-16 redesign)
+# ---------------------------------------------------------------------------
+
+
+class TestNewsGrowthOverlayStructure:
+    """The rewritten growth overlay uses thesis + layer-guidance structure."""
+
+    def test_growth_overlay_has_investment_thesis_section(self):
+        prompt = compose_system_prompt("news", "growth")
+        assert "# Growth Branch" in prompt
+        assert "## Investment Thesis" in prompt
+
+    def test_growth_overlay_has_layer_guidance_section(self):
+        prompt = compose_system_prompt("news", "growth")
+        assert "## Reading the Three Layers" in prompt
+
+    def test_growth_overlay_has_stock_exposure_emphasis(self):
+        prompt = compose_system_prompt("news", "growth")
+        assert "## Stock-Exposure Emphasis" in prompt
+
+    def test_growth_overlay_has_signal_strength_section(self):
+        prompt = compose_system_prompt("news", "growth")
+        assert "## Signals That Warrant Strong Conviction" in prompt
+
+
+class TestNewsGrowthOverlayNoMechanicalModifiers:
+    """The overlay must not prescribe numeric score offsets.
+
+    The old overlay had lines like '+1', '-2' in bold. The new design
+    trusts the LLM to judge magnitude based on the base prompt's Score
+    Calibration. This regression test ensures the old mechanical pattern
+    does not reappear.
+    """
+
+    def test_growth_overlay_no_bold_numeric_modifiers(self):
+        """No **+N** or **-N** pattern anywhere in the growth overlay."""
+        import re
+
+        prompt = compose_system_prompt("news", "growth")
+        # Narrow regex: match **+1**, **+ 2**, **-2**, etc. — the exact
+        # formatting the old overlay used. Avoids false positives on
+        # legitimate content like "rising rates by 50bps" or "10-year yield".
+        pattern = re.compile(r"\*\*\s*[+-]\s*\d+\s*\*\*")
+        matches = pattern.findall(prompt)
+        assert not matches, f"Old mechanical-modifier pattern found: {matches}"
+
+
+class TestNewsValueOverlayStructure:
+    """The rewritten value overlay uses thesis + layer-guidance structure."""
+
+    def test_value_overlay_has_investment_thesis_section(self):
+        prompt = compose_system_prompt("news", "value")
+        assert "# Value Branch" in prompt
+        assert "## Investment Thesis" in prompt
+
+    def test_value_overlay_has_layer_guidance_section(self):
+        prompt = compose_system_prompt("news", "value")
+        assert "## Reading the Three Layers" in prompt
+
+    def test_value_overlay_has_stock_exposure_emphasis(self):
+        prompt = compose_system_prompt("news", "value")
+        assert "## Stock-Exposure Emphasis" in prompt
+
+    def test_value_overlay_has_signal_strength_section(self):
+        prompt = compose_system_prompt("news", "value")
+        assert "## Signals That Warrant Strong Conviction" in prompt
+
+
+class TestNewsValueOverlayNoMechanicalModifiers:
+    def test_value_overlay_no_bold_numeric_modifiers(self):
+        import re
+
+        prompt = compose_system_prompt("news", "value")
+        pattern = re.compile(r"\*\*\s*[+-]\s*\d+\s*\*\*")
+        matches = pattern.findall(prompt)
+        assert not matches, f"Old mechanical-modifier pattern found: {matches}"

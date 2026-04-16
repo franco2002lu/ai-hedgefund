@@ -79,6 +79,12 @@ class TestNewsAnalyst:
             await analyst.analyze(_make_stock(), articles=_make_articles())
 
     async def test_branch_name_selects_overlay(self):
+        """When branch_name is set, invoke() receives a system_prompt kwarg.
+
+        Also verifies the rewritten 2026-04-16 base prompt is in use — if
+        the prompt composition regresses or a stale cached string is sent,
+        the new section markers will be absent and this test will fail.
+        """
         analyst, llm_client = _make_analyst()
         analyst.branch_name = "growth"
         await analyst.analyze(_make_stock(sector="Technology"), articles=_make_articles())
@@ -86,6 +92,10 @@ class TestNewsAnalyst:
         system_prompt = llm_client.invoke.call_args.kwargs["system_prompt"]
         assert "News Analyst" in system_prompt
         assert "Growth Branch" in system_prompt
+        # Post-2026-04-16 redesign markers — confirm new prompts reach the LLM.
+        assert "## Input Shape" in system_prompt
+        assert "## Stock-Exposure Assessment" in system_prompt
+        assert "## Investment Thesis" in system_prompt
 
 
 class TestAnalyzeBatch:

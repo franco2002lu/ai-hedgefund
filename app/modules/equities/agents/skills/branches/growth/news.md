@@ -1,25 +1,35 @@
 # Growth Branch: News Overlay
 
-## Investment Context
+## Investment Thesis
 
-This analysis is for a **growth portfolio**. Value forward-looking catalysts: product innovation, market expansion, and competitive positioning. Backward-looking financial news (dividends, buybacks) is less relevant.
+Growth investors pay up for future earnings. Returns depend on two things happening together: continued earnings expansion AND the market maintaining or expanding the multiple it assigns those earnings. This makes growth investing especially sensitive to:
 
-## How This Changes Your Analysis
+- The discount-rate environment — falling rates lift the present value of long-duration cash flows, supporting higher multiples.
+- Evidence of secular growth drivers versus cyclical bounces — secular themes (AI, cloud migration, energy transition) are load-bearing for growth theses in a way that cyclical rebounds are not.
+- The market's risk appetite — risk-on environments allow multiples to expand; risk-off environments force the market to demand near-term cash flows, which growth stocks trade at a disadvantage for.
 
-When classifying and weighting headlines, adjust your priorities:
+## Reading the Three Layers
 
-1. **Product launches and innovation** (step 4): Treat as HIGH impact — same tier as earnings. New products, platform expansion, and technology breakthroughs are the primary catalysts for growth stocks.
-2. **TAM expansion**: Treat as HIGH impact. News about new markets, customer segments, or geographic expansion signals future revenue growth.
-3. **Partnerships and enterprise wins**: Treat as HIGH impact. Major customer wins or strategic partnerships validate the growth thesis.
-4. **Analyst upgrades**: Treat as MEDIUM-HIGH. Upgrades citing growth acceleration or TAM expansion are stronger signals than generic upgrades.
-5. **Dividend/buyback news**: Treat as LOW impact. A new dividend announcement may actually be negative — it can signal that growth is slowing and the company is returning capital instead of reinvesting.
+When reading the three input layers through a growth-branch lens:
 
-## Score Modifiers
+- **Market layer**: weight discount-rate conditions and monetary-policy signals heavily. Rate direction is often more predictive for growth than other macro axes. Risk-on versus risk-off posture is the next most important axis. Evidence of broad-market multiple expansion is a tailwind.
+- **Sector layer**: distinguish secular tailwinds from cyclical bounces. A technology sector rally driven by "AI infrastructure spending raised" or "cloud migration accelerating" is a different signal than one driven by a rebound from oversold conditions. Secular themes support growth theses; cyclical rebounds are less reliable.
+- **Stock-specific layer**: prioritize forward-looking content — product launches, major enterprise wins, TAM expansion announcements, raised revenue or earnings guidance. Backward-looking signals (dividend initiations, buybacks from cash-rich but slow-growing companies) may actually be mild negatives in a growth portfolio — they can signal management believes the growth runway is narrowing.
 
-Apply these after your base analysis:
+## Stock-Exposure Emphasis
 
-- Major product launch or platform expansion in Last 7 Days: **+1**
-- Analyst upgrade citing revenue acceleration: **+1**
-- New large enterprise customer or strategic partnership: **+1**
-- Headlines suggesting market share loss to competitors: **-2**
-- Management lowering guidance or signaling growth slowdown: **-2**
+Within a rallying sector, scores should skew more bullish for core secular beneficiaries than for incumbents being disrupted by the same theme. A tech sector rally driven by AI helps NVDA and hyperscalers more than it helps legacy enterprise IT; a cloud-migration theme helps hyperscalers more than it helps traditional infrastructure vendors. The growth branch's edge is identifying which stocks are the sharpest exposures to a given macro or sector signal, not treating a broad rally as uniformly bullish.
+
+## Signals That Warrant Strong Conviction
+
+**Strongly bullish — score toward the high end of the calibration scale:**
+- A dovish Fed pivot with the market visibly repricing (rate cuts getting pulled forward)
+- Sector outperformance driven by a secular theme the stock directly embodies
+- Stock-specific: major product launch, enterprise win with a named customer of meaningful size, or raised guidance
+
+**Strongly bearish — score toward the low end:**
+- A hawkish surprise (hike or hawkish Fed speak) with the market repricing
+- Rotation OUT of growth sectors into value, defensives, or cash
+- Stock-specific: guidance cut, growth-slowdown signal, or evidence that the secular thesis the stock depends on is eroding
+
+The strength of the underlying signal determines the magnitude of the score move. A widely-corroborated hawkish surprise warrants a sharp bearish tilt; a single ambiguous rate-hike speculation article does not. Judge magnitude by signal strength and corroboration across the three layers.
