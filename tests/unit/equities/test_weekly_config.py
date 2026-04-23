@@ -1,5 +1,7 @@
 """Tests for weekly-pipeline env var parsing in app.config.Settings."""
 
+import pytest
+
 from app.config import Settings
 
 
@@ -31,3 +33,9 @@ def test_enabled_branches_trims_whitespace(monkeypatch):
     monkeypatch.setenv("HEDGE_EQUITIES_ENABLED_BRANCHES", "growth, value")
     s = Settings()
     assert s.equities_enabled_branches == ["growth", "value"]
+
+
+def test_enabled_branches_rejects_unknown_name(monkeypatch):
+    monkeypatch.setenv("HEDGE_EQUITIES_ENABLED_BRANCHES", "growth,typo")
+    with pytest.raises(ValueError, match="Unknown branches"):
+        Settings()

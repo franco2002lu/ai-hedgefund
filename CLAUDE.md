@@ -46,9 +46,9 @@ python -m scripts.run_experiment --preset quick --branch growth --end-date 2025-
 pytest tests/unit/backtest/ -q                  # backtest unit tests
 
 # Lint and format (ruff)
-ruff check app/ tests/                          # lint
-ruff check app/ tests/ --fix                    # lint with auto-fix
-ruff format app/ tests/                         # format
+ruff check app/ tests/ scripts/                 # lint
+ruff check app/ tests/ scripts/ --fix           # lint with auto-fix
+ruff format app/ tests/ scripts/                # format
 
 # Migrations
 alembic revision --autogenerate -m "description"

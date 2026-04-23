@@ -81,11 +81,25 @@ def _init_data_platform() -> DataPlatformService:
     )
 
 
-async def _resolve_branch_id(session, branch_name: str) -> str | None:
+async def _resolve_branch_id(session, branch_name: str) -> str:
+    """Resolve a short branch key (e.g., 'growth') to its branches.id UUID.
+
+    Uses a case-insensitive substring match (branches are named 'Equities Growth'
+    but the CLI accepts 'growth'). If multiple branches match, raises — the
+    caller should pick a more specific name rather than letting us guess.
+    """
     stmt = select(BranchModel).where(BranchModel.name.ilike(f"%{branch_name}%"))
     result = await session.execute(stmt)
-    row = result.scalar_one_or_none()
-    return str(row.id) if row else None
+    rows = result.scalars().all()
+    if not rows:
+        raise RuntimeError(f"No branch found matching '{branch_name}'")
+    if len(rows) > 1:
+        names = sorted(r.name for r in rows)
+        raise RuntimeError(
+            f"Branch name '{branch_name}' matched {len(rows)} branches: {names}. "
+            "Use a more specific name."
+        )
+    return str(rows[0].id)
 
 
 async def _run_one_branch(
@@ -98,10 +112,11 @@ async def _run_one_branch(
     equities_service = get_equities_service()
     WeeklyRunner.configure_service(equities_service, top_n=top_n)
 
-    async with async_session_factory() as session:
+    # session.begin() wraps the work in an explicit transaction that commits on
+    # clean exit and rolls back on exception — matches the pattern used by
+    # app/db/connection.py::get_session for FastAPI requests.
+    async with async_session_factory() as session, session.begin():
         branch_id = await _resolve_branch_id(session, branch_name)
-        if branch_id is None:
-            raise RuntimeError(f"No branch found matching '{branch_name}'")
 
         if dry_run:
             logger.info("[dry_run] Would have executed branch=%s top_n=%s", branch_name, top_n)
@@ -129,7 +144,9 @@ async def _run_one_branch(
             portfolio_service=portfolio_service,
         )
 
-        # Attach per-request services to the singleton for this run only
+        # Attach per-request services to the singleton for this run only.
+        # Safe because branches run sequentially in _main_async; NOT safe for
+        # concurrent callers.
         equities_service.trade_execution_service = trade_execution_service
         equities_service.portfolio_service = portfolio_service
         equities_service.event_log = event_log
@@ -139,14 +156,12 @@ async def _run_one_branch(
             service=equities_service, repo=repo, session=session
         )
 
-        summary = await runner.execute(
+        return await runner.execute(
             branch_name=branch_name,
             branch_id=branch_id,
             run_date=today_ny(),
             force_retry=force_retry,
         )
-        await session.commit()
-        return summary
 
 
 async def _main_async(args: argparse.Namespace) -> int:
