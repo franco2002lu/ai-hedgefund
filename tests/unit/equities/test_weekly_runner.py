@@ -14,6 +14,7 @@ from app.modules.equities.weekly_runner import (
     RunInFlightError,
     WeeklyRunner,
     WeeklyRunSummary,
+    render_digest,
 )
 
 
@@ -223,3 +224,51 @@ def test_configure_service_with_none_top_n_leaves_unset():
     WeeklyRunner.configure_service(service, top_n=None)
 
     assert service.universe_provider.top_n is None
+
+
+def test_render_digest_single_success():
+    s = WeeklyRunSummary(
+        run_id="2026-04-27-growth",
+        branch_name="growth",
+        status="completed",
+        universe_count=50,
+        screened_count=32,
+        orders_placed=15,
+        trades_executed=12,
+        duration_seconds=402.5,
+        error=None,
+    )
+    out = render_digest([s], run_date=date(2026, 4, 27))
+
+    assert "# Weekly Rebalance — 2026-04-27" in out
+    assert "## growth" in out
+    assert "completed" in out or "✅" in out
+    assert "Universe: 50" in out
+    assert "Screened: 32" in out
+    assert "Orders placed: 15" in out
+    assert "Trades executed: 12" in out
+    assert "6m 42s" in out or "402.5s" in out or "402" in out
+
+
+def test_render_digest_mixed_success_and_failure():
+    s1 = WeeklyRunSummary(
+        run_id="2026-04-27-growth",
+        branch_name="growth",
+        status="completed",
+        universe_count=50, screened_count=30, orders_placed=10,
+        trades_executed=8, duration_seconds=300.0, error=None,
+    )
+    s2 = WeeklyRunSummary(
+        run_id="2026-04-27-value",
+        branch_name="value",
+        status="failed",
+        universe_count=0, screened_count=0, orders_placed=0,
+        trades_executed=0, duration_seconds=12.0,
+        error="RuntimeError: yfinance rate limited",
+    )
+    out = render_digest([s1, s2], run_date=date(2026, 4, 27))
+
+    assert "## growth" in out
+    assert "## value" in out
+    assert "❌" in out or "failed" in out
+    assert "yfinance rate limited" in out

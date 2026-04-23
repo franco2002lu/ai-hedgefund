@@ -251,3 +251,34 @@ class WeeklyRunner:
         next_attempt = latest.attempt + 1
         new_run_id = f"{run_date.isoformat()}-{branch_name}-attempt{next_attempt}"
         return next_attempt, new_run_id
+
+
+def _format_duration(seconds: float) -> str:
+    """Format duration in seconds to human-readable string (e.g., '6m 42s')."""
+    m, s = divmod(int(seconds), 60)
+    if m == 0:
+        return f"{s}s"
+    return f"{m}m {s:02d}s"
+
+
+def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
+    """Build the markdown digest written to $GITHUB_STEP_SUMMARY."""
+    lines = [f"# Weekly Rebalance — {run_date.isoformat()}", ""]
+    for s in summaries:
+        icon = {"completed": "✅", "failed": "❌", "skipped": "⏭️"}.get(s.status, "❔")
+        lines.append(f"## {s.branch_name} {icon}")
+        lines.append(f"- Run ID: `{s.run_id}`")
+        lines.append(f"- Status: {s.status}")
+        if s.status == "completed":
+            lines.append(f"- Universe: {s.universe_count}")
+            lines.append(f"- Screened: {s.screened_count}")
+            lines.append(f"- Orders placed: {s.orders_placed}")
+            lines.append(f"- Trades executed: {s.trades_executed}")
+            lines.append(f"- Duration: {_format_duration(s.duration_seconds)}")
+            if s.orders_placed == 0:
+                lines.append("- ⚠️ 0 orders — check data freshness")
+        elif s.status == "failed":
+            lines.append(f"- Duration before failure: {_format_duration(s.duration_seconds)}")
+            lines.append(f"- Error: `{s.error or 'unknown'}`")
+        lines.append("")
+    return "\n".join(lines)
