@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_session
-from app.db.models import AgentSignalModel, BranchModel, PortfolioDecisionModel, ScreeningRunModel
+from app.db.models import AgentSignalModel, BranchModel, PipelineRunModel, PortfolioDecisionModel, ScreeningRunModel
 from app.dependencies import (
     get_equities_service,
     get_portfolio_service,
@@ -41,6 +41,37 @@ async def update_config(
 ):
     service.config = config
     return service.config.model_dump()
+
+
+@router.get("/pipeline-runs")
+async def get_pipeline_runs(
+    branch: str | None = Query(default=None, description="Filter by branch name substring"),
+    limit: int = Query(default=20, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    stmt = select(PipelineRunModel).order_by(
+        PipelineRunModel.run_date.desc(),
+        PipelineRunModel.attempt.desc(),
+    )
+    if branch:
+        stmt = stmt.join(BranchModel).where(BranchModel.name.ilike(f"%{branch}%"))
+    stmt = stmt.limit(limit)
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        {
+            "run_id": r.run_id,
+            "branch_id": str(r.branch_id),
+            "run_date": r.run_date.isoformat(),
+            "attempt": r.attempt,
+            "status": r.status,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "summary_json": r.summary_json,
+            "error_msg": r.error_msg,
+        }
+        for r in rows
+    ]
 
 
 # Dynamic /{branch_name} routes
