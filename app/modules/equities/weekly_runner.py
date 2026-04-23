@@ -207,6 +207,22 @@ class WeeklyRunner:
             duration_seconds=duration,
         )
 
+    @classmethod
+    def configure_service(
+        cls,
+        service: EquitiesBranchService,
+        *,
+        top_n: int | None,
+    ) -> None:
+        """Mutate the service's universe provider for this weekly run.
+
+        Called once before any execute() calls. Safe for sequential single-process
+        use (the weekly CLI is single-threaded). Do not call from multi-worker
+        contexts — the mutation is not thread-safe.
+        """
+        if top_n is not None:
+            service.universe_provider.top_n = top_n
+
     def _decide_attempt(
         self,
         *,

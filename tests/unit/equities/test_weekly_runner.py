@@ -203,3 +203,23 @@ async def test_execute_marks_failed_on_pipeline_exception():
     repo.mark_failed.assert_awaited_once()
     call_args = repo.mark_failed.await_args
     assert "boom" in call_args.args[1]
+
+
+def test_configure_service_sets_top_n_on_universe_provider():
+    service = MagicMock()
+    service.universe_provider = MagicMock()
+    service.universe_provider.top_n = None
+
+    WeeklyRunner.configure_service(service, top_n=50)
+
+    assert service.universe_provider.top_n == 50
+
+
+def test_configure_service_with_none_top_n_leaves_unset():
+    service = MagicMock()
+    service.universe_provider = MagicMock()
+    service.universe_provider.top_n = None
+
+    WeeklyRunner.configure_service(service, top_n=None)
+
+    assert service.universe_provider.top_n is None
