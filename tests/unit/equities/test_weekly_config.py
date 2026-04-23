@@ -1,7 +1,5 @@
 """Tests for weekly-pipeline env var parsing in app.config.Settings."""
 
-import pytest
-
 from app.config import Settings
 
 
