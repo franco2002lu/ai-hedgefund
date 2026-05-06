@@ -46,9 +46,9 @@ python -m scripts.run_experiment --preset quick --branch growth --end-date 2025-
 pytest tests/unit/backtest/ -q                  # backtest unit tests
 
 # Lint and format (ruff)
-ruff check app/ tests/                          # lint
-ruff check app/ tests/ --fix                    # lint with auto-fix
-ruff format app/ tests/                         # format
+ruff check app/ tests/ scripts/                 # lint
+ruff check app/ tests/ scripts/ --fix           # lint with auto-fix
+ruff format app/ tests/ scripts/                # format
 
 # Migrations
 alembic revision --autogenerate -m "description"
@@ -246,3 +246,43 @@ pytest tests/integration/test_e2e_smoke.py -m e2e -v
 - **`DataPlatformService.get_metrics()` wraps adapter output** — returns `{"metrics": [...], "symbol": ..., "source": ...}` (a dict), not a raw list. Code consuming metrics must extract via `result.get("metrics", [])`.
 - **In-memory position repo generates UUIDs** — `PortfolioService.handle_trade_executed()` creates positions with `id=""` (expects DB to assign). `InMemoryPositionRepository.upsert()` generates a UUID when id is empty to avoid dict key collisions.
 - **Analyst `analyze_batch()` must accept `**kwargs`** — `graph.py` calls `analyst.analyze_batch(stocks, max_concurrent=N)`. Any new analyst class (including quantitative replacements) must have `analyze_batch(self, stocks, **kwargs)` or the pipeline will crash with `TypeError`.
+
+## Running the Weekly Pipeline
+
+The weekly paper-trading pipeline runs autonomously via GitHub Actions on Mondays at 13:00 UTC (~8am ET winter, ~9am EDT summer; no DST adjustment). Full design: `docs/superpowers/specs/2026-04-23-weekly-autonomous-paper-trading-design.md`.
+
+### Manual dispatch
+
+From the Actions tab on GitHub, run the "Weekly Rebalance" workflow with inputs:
+- `branches` (default: `growth,value`) — comma-separated
+- `top_n` (default: env `HEDGE_EQUITIES_TOP_N` = 50)
+- `force_retry` (default: false) — retry a failed run for today
+- `dry_run` (default: false) — skip pipeline execution, validate plumbing only
+
+### Running locally against Neon
+
+```bash
+export HEDGE_DATABASE_URL="postgresql+asyncpg://user:pass@ep-xxxx.neon.tech/hedgefund?ssl=require"
+alembic upgrade head
+python -m scripts.run_weekly_pipeline --branches growth --top-n 20
+```
+
+### Inspecting results
+
+With the local server pointed at Neon:
+
+```bash
+curl -s http://localhost:8000/api/v1/equities/pipeline-runs?limit=10 | python -m json.tool
+```
+
+### GH Actions secrets required
+
+- `HEDGE_DATABASE_URL` — Neon connection string (repo secret)
+- `ANTHROPIC_API_KEY` — for LLM analyst calls (repo secret)
+
+### Recovery from a failed run
+
+1. Check the `pipeline_runs` table: `SELECT run_id, status, error_msg FROM pipeline_runs ORDER BY started_at DESC LIMIT 5;`
+2. If status=`running` (stuck), inspect event log to determine how far the run got, then `UPDATE pipeline_runs SET status='failed' WHERE run_id = ?;`
+3. Re-dispatch the workflow with `force_retry=true` to create an `attempt2` row and resume.
+4. There is no automatic crash recovery (intentional — see the design doc).

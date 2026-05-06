@@ -465,3 +465,28 @@ class BacktestRebalanceDetailModel(Base):
     orders_generated: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
     run: Mapped["BacktestRunModel"] = relationship(back_populates="rebalance_details")
+
+
+# ============================================================
+# WEEKLY PIPELINE RUNS (scheduled autonomous execution tracking)
+# ============================================================
+
+
+class PipelineRunModel(Base):
+    __tablename__ = "pipeline_runs"
+    __table_args__ = (
+        Index("idx_pipeline_runs_branch_date", "branch_id", "run_date"),
+        Index("idx_pipeline_runs_status", "status"),
+    )
+
+    run_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
+    )
+    run_date: Mapped[date] = mapped_column(Date, nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary_json: Mapped[dict | None] = mapped_column(JSONB)
+    error_msg: Mapped[str | None] = mapped_column(Text)

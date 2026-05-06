@@ -115,8 +115,11 @@ class EquitiesBranchService:
         as_of_date=None,
         news_window_days: int = 7,
         manual_news_root: Path | None = Path("data/news/manual"),
+        run_id: str | None = None,
     ) -> RunResult:
         """Run the full pipeline: universe -> screen -> analyze -> rebalance -> execute."""
+        if run_id:
+            logger.info("Starting pipeline run_id=%s branch=%s", run_id, branch_name)
         tes = trade_execution_service or self.trade_execution_service
         ps = portfolio_service or self.portfolio_service
         el = event_log_repo or self.event_log
