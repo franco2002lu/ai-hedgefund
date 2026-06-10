@@ -173,7 +173,7 @@ def build_equities_graph(branch_name: str):
         current_positions = deps.get("current_positions", {})
         nav = deps.get("nav", 1_000_000.0)
         scores = pm.compute_composite_scores(state["signals"])
-        selected = pm.select_stocks(scores)
+        selected = pm.select_stocks(scores, current_holdings=set(current_positions))
         sized = pm.size_positions(selected)
         prices: dict[str, float] = {}
         for s in sized:

@@ -55,14 +55,32 @@ class PortfolioManager:
     def select_stocks(
         self,
         scores: list[CompositeScore],
+        current_holdings: set[str] | None = None,
     ) -> list[CompositeScore]:
-        """Select top stocks by conviction, enforcing min/max guardrails."""
+        """Top-N by conviction, with hysteresis for currently held names.
+
+        New entries must rank in the top target_holdings. A held name is kept
+        while its score >= exit_score_threshold and it ranks within
+        max_holdings — held names near the rank boundary don't churn weekly.
+        """
         if not scores:
             return []
         cfg = self.portfolio_config
+        held = current_holdings or set()
         eligible = [s for s in scores if s.composite_score >= cfg.min_composite_score]
         eligible.sort(key=lambda s: s.conviction, reverse=True)
-        return eligible[: min(cfg.target_holdings, cfg.max_holdings)]
+        top_n = min(cfg.target_holdings, cfg.max_holdings)
+        selected = eligible[:top_n]
+        keeps = [
+            s
+            for i, s in enumerate(eligible)
+            if i >= top_n
+            and s.symbol in held
+            and s.composite_score >= cfg.exit_score_threshold
+            and i < cfg.max_holdings
+        ]
+        # keeps are already conviction-sorted; cap drops the lowest first
+        return (selected + keeps)[: cfg.max_holdings]
 
     def size_positions(
         self,

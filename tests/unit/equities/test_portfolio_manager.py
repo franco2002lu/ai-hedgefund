@@ -559,3 +559,60 @@ class TestOrderGeneration:
         )
 
         assert len(orders) == 0
+
+
+# ---------------------------------------------------------------------------
+# Hysteresis helpers
+# ---------------------------------------------------------------------------
+
+
+def _score(symbol, score, confidence=5.0):
+    return CompositeScore(
+        symbol=symbol,
+        composite_score=score,
+        composite_confidence=confidence,
+        conviction=score * confidence,
+    )
+
+
+def _pm(**portfolio_kwargs):
+    return PortfolioManager(
+        agents_config=AgentsConfig(),
+        portfolio_config=PortfolioConfig(**portfolio_kwargs),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestSelectStocksHysteresis
+# ---------------------------------------------------------------------------
+
+
+class TestSelectStocksHysteresis:
+    def test_held_stock_outside_top_n_but_above_exit_kept(self):
+        pm = _pm(target_holdings=2, max_holdings=4)
+        scores = [_score(f"S{i}", 9 - i) for i in range(4)]  # S0 best ... S3 worst
+        result = pm.select_stocks(scores, current_holdings={"S3"})
+        assert {s.symbol for s in result} == {"S0", "S1", "S3"}
+
+    def test_held_stock_below_exit_threshold_dropped(self):
+        pm = _pm(target_holdings=2, max_holdings=4, exit_score_threshold=4.0)
+        scores = [_score("S0", 9), _score("S1", 8), _score("S2", 3.5)]
+        result = pm.select_stocks(scores, current_holdings={"S2"})
+        assert {s.symbol for s in result} == {"S0", "S1"}
+
+    def test_held_stock_outside_max_holdings_rank_dropped(self):
+        pm = _pm(target_holdings=1, max_holdings=2)
+        scores = [_score("S0", 9), _score("S1", 8), _score("S2", 7)]
+        result = pm.select_stocks(scores, current_holdings={"S2"})
+        assert {s.symbol for s in result} == {"S0"}
+
+    def test_cap_drops_lowest_conviction_keeps_first(self):
+        pm = _pm(target_holdings=2, max_holdings=3)
+        scores = [_score(f"S{i}", 9 - i) for i in range(5)]
+        result = pm.select_stocks(scores, current_holdings={"S2", "S3", "S4"})
+        assert {s.symbol for s in result} == {"S0", "S1", "S2"}
+
+    def test_no_current_holdings_matches_old_behavior(self):
+        pm = _pm(target_holdings=2, max_holdings=4)
+        scores = [_score(f"S{i}", 9 - i) for i in range(4)]
+        assert [s.symbol for s in pm.select_stocks(scores)] == ["S0", "S1"]
