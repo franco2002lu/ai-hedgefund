@@ -6,6 +6,15 @@ then decide whether to skip, abort, or proceed based on its status.
 run_id format:
   - Attempt 1: "{run_date}-{branch_name}"                e.g., "2026-04-27-growth"
   - Attempt N: "{run_date}-{branch_name}-attempt{N}"     e.g., "2026-04-27-growth-attempt2"
+
+Transaction isolation design:
+  Each state-change to pipeline_runs lives in its own dedicated session so that
+  failures in the trading transaction cannot roll back bookkeeping rows:
+
+    Txn 1 (bk1)  — insert status="running"  → committed before trading starts
+    Txn 2        — run_fn (trading data)     → committed if pipeline succeeds
+    Txn 3 (bk2)  — mark status="completed"  → committed only after trading data is durable
+    Txn 3'(bk-f) — mark status="failed"     → committed if trading txn raised
 """
 
 from __future__ import annotations
@@ -13,6 +22,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from datetime import datetime as dt
@@ -27,6 +37,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.modules.equities.attribution import AttributionReport
+    from app.modules.equities.models import RunResult
     from app.modules.equities.service import EquitiesBranchService
 
 logger = logging.getLogger(__name__)
@@ -122,18 +133,29 @@ class PipelineRunsRepository:
 
 
 class WeeklyRunner:
-    """Executes a weekly pipeline run for a single branch with idempotency."""
+    """Executes a weekly pipeline run for a single branch with idempotency.
+
+    Uses three dedicated transactions to ensure pipeline_runs state survives
+    trading failures:
+
+      bk1  — insert status="running", committed immediately so other processes
+              can see the in-flight guard before trading begins.
+      trade — run_fn executes all trading work; commits on success, rolls back
+              on exception (trading data never partially persists).
+      bk2   — mark status="completed", only reached after trading data is durable.
+      bk-f  — mark status="failed", opened in the except branch; the original
+              pipeline exception is always re-raised regardless of whether this
+              bookkeeping step itself errors.
+    """
 
     def __init__(
         self,
         *,
         service: EquitiesBranchService,
-        repo: PipelineRunsRepository,
-        session: AsyncSession,
+        session_factory: Callable[[], Any],
     ) -> None:
         self.service = service
-        self.repo = repo
-        self.session = session
+        self.session_factory = session_factory
 
     async def execute(
         self,
@@ -142,47 +164,62 @@ class WeeklyRunner:
         branch_id: str,
         run_date: date,
         force_retry: bool = False,
+        run_fn: Callable[[AsyncSession, str], Awaitable[RunResult]],
     ) -> WeeklyRunSummary:
-        latest = await self.repo.find_latest(branch_id, run_date)
-        attempt, run_id = self._decide_attempt(
-            latest=latest,
-            branch_name=branch_name,
-            run_date=run_date,
-            force_retry=force_retry,
-        )
-        if attempt == 0:  # sentinel: skip
-            assert latest is not None
-            return WeeklyRunSummary(
-                run_id=latest.run_id,
+        # ------------------------------------------------------------------
+        # Bookkeeping txn 1: decide attempt + insert "running" row.
+        # This transaction commits immediately so the row is durable before
+        # the trading session opens.  Other processes can observe it via
+        # the RunInFlightError guard.
+        # ------------------------------------------------------------------
+        async with self.session_factory() as bk, bk.begin():
+            repo = PipelineRunsRepository(bk)
+            latest = await repo.find_latest(branch_id, run_date)
+            attempt, run_id = self._decide_attempt(
+                latest=latest,
                 branch_name=branch_name,
-                status="skipped",
-                universe_count=0,
-                screened_count=0,
-                orders_placed=0,
-                trades_executed=0,
-                duration_seconds=0.0,
+                run_date=run_date,
+                force_retry=force_retry,
             )
+            if attempt == 0:  # sentinel: skip
+                assert latest is not None
+                return WeeklyRunSummary(
+                    run_id=latest.run_id,
+                    branch_name=branch_name,
+                    status="skipped",
+                    universe_count=0,
+                    screened_count=0,
+                    orders_placed=0,
+                    trades_executed=0,
+                    duration_seconds=0.0,
+                )
+            await repo.insert(
+                run_id=run_id,
+                branch_id=branch_id,
+                run_date=run_date,
+                attempt=attempt,
+                status="running",
+            )
+        # bk1 committed here — "running" row is now visible to other processes
 
-        await self.repo.insert(
-            run_id=run_id,
-            branch_id=branch_id,
-            run_date=run_date,
-            attempt=attempt,
-            status="running",
-        )
-
+        # ------------------------------------------------------------------
+        # Trading transaction: all portfolio / trade data committed atomically.
+        # If anything raises, we catch it, persist "failed" in a dedicated
+        # session, then re-raise.
+        # ------------------------------------------------------------------
         t0 = time.monotonic()
         try:
-            result = await self.service.run_pipeline(
-                branch_name=branch_name,
-                branch_id=branch_id,
-                run_id=run_id,
-                session=self.session,
-            )
+            async with self.session_factory() as session, session.begin():
+                result = await run_fn(session, run_id)
+            # trading data durably committed here
         except Exception as exc:
-            await self.repo.mark_failed(run_id, repr(exc))
+            await self._mark_failed(run_id, repr(exc))
             raise
 
+        # ------------------------------------------------------------------
+        # Bookkeeping txn 2: mark "completed" — only reached after trading
+        # data is durable.
+        # ------------------------------------------------------------------
         duration = time.monotonic() - t0
         orders_placed = len(result.orders)
         summary_dict = {
@@ -192,7 +229,7 @@ class WeeklyRunner:
             "trades_executed": result.trades_executed,
             "duration_seconds": duration,
         }
-        await self.repo.mark_completed(run_id, summary_dict)
+        await self._mark_completed(run_id, summary_dict)
 
         return WeeklyRunSummary(
             run_id=run_id,
@@ -204,6 +241,29 @@ class WeeklyRunner:
             trades_executed=result.trades_executed,
             duration_seconds=duration,
         )
+
+    async def _mark_completed(self, run_id: str, summary: dict[str, Any]) -> None:
+        """Persist completed status in a dedicated session."""
+        async with self.session_factory() as bk, bk.begin():
+            repo = PipelineRunsRepository(bk)
+            await repo.mark_completed(run_id, summary)
+
+    async def _mark_failed(self, run_id: str, error_msg: str) -> None:
+        """Persist failed status in a dedicated session.
+
+        Any exception raised here is logged and suppressed so the original
+        pipeline exception remains the one the caller sees.
+        """
+        try:
+            async with self.session_factory() as bk, bk.begin():
+                repo = PipelineRunsRepository(bk)
+                await repo.mark_failed(run_id, error_msg)
+        except Exception:
+            logger.warning(
+                "Failed to persist mark_failed for run_id=%s — the original pipeline error will still propagate",
+                run_id,
+                exc_info=True,
+            )
 
     @classmethod
     def configure_service(

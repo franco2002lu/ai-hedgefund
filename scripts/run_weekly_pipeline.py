@@ -39,7 +39,6 @@ from app.modules.data_platform.service import DataPlatformService  # noqa: E402
 from app.modules.equities.attribution import AttributionEngine  # noqa: E402
 from app.modules.equities.weekly_runner import (  # noqa: E402
     ManualInterventionRequired,
-    PipelineRunsRepository,
     RunInFlightError,
     WeeklyRunner,
     WeeklyRunSummary,
@@ -112,29 +111,31 @@ async def _run_one_branch(
     equities_service = get_equities_service()
     WeeklyRunner.configure_service(equities_service, top_n=top_n)
 
-    # session.begin() wraps the work in an explicit transaction that commits on
-    # clean exit and rolls back on exception — matches the pattern used by
-    # app/db/connection.py::get_session for FastAPI requests.
-    async with async_session_factory() as session, session.begin():
+    # Resolve branch_id in a short read-only session before building the runner.
+    async with async_session_factory() as session:
         branch_id = await _resolve_branch_id(session, branch_name)
-        # Single date for the whole run — a run straddling midnight ET must not
-        # use different dates for the trading run and the attribution pass.
-        run_date = today_ny()
 
-        if dry_run:
-            logger.info("[dry_run] Would have executed branch=%s top_n=%s", branch_name, top_n)
-            return WeeklyRunSummary(
-                run_id=f"dry-run-{branch_name}",
-                branch_name=branch_name,
-                status="skipped",
-                universe_count=0,
-                screened_count=0,
-                orders_placed=0,
-                trades_executed=0,
-                duration_seconds=0.0,
-            )
+    # Single date for the whole run — a run straddling midnight ET must not
+    # use different dates for the trading run and the attribution pass.
+    run_date = today_ny()
 
-        # Build per-request services (same as FastAPI Depends())
+    if dry_run:
+        logger.info("[dry_run] Would have executed branch=%s top_n=%s", branch_name, top_n)
+        return WeeklyRunSummary(
+            run_id=f"dry-run-{branch_name}",
+            branch_name=branch_name,
+            status="skipped",
+            universe_count=0,
+            screened_count=0,
+            orders_placed=0,
+            trades_executed=0,
+            duration_seconds=0.0,
+        )
+
+    # The run_fn closure captures equities_service and branch_name.
+    # It receives the trading session and the run_id (decided by WeeklyRunner)
+    # so it can pass run_id to run_pipeline for logging.
+    async def _run_pipeline_in(session, run_id):
         event_log = PostgresEventLogRepository(session)
         portfolio_service = PortfolioService(
             portfolio_repo=PostgresPortfolioRepository(session),
@@ -157,35 +158,39 @@ async def _run_one_branch(
         equities_service.portfolio_service = portfolio_service
         equities_service.event_log = event_log
 
-        repo = PipelineRunsRepository(session)
-        runner = WeeklyRunner(service=equities_service, repo=repo, session=session)
-
-        summary = await runner.execute(
+        return await equities_service.run_pipeline(
             branch_name=branch_name,
             branch_id=branch_id,
-            run_date=run_date,
-            force_retry=force_retry,
+            run_id=run_id,
+            session=session,
         )
 
-        # Phase D: score last week's decision now that a week of prices exists.
-        # Never allowed to fail the trading run. The SAVEPOINT (begin_nested)
-        # confines any DB failure to the attribution work — without it, a
-        # failed flush would mark the shared session rollback-only and the
-        # outer transaction would raise PendingRollbackError at COMMIT,
-        # discarding the entire trading run.
-        try:
-            engine = AttributionEngine(data_service=equities_service.data_service)
-            async with session.begin_nested():
-                summary.attribution = await engine.compute_and_persist(
-                    session,
-                    branch_id=branch_id,
-                    branch_name=branch_name,
-                    as_of=run_date,
-                )
-        except Exception:
-            logger.warning("Attribution failed for %s — continuing", branch_name, exc_info=True)
+    runner = WeeklyRunner(service=equities_service, session_factory=async_session_factory)
 
-        return summary
+    summary = await runner.execute(
+        branch_name=branch_name,
+        branch_id=branch_id,
+        run_date=run_date,
+        force_retry=force_retry,
+        run_fn=_run_pipeline_in,
+    )
+
+    # Phase D: score last week's decision now that a week of prices exists.
+    # Runs in its own dedicated session after the trading data is durable.
+    # Never allowed to fail the trading run.
+    try:
+        engine = AttributionEngine(data_service=equities_service.data_service)
+        async with async_session_factory() as session, session.begin():
+            summary.attribution = await engine.compute_and_persist(
+                session,
+                branch_id=branch_id,
+                branch_name=branch_name,
+                as_of=run_date,
+            )
+    except Exception:
+        logger.warning("Attribution failed for %s — continuing", branch_name, exc_info=True)
+
+    return summary
 
 
 async def _main_async(args: argparse.Namespace) -> int:
