@@ -1,6 +1,7 @@
 """Unit tests for the cross-sectional ranking stage."""
 
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 from app.modules.equities.agents.ranker import (
@@ -95,14 +96,43 @@ class TestCrossSectionalRanker:
         assert by["C"] == 10 and by["D"] == 1
         assert by["A"] > by["E"] > by["B"]
 
-    async def test_symbols_missing_from_ranking_keep_stage1_score(self):
+    async def test_low_coverage_ranking_falls_back_wholesale(self):
+        # 4 of 5 ranked = 80% coverage, below the 90% threshold -> wholesale fallback
         signals = [_sig("A", 7), _sig("B", 6), _sig("C", 5), _sig("D", 4), _sig("E", 3)]
         llm = _llm(json.dumps({"ranking": ["B", "A", "D", "C"]}))  # E omitted
         ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
         ranked = await ranker.rank(signals)
         by = {s.symbol: s.bullish_score for s in ranked}
-        assert by["E"] == 3  # untouched
-        assert by["B"] == 10
+        assert by == {"A": 7, "B": 6, "C": 5, "D": 4, "E": 3}  # ALL keep stage-1
+
+    async def test_sparse_coverage_falls_back_wholesale_with_warning(self, caplog):
+        signals = [_sig(s, 6) for s in "ABCDEFGHIJ"]
+        llm = _llm(json.dumps({"ranking": ["A", "B"]}))  # 2 of 10
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        with caplog.at_level(logging.WARNING):
+            ranked = await ranker.rank(signals)
+        assert all(s.bullish_score == 6 for s in ranked)
+        assert "coverage" in caplog.text
+        assert "2/10" in caplog.text
+
+    async def test_high_coverage_ranking_accepted_straggler_keeps_stage1(self):
+        # 9 of 10 ranked = 90% coverage -> accepted; omitted symbol keeps stage-1
+        signals = [_sig(s, 4) for s in "ABCDEFGHIJ"]
+        llm = _llm(json.dumps({"ranking": list("ABCDEFGHI")}))  # J omitted
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        by = {s.symbol: s.bullish_score for s in ranked}
+        assert by["A"] == 10  # best of n=9
+        assert by["I"] == 1  # worst of n=9
+        assert by["J"] == 4  # straggler untouched
+
+    async def test_max_tokens_scales_with_universe_size(self):
+        symbols = [f"S{i:03d}" for i in range(200)]
+        signals = [_sig(sym, 5) for sym in symbols]
+        llm = _llm(json.dumps({"ranking": symbols}))
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        await ranker.rank(signals)
+        assert llm.invoke_raw.call_args.kwargs["max_tokens"] == 2528  # 12*200 + 128
 
     async def test_hallucinated_symbols_ignored(self):
         signals = [_sig(s, 5) for s in "ABCDE"]

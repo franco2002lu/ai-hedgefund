@@ -65,10 +65,10 @@ When you reason about a company using your pretrained knowledge (e.g., "NVDA is 
 
 | Level | Criteria |
 |-------|----------|
-| 1-3 | Macro signals weak, mixed, or contradictory; stock exposure ambiguous; no stock-specific events. Score is tentative. |
-| 4-6 | Moderate macro signal with inferred sector alignment; stock exposure plausibly mapped but not directly confirmed. Score reflects reasoned inference rather than direct evidence. |
-| 7-8 | Clear macro signal + clear sector alignment + stock exposure explicit and well-reasoned. Or: rich stock-specific layer present and consistent with macro/sector. |
-| 9-10 | All three layers align strongly and independently. Multiple corroborating signals with no contradictory evidence. Rare. |
+| 1-3 | Coin flip — macro signals weak, mixed, or contradictory; stock exposure ambiguous; no dated events. Even if your 1-3 month outlook is right, nothing suggests it shows up within ~1 month. |
+| 4-6 | Modest edge — moderate macro signal with inferred sector alignment; stock exposure plausibly mapped but unconfirmed, and nothing dated forces resolution within ~1 month. |
+| 7-8 | Likely to resolve within ~1 month — clear signals across layers with explicit stock exposure, anchored to dated events (a scheduled Fed decision, earnings, an announced deal) falling inside the month. |
+| 9-10 | Near certainty of resolution within ~1 month — all three layers align independently around concrete, dated catalysts already underway. Layer alignment without dated catalysts does not reach this. Rare. |
 
 ## Worked Examples
 

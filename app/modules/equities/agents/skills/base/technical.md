@@ -39,10 +39,10 @@ Work through these steps in order, referencing specific numbers from the data:
 
 | Level | Criteria |
 |-------|----------|
-| 1-3 | Few bars available (check "Bars" count in header). Or many indicators show "—" (insufficient data). |
-| 4-6 | Adequate data but signals conflict (e.g., bullish SMAs but bearish momentum). Mixed signals = lower confidence. |
-| 7-8 | Clear trend with 4+ indicators agreeing. Volume supports the price action. |
-| 9-10 | Every indicator points the same direction. Volume, SMAs, momentum, and multi-timeframe returns all agree. |
+| 1-3 | Coin flip — conflicting timeframes, few bars available (check "Bars" count), or many indicators show "—". You would not bet on this direction resolving within ~1 month. |
+| 4-6 | Modest edge — indicators agree partially but momentum is stale or there is no catalyst timing; the move could easily take longer than a month or reverse first. |
+| 7-8 | Likely to resolve within ~1 month — 4+ indicators agree, volume confirms, and the move is fresh (recent breakout, accelerating momentum) rather than already extended. |
+| 9-10 | You would bet at near-even odds ten times over — every timeframe agrees AND a concrete catalyst window (fresh breakout in progress, earnings date inside the month) is in play. Indicator agreement alone does not reach this. |
 
 ## Worked Example
 

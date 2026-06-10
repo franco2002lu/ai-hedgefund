@@ -2,14 +2,15 @@
 
 Stage 1 produces per-stock signals; rankers re-map bullish_score to a forced
 decile based on rank across the screened set. DeterministicRanker (sort by
-stage-1 score) serves backtests/quant mode; CrossSectionalRanker (LLM call)
-is added in a later task for production.
+stage-1 score) serves backtests/quant mode; CrossSectionalRanker makes one
+LLM call per analyst to force-rank all theses in production.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 
 from app.modules.equities.agents.skills.loader import compose_ranking_prompt
@@ -111,13 +112,25 @@ class CrossSectionalRanker:
                 f"Theses for {len(signals)} stocks:\n\n"
                 + "\n".join(lines)
                 + "\n\nRank ALL of these symbols best to worst."
+                + f"\nYour ranking array must contain exactly {len(signals)} symbols."
             )
-            text = await self.llm_client.invoke_raw(prompt, system_prompt=system_prompt)
+            text = await self.llm_client.invoke_raw(
+                prompt,
+                system_prompt=system_prompt,
+                max_tokens=max(2048, 12 * len(signals) + 128),
+            )
             ordered = self._parse_ranking(text, {s.symbol for s in signals})
-            if not ordered:
+            # A sparse partial ranking must not mix decile and stage-1 scales
+            # (degenerate case: a 1-symbol "ranking" gives that symbol decile
+            # 10). Require near-complete coverage or fall back wholesale.
+            required = max(self.min_rank_universe, math.ceil(0.9 * len(signals)))
+            if len(ordered) < required:
                 logger.warning(
-                    "%s ranker: unusable ranking response — stage-1 scores kept",
+                    "%s ranker: ranking coverage %d/%d below required %d — stage-1 scores kept",
                     self.analyst_type,
+                    len(ordered),
+                    len(signals),
+                    required,
                 )
                 return signals
             return apply_ranking(signals, ordered)
@@ -128,7 +141,7 @@ class CrossSectionalRanker:
     @staticmethod
     def _parse_ranking(text: str, valid_symbols: set[str]) -> list[str]:
         cleaned = text.strip()
-        fence = chr(96) * 3
+        fence = "```"
         if cleaned.startswith(fence):
             cleaned = "\n".join(ln for ln in cleaned.split("\n") if not ln.strip().startswith(fence)).strip()
         try:

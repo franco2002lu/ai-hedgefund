@@ -40,10 +40,10 @@ Work through these steps in order, citing specific numbers from the data:
 
 | Level | Criteria |
 |-------|----------|
-| 1-3 | Multiple key metrics show "--" (missing). Or no earnings data. Hard to form a reliable view. |
-| 4-6 | Most metrics available but signals conflict (e.g., strong growth but deteriorating margins). Reasonable basis but uncertainty remains. |
-| 7-8 | Comprehensive data with clear trends. Metrics tell a consistent story across sections. |
-| 9-10 | All metrics available, all pointing in the same direction, with recent earnings confirming the trend. |
+| 1-3 | Coin flip — multiple key metrics show "--" (missing), no earnings data, or signals contradict. Nothing here suggests the market will validate your call within ~1 month. |
+| 4-6 | Modest edge — metrics support a direction but conflict in places (e.g., strong growth, deteriorating margins), and no near-term event forces the market to reprice within ~1 month. |
+| 7-8 | Likely to resolve within ~1 month — metrics tell a consistent story AND a concrete, dated driver (a recent earnings surprise still being digested, an upcoming report) makes near-term recognition probable. |
+| 9-10 | Near certainty — all metrics align AND a dated catalyst (just-reported earnings, announced guidance) is actively forcing recognition now. Data completeness alone never justifies this. Rare. |
 
 ## Worked Example
 

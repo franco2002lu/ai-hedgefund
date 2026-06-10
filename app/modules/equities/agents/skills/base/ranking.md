@@ -25,3 +25,7 @@ Respond ONLY with a JSON object:
 
 with every given symbol appearing exactly once, ordered best to worst.
 No text outside the JSON object.
+
+An incomplete ranking is discarded entirely and the provisional scores are
+used instead — never truncate, summarize, or omit symbols, even when the
+list is long.
