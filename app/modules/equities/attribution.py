@@ -234,9 +234,12 @@ class AttributionEngine:
     async def _fetch_prices(self, symbols: list[str], d0: date, d1: date) -> dict[str, list[tuple[date, float]]]:
         out: dict[str, list[tuple[date, float]]] = {}
         start = d0 - timedelta(days=_PRICE_LOOKBACK_PAD_DAYS)
+        # yfinance end dates are exclusive — pad by one day so the close ON d1
+        # is included; _window_return clips at <= d1 so the pad can't leak.
+        end = d1 + timedelta(days=1)
         for sym in symbols:
             try:
-                result = await self.data_service.get_prices(sym, start, d1)
+                result = await self.data_service.get_prices(sym, start, end)
                 series = []
                 for bar in result.get("bars", []):
                     ts = bar["timestamp"]

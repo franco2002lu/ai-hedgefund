@@ -179,6 +179,49 @@ async def test_partial_price_failure_still_computes_from_remaining():
     session.add.assert_called_once()
 
 
+def _end_exclusive_data_service(series_map):
+    """Mock matching the real YahooFinanceAdapter: yfinance's `end` is EXCLUSIVE,
+    so bars are emitted only for dates >= start_date and STRICTLY BEFORE end_date."""
+    ds = MagicMock()
+
+    async def get_prices(symbol, start_date, end_date, **kw):
+        series = series_map.get(symbol)
+        if series is None:
+            raise RuntimeError("no data")
+        return {"bars": [{"timestamp": d.isoformat(), "close": c} for d, c in series if start_date <= d < end_date]}
+
+    ds.get_prices = AsyncMock(side_effect=get_prices)
+    return ds
+
+
+async def test_window_end_close_included_despite_exclusive_end():
+    """Regression: yfinance end dates are exclusive — the engine must pad the
+    fetch so the close ON as_of is included, else every weekly window is
+    measured to as_of−1 (Mon→Fri instead of Mon→next-Mon close)."""
+    d0, d1 = date(2026, 6, 1), date(2026, 6, 8)
+
+    def daily(closes):
+        return [(d0 + timedelta(days=i), c) for i, c in enumerate(closes)]
+
+    # 8 bars covering d0..d1; the close ON d1 differs from the d1−1 close.
+    series = {
+        "A": daily([100, 100, 100, 100, 100, 100, 105, 110]),
+        "B": daily([50, 50, 50, 50, 50, 50, 52, 55]),
+        "VOOG": daily([200, 200, 200, 200, 200, 200, 201, 204]),
+        "SPY": daily([400] * 8),
+    }
+    decision = _decision_row(d0)
+    session = _session_returning(decision, [])
+    engine = AttributionEngine(data_service=_end_exclusive_data_service(series))
+
+    report = await engine.compute_and_persist(session, branch_id=BRANCH_ID, branch_name="growth", as_of=d1)
+
+    assert report is not None
+    # Must measure to the d1 close (A: 110/100, B: 55/50), not d1−1 (105, 52).
+    assert report.basket_return_conviction == pytest.approx(0.6 * 0.10 + 0.4 * 0.10)
+    assert report.benchmark_return == pytest.approx(204 / 200 - 1)
+
+
 async def test_all_price_fetches_fail_returns_none_without_persisting():
     """A full price-source outage must not overwrite a good row with zeros."""
     decision = _decision_row(date(2026, 6, 1))
