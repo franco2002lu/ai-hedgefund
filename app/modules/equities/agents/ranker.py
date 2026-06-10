@@ -8,8 +8,11 @@ is added in a later task for production.
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
+from app.modules.equities.agents.skills.loader import compose_ranking_prompt
 from app.modules.equities.models import StockSignal
 
 logger = logging.getLogger(__name__)
@@ -75,3 +78,70 @@ class DeterministicRanker:
             i = j + 1
 
         return [sig.model_copy(update={"bullish_score": score_by_symbol[sig.symbol]}) for sig in signals]
+
+
+class CrossSectionalRanker:
+    """One LLM call that force-ranks all stage-1 theses best-to-worst."""
+
+    def __init__(
+        self,
+        llm_client,
+        *,
+        analyst_type: str,
+        branch_name: str,
+        skills_dir: Path | None = None,
+        min_rank_universe: int = DEFAULT_MIN_RANK_UNIVERSE,
+    ) -> None:
+        self.llm_client = llm_client
+        self.analyst_type = analyst_type
+        self.branch_name = branch_name
+        self.skills_dir = skills_dir
+        self.min_rank_universe = min_rank_universe
+
+    async def rank(self, signals: list[StockSignal]) -> list[StockSignal]:
+        if len(signals) < self.min_rank_universe:
+            return signals
+        try:
+            system_prompt = compose_ranking_prompt(self.analyst_type, self.branch_name, self.skills_dir)
+            lines = [
+                f"- {s.symbol} (provisional score {s.bullish_score}): {s.summary}"
+                for s in sorted(signals, key=lambda s: s.symbol)
+            ]
+            prompt = (
+                f"Theses for {len(signals)} stocks:\n\n"
+                + "\n".join(lines)
+                + "\n\nRank ALL of these symbols best to worst."
+            )
+            text = await self.llm_client.invoke_raw(prompt, system_prompt=system_prompt)
+            ordered = self._parse_ranking(text, {s.symbol for s in signals})
+            if not ordered:
+                logger.warning(
+                    "%s ranker: unusable ranking response — stage-1 scores kept",
+                    self.analyst_type,
+                )
+                return signals
+            return apply_ranking(signals, ordered)
+        except Exception:
+            logger.warning("%s ranker failed — stage-1 scores kept", self.analyst_type, exc_info=True)
+            return signals
+
+    @staticmethod
+    def _parse_ranking(text: str, valid_symbols: set[str]) -> list[str]:
+        cleaned = text.strip()
+        fence = chr(96) * 3
+        if cleaned.startswith(fence):
+            cleaned = "\n".join(ln for ln in cleaned.split("\n") if not ln.strip().startswith(fence)).strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return []
+        ranking = parsed.get("ranking") if isinstance(parsed, dict) else None
+        if not isinstance(ranking, list):
+            return []
+        seen: set[str] = set()
+        ordered = []
+        for sym in ranking:
+            if isinstance(sym, str) and sym in valid_symbols and sym not in seen:
+                ordered.append(sym)
+                seen.add(sym)
+        return ordered

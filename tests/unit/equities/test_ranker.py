@@ -1,6 +1,14 @@
 """Unit tests for the cross-sectional ranking stage."""
 
-from app.modules.equities.agents.ranker import DeterministicRanker, apply_ranking, decile_score
+import json
+from unittest.mock import AsyncMock, MagicMock
+
+from app.modules.equities.agents.ranker import (
+    CrossSectionalRanker,
+    DeterministicRanker,
+    apply_ranking,
+    decile_score,
+)
 from app.modules.equities.models import StockSignal
 
 
@@ -69,3 +77,67 @@ class TestDeterministicRanker:
         signals = [_sig("A", 7), _sig("B", 3)]
         ranked = await ranker.rank(signals)
         assert {s.bullish_score for s in ranked} == {7, 3}
+
+
+def _llm(returning: str):
+    client = MagicMock()
+    client.invoke_raw = AsyncMock(return_value=returning)
+    return client
+
+
+class TestCrossSectionalRanker:
+    async def test_reorders_scores_by_llm_ranking(self):
+        signals = [_sig("A", 5), _sig("B", 5), _sig("C", 5), _sig("D", 5), _sig("E", 5)]
+        llm = _llm(json.dumps({"ranking": ["C", "A", "E", "B", "D"]}))
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        by = {s.symbol: s.bullish_score for s in ranked}
+        assert by["C"] == 10 and by["D"] == 1
+        assert by["A"] > by["E"] > by["B"]
+
+    async def test_symbols_missing_from_ranking_keep_stage1_score(self):
+        signals = [_sig("A", 7), _sig("B", 6), _sig("C", 5), _sig("D", 4), _sig("E", 3)]
+        llm = _llm(json.dumps({"ranking": ["B", "A", "D", "C"]}))  # E omitted
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        by = {s.symbol: s.bullish_score for s in ranked}
+        assert by["E"] == 3  # untouched
+        assert by["B"] == 10
+
+    async def test_hallucinated_symbols_ignored(self):
+        signals = [_sig(s, 5) for s in "ABCDE"]
+        llm = _llm(json.dumps({"ranking": ["A", "ZZZ", "B", "C", "D", "E"]}))
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        by = {s.symbol: s.bullish_score for s in ranked}
+        assert by["A"] == 10 and by["E"] == 1 and "ZZZ" not in by
+
+    async def test_llm_error_falls_back_to_stage1(self):
+        signals = [_sig(s, 6) for s in "ABCDE"]
+        llm = MagicMock()
+        llm.invoke_raw = AsyncMock(side_effect=RuntimeError("api down"))
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        assert all(s.bullish_score == 6 for s in ranked)
+
+    async def test_unparseable_response_falls_back(self):
+        signals = [_sig(s, 6) for s in "ABCDE"]
+        ranker = CrossSectionalRanker(_llm("sorry, I cannot"), analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        assert all(s.bullish_score == 6 for s in ranked)
+
+    async def test_below_min_universe_skips_llm(self):
+        signals = [_sig("A", 7), _sig("B", 3)]
+        llm = _llm("{}")
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        llm.invoke_raw.assert_not_called()
+        assert {s.bullish_score for s in ranked} == {7, 3}
+
+    async def test_duplicate_symbols_in_ranking_use_first_occurrence(self):
+        signals = [_sig(s, 5) for s in "ABCDE"]
+        llm = _llm(json.dumps({"ranking": ["A", "B", "A", "C", "D", "E"]}))
+        ranker = CrossSectionalRanker(llm, analyst_type="news", branch_name="growth")
+        ranked = await ranker.rank(signals)
+        by = {s.symbol: s.bullish_score for s in ranked}
+        assert by["A"] == 10  # first occurrence wins
