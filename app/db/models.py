@@ -386,12 +386,8 @@ class BacktestRunModel(Base):
     progress: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
-    snapshots: Mapped[list["BacktestSnapshotModel"]] = relationship(
-        back_populates="run", cascade="all, delete-orphan"
-    )
-    trades: Mapped[list["BacktestTradeModel"]] = relationship(
-        back_populates="run", cascade="all, delete-orphan"
-    )
+    snapshots: Mapped[list["BacktestSnapshotModel"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+    trades: Mapped[list["BacktestTradeModel"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     rebalance_details: Mapped[list["BacktestRebalanceDetailModel"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
@@ -480,9 +476,7 @@ class PipelineRunModel(Base):
     )
 
     run_id: Mapped[str] = mapped_column(String(100), primary_key=True)
-    branch_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False
-    )
+    branch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False)
     run_date: Mapped[date] = mapped_column(Date, nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -490,3 +484,31 @@ class PipelineRunModel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     summary_json: Mapped[dict | None] = mapped_column(JSONB)
     error_msg: Mapped[str | None] = mapped_column(Text)
+
+
+# ============================================================
+# ATTRIBUTION REPORTS (Phase D — weekly post-hoc scoring)
+# ============================================================
+
+
+class AttributionReportModel(Base):
+    """Weekly post-hoc scoring of a portfolio decision (Phase D attribution)."""
+
+    __tablename__ = "attribution_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    branch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("branches.id"), nullable=False)
+    branch_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    decision_date: Mapped[date] = mapped_column(Date(), nullable=False)
+    as_of_date: Mapped[date] = mapped_column(Date(), nullable=False)
+    basket_return_conviction: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    basket_return_equal: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    benchmark_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
+    benchmark_symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    spy_return: Mapped[float | None] = mapped_column(Numeric(10, 6))
+    analyst_ics: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    n_holdings: Mapped[int] = mapped_column(Integer, nullable=False)
+    n_holdings_priced: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    __table_args__ = (UniqueConstraint("branch_id", "decision_date", name="uq_attribution_branch_decision"),)
