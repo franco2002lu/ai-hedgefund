@@ -55,12 +55,12 @@ def _make_pm(weights=None, portfolio_config=None):
 
 class TestCompositeScoreCalculation:
     def test_formula_matches_doc(self):
-        """Default weights: fund=0.40, news=0.35, tech=0.25.
+        """Explicit weights fund=0.40, news=0.35, tech=0.25.
         AAPL: news=(7,8), fund=(8,7), tech=(6,6)
         composite_score  = 0.40*8 + 0.35*7 + 0.25*6 = 3.2+2.45+1.5 = 7.15
         composite_confidence = 0.40*7 + 0.35*8 + 0.25*6 = 2.8+2.8+1.5 = 7.1
         """
-        pm = _make_pm()
+        pm = _make_pm(weights=(0.40, 0.35, 0.25))
         signals = _make_signals_for_stock("AAPL", news=(7, 8), fund=(8, 7), tech=(6, 6))
         scores = pm.compute_composite_scores(signals)
 
@@ -109,7 +109,7 @@ class TestCompositeScoreCalculation:
     def test_missing_analyst_produces_partial_score(self):
         """Only 2 of 3 signals for a stock -> partial weighted sum
         (missing analyst contributes 0)."""
-        pm = _make_pm()
+        pm = _make_pm(weights=(0.40, 0.35, 0.25))
         signals = [
             _make_signal("AAPL", "news", 7, 8),
             _make_signal("AAPL", "fundamentals", 8, 7),

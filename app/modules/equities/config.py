@@ -57,10 +57,13 @@ class AgentsConfig(BaseModel):
 
     max_concurrent_analyses: int = 10
 
-    # Composite score weights (must sum to 1.0)
-    weight_fundamentals: float = 0.40
-    weight_news: float = 0.35
-    weight_technical: float = 0.25
+    # Composite score weights (must sum to 1.0).
+    # 2026-06-10: reweighted toward fundamentals based on live rank-IC
+    # (fund +0.04, news -0.20, tech -0.19 over 5 production weeks) — see
+    # docs/superpowers/specs/2026-06-10-attribution-weights-ranking-design.md
+    weight_fundamentals: float = 0.60
+    weight_news: float = 0.20
+    weight_technical: float = 0.20
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> "AgentsConfig":

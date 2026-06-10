@@ -143,3 +143,10 @@ class TestEquitiesConfig:
         cfg = EquitiesConfig()
         total = cfg.agents.weight_fundamentals + cfg.agents.weight_news + cfg.agents.weight_technical
         assert total == pytest.approx(1.0)
+
+
+def test_composite_weights_favor_fundamentals():
+    cfg = AgentsConfig()
+    assert cfg.weight_fundamentals == 0.60
+    assert cfg.weight_news == 0.20
+    assert cfg.weight_technical == 0.20
