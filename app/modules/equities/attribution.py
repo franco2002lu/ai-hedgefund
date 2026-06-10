@@ -158,6 +158,7 @@ def compute_report(
 # ============================================================
 
 MAX_DECISION_AGE_DAYS = 14
+# Window deliberately starts at the decision date: _window_return takes the first close on/after it.
 _PRICE_LOOKBACK_PAD_DAYS = 0
 
 
@@ -207,7 +208,7 @@ class AttributionEngine:
             buy_symbols=buy_symbols,
         )
 
-        benchmark = BENCHMARK_MAP.get("growth" if "growth" in branch_name.lower() else "value", "SPY")
+        benchmark = BENCHMARK_MAP["growth" if "growth" in branch_name.lower() else "value"]
         symbols = set(weights) | {s["symbol"] for s in signals} | {benchmark, "SPY"}
         prices = await self._fetch_prices(sorted(symbols), decision_date, as_of)
 
@@ -220,6 +221,13 @@ class AttributionEngine:
             prices=prices,
             benchmark_symbol=benchmark,
         )
+        if weights and report.n_holdings_priced == 0:
+            logger.warning(
+                "Attribution: no holdings priced for %s (decision %s) — refusing to persist a zeroed report",
+                branch_name,
+                decision_date,
+            )
+            return None
         await self._upsert(session, bid, report)
         return report
 
@@ -232,11 +240,17 @@ class AttributionEngine:
                 series = []
                 for bar in result.get("bars", []):
                     ts = bar["timestamp"]
-                    d = date.fromisoformat(ts[:10]) if isinstance(ts, str) else ts.date()
+                    # Check datetime before date: datetime is a subclass of date.
+                    if isinstance(ts, str):
+                        d = date.fromisoformat(ts[:10])
+                    elif isinstance(ts, datetime):
+                        d = ts.date()
+                    else:
+                        d = ts  # already a date
                     series.append((d, float(bar["close"])))
                 out[sym] = sorted(series)
             except Exception:
-                logger.warning("Attribution: no prices for %s", sym)
+                logger.warning("Attribution: price fetch failed for %s", sym, exc_info=True)
         return out
 
     async def _upsert(self, session, branch_id, report: AttributionReport) -> None:
