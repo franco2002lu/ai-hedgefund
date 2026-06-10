@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from app.modules.equities.agents.graph import EquitiesWorkflowState, build_equities_graph
-from app.modules.equities.models import UniverseStock
+from app.modules.equities.models import CompositeScore, RebalanceOrder, UniverseStock
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -132,6 +132,101 @@ class TestExecuteTrades:
             trades.append("should not reach here")
 
         assert trades == []
+
+
+class TestGraphEndToEnd:
+    """Run the real compiled graph with mocked deps to test node behavior."""
+
+    def _initial_state(self, trade_results: list, n_orders: int) -> tuple[dict, list[CompositeScore]]:
+        stock = _make_stock("AAPL")
+        provider = AsyncMock()
+        provider.get_holdings = AsyncMock(return_value=[stock])
+        screener = AsyncMock()
+        screener.screen = AsyncMock(return_value=[stock])
+        data_service = AsyncMock()
+        data_service.get_market_news = AsyncMock(return_value={"articles": []})
+        data_service.get_sector_news = AsyncMock(return_value={"articles": []})
+        data_service.get_current_price = AsyncMock(return_value=100.0)
+        analyst = AsyncMock()
+        analyst.analyze_batch = AsyncMock(return_value=[])
+
+        scores = [
+            CompositeScore(symbol="AAPL", composite_score=7.0, composite_confidence=6.0, conviction=42.0),
+            CompositeScore(symbol="MSFT", composite_score=3.5, composite_confidence=5.0, conviction=17.5),
+        ]
+        sized = [
+            CompositeScore(
+                symbol="AAPL", composite_score=7.0, composite_confidence=6.0, conviction=42.0, target_weight=0.05
+            )
+        ]
+        pm = MagicMock()
+        pm.compute_composite_scores.return_value = scores
+        pm.select_stocks.return_value = [scores[0]]
+        pm.size_positions.return_value = sized
+        pm.generate_orders.return_value = [
+            RebalanceOrder(symbol=f"SYM{i}", side="buy", quantity=1.0, reason="new_position") for i in range(n_orders)
+        ]
+
+        deps = _make_deps(
+            universe_provider=provider,
+            screener=screener,
+            data_service=data_service,
+            news_analyst=analyst,
+            fundamentals_analyst=analyst,
+            technical_analyst=analyst,
+            portfolio_manager=pm,
+            execute_trade_fn=AsyncMock(side_effect=trade_results),
+        )
+        state = {
+            "branch_name": "growth",
+            "branch_id": "test-branch",
+            "universe": [],
+            "screened": [],
+            "signals": [],
+            "scores": [],
+            "orders": [],
+            "trades": [],
+            "deps": deps,
+        }
+        return state, sized
+
+    async def test_trades_counts_only_successful_fills(self):
+        """Rejected orders (success=False) must not be counted as executed trades."""
+        trade_results = [
+            {"success": True, "order_id": "o1", "status": "filled"},
+            {"success": False, "order_id": None, "status": "rejected", "message": "No portfolio"},
+            None,
+        ]
+        state, _ = self._initial_state(trade_results, n_orders=3)
+
+        graph = build_equities_graph("growth")
+        result = await graph.ainvoke(state)
+
+        assert result["trades"] == [{"success": True, "order_id": "o1", "status": "filled"}]
+
+    async def test_portfolio_decision_runs_exactly_once(self):
+        """All three analysts must complete before portfolio_decision fires.
+
+        With separate add_edge calls the node fires once after fundamentals+technical
+        and again after the (longer) news path, submitting every order twice.
+        """
+        state, _ = self._initial_state([{"success": True, "order_id": "o", "status": "filled"}] * 10, n_orders=2)
+
+        graph = build_equities_graph("growth")
+        await graph.ainvoke(state)
+
+        pm = state["deps"]["portfolio_manager"]
+        assert pm.generate_orders.call_count == 1
+        assert state["deps"]["execute_trade_fn"].await_count == 2
+
+    async def test_returns_sized_targets(self):
+        """The graph must expose the sized target holdings (with weights) in state."""
+        state, sized = self._initial_state([], n_orders=0)
+
+        graph = build_equities_graph("growth")
+        result = await graph.ainvoke(state)
+
+        assert result.get("targets") == sized
 
 
 class TestGraphCompilation:

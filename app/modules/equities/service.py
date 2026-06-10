@@ -292,6 +292,7 @@ class EquitiesBranchService:
 
         signals = result.get("signals", [])
         scores = result.get("scores", [])
+        targets = result.get("targets", [])
         orders = result.get("orders", [])
         screened = result.get("screened", [])
         universe = result.get("universe", [])
@@ -312,6 +313,7 @@ class EquitiesBranchService:
                 scores,
                 orders,
                 current_positions,
+                targets=targets,
             )
 
         return RunResult(
@@ -370,6 +372,7 @@ class EquitiesBranchService:
         scores: list,
         orders: list,
         current_positions: dict,
+        targets: list | None = None,
     ) -> None:
         try:
             bid = uuid.UUID(branch_id) if isinstance(branch_id, str) else branch_id
@@ -397,11 +400,12 @@ class EquitiesBranchService:
                     )
                 )
 
-            target_holdings = {}
+            # target_holdings comes from the sized selection (which carries real
+            # weights); the raw scores list keeps target_weight at its 0.0 default
+            target_holdings = {t.symbol: t.target_weight for t in (targets or []) if hasattr(t, "symbol")}
             composite_scores_dict = {}
             for sc in scores:
                 sym = sc.symbol if hasattr(sc, "symbol") else ""
-                target_holdings[sym] = sc.target_weight if hasattr(sc, "target_weight") else 0
                 composite_scores_dict[sym] = {
                     "score": sc.composite_score if hasattr(sc, "composite_score") else 0,
                     "confidence": sc.composite_confidence if hasattr(sc, "composite_confidence") else 0,

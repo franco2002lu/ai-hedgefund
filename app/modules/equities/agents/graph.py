@@ -23,6 +23,7 @@ class EquitiesWorkflowState(TypedDict, total=False):
     screened: list
     signals: Annotated[list, operator.add]
     scores: list
+    targets: list
     orders: list
     trades: list
     deps: dict
@@ -186,7 +187,7 @@ def build_equities_graph(branch_name: str):
                     prices[sym] = price
         orders = pm.generate_orders(sized, current_positions, nav, prices)
         logger.info("Portfolio manager generated %d orders", len(orders))
-        return {"scores": scores, "orders": orders}
+        return {"scores": scores, "targets": sized, "orders": orders}
 
     async def execute_trades(state: EquitiesWorkflowState) -> dict:
         deps = state["deps"]
@@ -195,7 +196,9 @@ def build_equities_graph(branch_name: str):
         if trade_fn:
             for order in state.get("orders", []):
                 trade = await trade_fn(order)
-                if trade:
+                # submit_order returns a dict for both fills and rejections;
+                # only count actual fills as executed trades
+                if isinstance(trade, dict) and trade.get("success"):
                     trades.append(trade)
         logger.info("Executed %d trades", len(trades))
         return {"trades": trades}
@@ -216,9 +219,13 @@ def build_equities_graph(branch_name: str):
     graph.add_edge("prefetch_news", "news_analysis")
     graph.add_edge("screen_stocks", "fundamentals_analysis")
     graph.add_edge("screen_stocks", "technical_analysis")
-    graph.add_edge("news_analysis", "portfolio_decision")
-    graph.add_edge("fundamentals_analysis", "portfolio_decision")
-    graph.add_edge("technical_analysis", "portfolio_decision")
+    # List form = AND-join: portfolio_decision fires once, after ALL three
+    # analysts complete. Separate edges would fire it per incoming branch,
+    # generating and submitting orders twice per run.
+    graph.add_edge(
+        ["news_analysis", "fundamentals_analysis", "technical_analysis"],
+        "portfolio_decision",
+    )
     graph.add_edge("portfolio_decision", "execute_trades")
     graph.add_edge("execute_trades", END)
 
