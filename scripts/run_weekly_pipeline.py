@@ -118,6 +118,9 @@ async def _run_one_branch(
     # app/db/connection.py::get_session for FastAPI requests.
     async with async_session_factory() as session, session.begin():
         branch_id = await _resolve_branch_id(session, branch_name)
+        # Single date for the whole run — a run straddling midnight ET must not
+        # use different dates for the trading run and the attribution pass.
+        run_date = today_ny()
 
         if dry_run:
             logger.info("[dry_run] Would have executed branch=%s top_n=%s", branch_name, top_n)
@@ -160,20 +163,25 @@ async def _run_one_branch(
         summary = await runner.execute(
             branch_name=branch_name,
             branch_id=branch_id,
-            run_date=today_ny(),
+            run_date=run_date,
             force_retry=force_retry,
         )
 
         # Phase D: score last week's decision now that a week of prices exists.
-        # Never allowed to fail the trading run.
+        # Never allowed to fail the trading run. The SAVEPOINT (begin_nested)
+        # confines any DB failure to the attribution work — without it, a
+        # failed flush would mark the shared session rollback-only and the
+        # outer transaction would raise PendingRollbackError at COMMIT,
+        # discarding the entire trading run.
         try:
             engine = AttributionEngine(data_service=equities_service.data_service)
-            summary.attribution = await engine.compute_and_persist(
-                session,
-                branch_id=branch_id,
-                branch_name=branch_name,
-                as_of=today_ny(),
-            )
+            async with session.begin_nested():
+                summary.attribution = await engine.compute_and_persist(
+                    session,
+                    branch_id=branch_id,
+                    branch_name=branch_name,
+                    as_of=run_date,
+                )
         except Exception:
             logger.warning("Attribution failed for %s — continuing", branch_name, exc_info=True)
 
