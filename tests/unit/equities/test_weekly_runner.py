@@ -79,10 +79,6 @@ class _FakeFactory:
         return s
 
 
-def _make_recorder() -> list[str]:
-    return []
-
-
 def _make_sessions(recorder: list[str], labels: list[str]) -> list[_FakeSession]:
     return [_FakeSession(label, recorder) for label in labels]
 
@@ -148,7 +144,11 @@ def _make_factory_and_repo(
     *,
     find_latest_return: PipelineRunModel | None = None,
 ) -> tuple[_FakeFactory, _FakeRepo]:
-    """Build a factory and a matching FakeRepo, patching the repo constructor."""
+    """Build a factory and a FakeRepo.
+
+    The caller is responsible for patching weekly_runner.PipelineRunsRepository
+    to return the FakeRepo (this helper does no patching itself).
+    """
     sessions = _make_sessions(recorder, labels)
     factory = _FakeFactory(sessions)
     repo = _FakeRepo(find_latest_return=find_latest_return)
@@ -195,11 +195,9 @@ async def test_execute_creates_row_when_no_prior_run():
         find_latest_return=None,
     )
     branch_id = str(uuid4())
-    service = MagicMock()
-    service.run_pipeline = AsyncMock(return_value=_make_run_result("growth"))
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=service, session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         summary = await runner.execute(
             branch_name="growth",
             branch_id=branch_id,
@@ -228,11 +226,10 @@ async def test_execute_skips_when_completed_row_exists():
         ["bk1"],  # only the bookkeeping session is needed; no trading session
         find_latest_return=existing,
     )
-    service = MagicMock()
     run_fn = AsyncMock()
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=service, session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         summary = await runner.execute(
             branch_name="growth",
             branch_id=str(existing.branch_id),
@@ -251,10 +248,9 @@ async def test_execute_aborts_when_running_row_exists():
     existing = _row("running", "2026-04-27-growth")
     recorder: list[str] = []
     factory, repo = _make_factory_and_repo(recorder, ["bk1"], find_latest_return=existing)
-    service = MagicMock()
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=service, session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         with pytest.raises(RunInFlightError):
             await runner.execute(
                 branch_name="growth",
@@ -270,10 +266,9 @@ async def test_execute_aborts_on_failed_without_retry():
     existing = _row("failed", "2026-04-27-growth")
     recorder: list[str] = []
     factory, repo = _make_factory_and_repo(recorder, ["bk1"], find_latest_return=existing)
-    service = MagicMock()
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=service, session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         with pytest.raises(ManualInterventionRequired):
             await runner.execute(
                 branch_name="growth",
@@ -293,11 +288,10 @@ async def test_execute_creates_attempt2_row_on_force_retry():
         ["bk1", "trading", "bk2"],
         find_latest_return=existing,
     )
-    service = MagicMock()
     run_fn = AsyncMock(return_value=_make_run_result("growth"))
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=service, session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         summary = await runner.execute(
             branch_name="growth",
             branch_id=str(existing.branch_id),
@@ -315,11 +309,10 @@ async def test_execute_creates_attempt2_row_on_force_retry():
 async def test_execute_marks_failed_on_pipeline_exception():
     recorder: list[str] = []
     factory, repo = _make_factory_and_repo(recorder, ["bk1", "trading", "bk-fail"], find_latest_return=None)
-    service = MagicMock()
     run_fn = AsyncMock(side_effect=RuntimeError("boom"))
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=service, session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         with pytest.raises(RuntimeError, match="boom"):
             await runner.execute(
                 branch_name="growth",
@@ -361,39 +354,18 @@ def test_configure_service_with_none_top_n_leaves_unset():
 
 @pytest.mark.asyncio
 async def test_running_row_committed_before_pipeline_runs():
-    """BK txn1 commit must appear in the recorder BEFORE run_fn is called."""
+    """The bookkeeping session that inserted "running" commits before run_fn runs."""
     recorder: list[str] = []
     sessions = _make_sessions(recorder, ["bk1", "trading", "bk2"])
     factory = _FakeFactory(sessions)
     repo = _FakeRepo(find_latest_return=None)
 
-    call_order: list[str] = []
-
     async def _run_fn(session, run_id):
-        call_order.append("run_fn")
+        recorder.append("run_fn")
         return _make_run_result("growth")
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=MagicMock(), session_factory=factory)
-        # Intercept insert to record its timing relative to run_fn
-        original_insert = repo.insert
-
-        async def _recording_insert(**kwargs):
-            # insert itself doesn't commit — commit is driven by bk1.__aexit__
-            call_order.append("insert-running")
-            return await original_insert(**kwargs)
-
-        repo.insert = _recording_insert
-
-        # We need to patch the _mark_completed to record order too
-        original_mark_completed = repo.mark_completed
-
-        async def _recording_mark_completed(run_id, summary):
-            call_order.append("mark_completed")
-            return await original_mark_completed(run_id, summary)
-
-        repo.mark_completed = _recording_mark_completed
-
+        runner = WeeklyRunner(session_factory=factory)
         await runner.execute(
             branch_name="growth",
             branch_id=str(uuid4()),
@@ -402,13 +374,10 @@ async def test_running_row_committed_before_pipeline_runs():
             run_fn=_run_fn,
         )
 
-    # bk1 commits before run_fn is invoked
-    assert "bk1-commit" in recorder
-    run_fn_idx = call_order.index("run_fn")
-    insert_idx = call_order.index("insert-running")
-
-    # insert happens before run_fn (bk1 commit is in recorder, verified above)
-    assert insert_idx < run_fn_idx
+    # The "running" row was inserted inside bk1, and bk1 committed before run_fn
+    assert len(repo.inserted) == 1
+    assert repo.inserted[0]["status"] == "running"
+    assert recorder.index("bk1-commit") < recorder.index("run_fn")
 
 
 @pytest.mark.asyncio
@@ -433,7 +402,7 @@ async def test_completed_marked_after_trading_commit():
     repo.mark_completed = _patched_mc
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=MagicMock(), session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         await runner.execute(
             branch_name="growth",
             branch_id=str(uuid4()),
@@ -475,7 +444,7 @@ async def test_failed_run_marks_failed_outside_trading_txn():
     repo.mark_failed = _patched_mf
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=MagicMock(), session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         with pytest.raises(ValueError, match="pipeline boom"):
             await runner.execute(
                 branch_name="growth",
@@ -512,7 +481,7 @@ async def test_mark_failed_bookkeeping_error_does_not_mask_pipeline_error():
     repo.mark_failed = _failing_mark_failed
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=MagicMock(), session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         exc = None
         try:
             await runner.execute(
@@ -542,7 +511,7 @@ async def test_skip_path_never_opens_trading_session():
     run_fn = AsyncMock()
 
     with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
-        runner = WeeklyRunner(service=MagicMock(), session_factory=factory)
+        runner = WeeklyRunner(session_factory=factory)
         summary = await runner.execute(
             branch_name="growth",
             branch_id=str(existing.branch_id),

@@ -146,15 +146,18 @@ class WeeklyRunner:
       bk-f  — mark status="failed", opened in the except branch; the original
               pipeline exception is always re-raised regardless of whether this
               bookkeeping step itself errors.
+
+    Hard-kill windows: a kill during the trading transaction leaves a committed
+    'running' row with no trades; a kill between the trading commit and
+    bookkeeping txn 2 leaves a 'running' row WITH trades committed. Both require
+    the manual recovery flow (flip status to 'failed', then force_retry).
     """
 
     def __init__(
         self,
         *,
-        service: EquitiesBranchService,
         session_factory: Callable[[], Any],
     ) -> None:
-        self.service = service
         self.session_factory = session_factory
 
     async def execute(

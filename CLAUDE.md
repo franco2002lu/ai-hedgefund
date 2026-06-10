@@ -283,6 +283,6 @@ curl -s http://localhost:8000/api/v1/equities/pipeline-runs?limit=10 | python -m
 ### Recovery from a failed run
 
 1. Check the `pipeline_runs` table: `SELECT run_id, status, error_msg FROM pipeline_runs ORDER BY started_at DESC LIMIT 5;`
-2. If status=`running` (stuck), inspect event log to determine how far the run got, then `UPDATE pipeline_runs SET status='failed' WHERE run_id = ?;`
+2. If status=`running` (stuck), inspect event log to determine how far the run got, then `UPDATE pipeline_runs SET status='failed' WHERE run_id = ?;` (A GitHub Actions timeout or hard kill now reliably leaves a stuck 'running' row — previously nothing persisted. Same-day re-dispatches are blocked until the status is flipped; next-Monday runs are unaffected.)
 3. Re-dispatch the workflow with `force_retry=true` to create an `attempt2` row and resume.
 4. There is no automatic crash recovery (intentional — see the design doc).

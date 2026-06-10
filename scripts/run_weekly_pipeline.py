@@ -165,7 +165,7 @@ async def _run_one_branch(
             session=session,
         )
 
-    runner = WeeklyRunner(service=equities_service, session_factory=async_session_factory)
+    runner = WeeklyRunner(session_factory=async_session_factory)
 
     summary = await runner.execute(
         branch_name=branch_name,
