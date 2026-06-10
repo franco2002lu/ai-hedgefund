@@ -1,6 +1,6 @@
 """Unit tests for the cross-sectional ranking stage."""
 
-from app.modules.equities.agents.ranker import DeterministicRanker, decile_score
+from app.modules.equities.agents.ranker import DeterministicRanker, apply_ranking, decile_score
 from app.modules.equities.models import StockSignal
 
 
@@ -29,6 +29,15 @@ class TestDecileScore:
         assert decile_score(0, 1) == 10
 
 
+class TestApplyRanking:
+    def test_absent_symbol_keeps_stage1_score(self):
+        signals = [_sig("A", 7), _sig("Z", 4)]
+        ranked = apply_ranking(signals, ["A"])
+        by = {s.symbol: s.bullish_score for s in ranked}
+        # A is position 0 of n=1 -> 10; Z is absent -> keeps stage-1 score
+        assert by == {"A": 10, "Z": 4}
+
+
 class TestDeterministicRanker:
     async def test_rank_normalizes_scores_preserving_order(self):
         ranker = DeterministicRanker(min_rank_universe=2)
@@ -38,11 +47,22 @@ class TestDeterministicRanker:
         assert by_symbol == {"A": 10, "C": 5, "B": 1}
         assert all(s.confidence == 5 and s.summary == "t" for s in ranked)
 
-    async def test_ties_broken_by_symbol_for_determinism(self):
+    async def test_tied_scores_share_mean_decile(self):
         ranker = DeterministicRanker(min_rank_universe=2)
         ranked = await ranker.rank([_sig("B", 5), _sig("A", 5)])
         by = {s.symbol: s.bullish_score for s in ranked}
-        assert by == {"A": 10, "B": 1}
+        # tied stocks share the rounded mean of their positional deciles
+        # positions 0,1 of n=2 -> deciles 10,1 -> mean 5.5 -> 6
+        assert by == {"A": 6, "B": 6}
+
+    async def test_tie_group_in_middle_shares_decile(self):
+        ranker = DeterministicRanker(min_rank_universe=2)
+        signals = [_sig("A", 7), _sig("B", 5), _sig("C", 5), _sig("D", 5), _sig("E", 3)]
+        ranked = await ranker.rank(signals)
+        by = {s.symbol: s.bullish_score for s in ranked}
+        # n=5 deciles by position: 10, 7, 5, 3, 1; B/C/D occupy positions 1-3
+        # -> mean(7,5,3)=5
+        assert by == {"A": 10, "B": 5, "C": 5, "D": 5, "E": 1}
 
     async def test_below_min_universe_passthrough(self):
         ranker = DeterministicRanker(min_rank_universe=5)

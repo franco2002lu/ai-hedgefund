@@ -43,7 +43,8 @@ def apply_ranking(signals: list[StockSignal], ordered_symbols: list[str]) -> lis
 
 
 class DeterministicRanker:
-    """Rank-normalize by stage-1 score (ties broken alphabetically).
+    """Rank-normalize by stage-1 score; ties share the rounded mean decile
+    of their positions; alphabetical order is used only for stable iteration.
 
     Gives quant-mode backtests the same decile score semantics as the LLM
     ranker without any LLM call.
@@ -56,4 +57,21 @@ class DeterministicRanker:
         if len(signals) < self.min_rank_universe:
             return signals
         ordered = sorted(signals, key=lambda s: (-s.bullish_score, s.symbol))
-        return apply_ranking(signals, [s.symbol for s in ordered])
+        n = len(ordered)
+
+        # Group consecutive entries with equal stage-1 score; each group
+        # spanning positions i..j shares the rounded mean of its deciles.
+        score_by_symbol: dict[str, int] = {}
+        i = 0
+        while i < n:
+            j = i
+            while j + 1 < n and ordered[j + 1].bullish_score == ordered[i].bullish_score:
+                j += 1
+            deciles = [decile_score(k, n) for k in range(i, j + 1)]
+            group_score = int(sum(deciles) / len(deciles) + 0.5)
+            group_score = max(1, min(10, group_score))
+            for k in range(i, j + 1):
+                score_by_symbol[ordered[k].symbol] = group_score
+            i = j + 1
+
+        return [sig.model_copy(update={"bullish_score": score_by_symbol[sig.symbol]}) for sig in signals]

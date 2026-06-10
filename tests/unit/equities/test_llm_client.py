@@ -291,3 +291,45 @@ async def test_invoke_raw_stores_to_cache_on_miss(monkeypatch):
 
     assert text == "raw output"
     cache.put.assert_called_once_with("s", "p", client.model, client.temperature, {"raw_text": "raw output"})
+
+
+async def test_invoke_raw_does_not_cache_truncated_response(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    cache = MagicMock()
+    cache.get.return_value = None
+    client = AnthropicAnalystClient(response_cache=cache)
+    fake_response = MagicMock()
+    fake_response.content = [MagicMock(text="truncated...")]
+    fake_response.stop_reason = "max_tokens"
+    client._client = MagicMock()
+    client._client.messages.create = AsyncMock(return_value=fake_response)
+
+    text = await client.invoke_raw("p", system_prompt="s")
+
+    assert text == "truncated..."
+    cache.put.assert_not_called()
+
+
+async def test_invoke_raw_raises_when_no_api_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client = AnthropicAnalystClient()
+
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY not set"):
+        await client.invoke_raw("p", system_prompt="s")
+
+
+async def test_invoke_raw_cache_entry_without_raw_text_falls_through(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    cache = MagicMock()
+    # A cached analyst-JSON entry (no "raw_text" key) must not satisfy invoke_raw
+    cache.get.return_value = {"bullish_score": 7, "confidence": 5, "summary": "x"}
+    client = AnthropicAnalystClient(response_cache=cache)
+    fake_response = MagicMock()
+    fake_response.content = [MagicMock(text="fresh output")]
+    client._client = MagicMock()
+    client._client.messages.create = AsyncMock(return_value=fake_response)
+
+    text = await client.invoke_raw("p", system_prompt="s")
+
+    assert text == "fresh output"
+    client._client.messages.create.assert_called_once()

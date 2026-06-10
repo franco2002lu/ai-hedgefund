@@ -143,6 +143,8 @@ class AnthropicAnalystClient:
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.content[0].text.strip()
-        if self._response_cache is not None:
+        if getattr(response, "stop_reason", None) == "max_tokens":
+            logger.warning("invoke_raw response truncated at max_tokens=%d — not caching", max_tokens)
+        elif self._response_cache is not None:
             self._response_cache.put(system_prompt, prompt, self.model, self.temperature, {"raw_text": text})
         return text
