@@ -36,6 +36,7 @@ from app.modules.data_platform.adapters.yahoo_finance import YahooFinanceAdapter
 from app.modules.data_platform.cache import DataCache  # noqa: E402
 from app.modules.data_platform.rate_limiter import RateLimiter  # noqa: E402
 from app.modules.data_platform.service import DataPlatformService  # noqa: E402
+from app.modules.equities.attribution import AttributionEngine  # noqa: E402
 from app.modules.equities.weekly_runner import (  # noqa: E402
     ManualInterventionRequired,
     PipelineRunsRepository,
@@ -156,12 +157,27 @@ async def _run_one_branch(
             service=equities_service, repo=repo, session=session
         )
 
-        return await runner.execute(
+        summary = await runner.execute(
             branch_name=branch_name,
             branch_id=branch_id,
             run_date=today_ny(),
             force_retry=force_retry,
         )
+
+        # Phase D: score last week's decision now that a week of prices exists.
+        # Never allowed to fail the trading run.
+        try:
+            engine = AttributionEngine(data_service=equities_service.data_service)
+            summary.attribution = await engine.compute_and_persist(
+                session,
+                branch_id=branch_id,
+                branch_name=branch_name,
+                as_of=today_ny(),
+            )
+        except Exception:
+            logger.warning("Attribution failed for %s — continuing", branch_name, exc_info=True)
+
+        return summary
 
 
 async def _main_async(args: argparse.Namespace) -> int:
