@@ -47,9 +47,7 @@ def _load_output_format(skills_dir_str: str = "") -> str:
     path = root / "output_format.md"
     content = _read_skill(path)
     if content is None:
-        raise MissingSkillError(
-            f"Required output format skill not found at {path}"
-        )
+        raise MissingSkillError(f"Required output format skill not found at {path}")
     return content
 
 
@@ -101,9 +99,7 @@ def compose_system_prompt(
     # 2. Branch overlay (optional)
     if branch_name:
         branch_key = _normalize_branch(branch_name)
-        branch_skill = _read_skill(
-            root / "branches" / branch_key / f"{analyst_type}.md"
-        )
+        branch_skill = _read_skill(root / "branches" / branch_key / f"{analyst_type}.md")
         if branch_skill:
             layers.append(branch_skill)
 
@@ -118,6 +114,32 @@ def compose_system_prompt(
     layers.append(_load_output_format(str(skills_dir) if skills_dir is not None else ""))
 
     return _SEPARATOR.join(layers)
+
+
+@lru_cache(maxsize=32)
+def compose_ranking_prompt(
+    analyst_type: str,
+    branch_name: str = "",
+    skills_dir: Path | None = None,
+) -> str:
+    """System prompt for the cross-sectional ranking stage.
+
+    Layers base/ranking.md + branches/<branch>/ranking.md (optional), with
+    {analyst_type} placeholders substituted. Deliberately does NOT append
+    output_format.md — the ranking response schema is defined in ranking.md.
+    """
+    root = skills_dir if skills_dir is not None else _SKILLS_DIR
+    layers: list[str] = []
+    base = _read_skill(root / "base" / "ranking.md")
+    if base:
+        layers.append(base)
+    else:
+        logger.warning("Missing base ranking skill")
+    if branch_name:
+        overlay = _read_skill(root / "branches" / _normalize_branch(branch_name) / "ranking.md")
+        if overlay:
+            layers.append(overlay)
+    return _SEPARATOR.join(layers).replace("{analyst_type}", analyst_type)
 
 
 def get_available_skills() -> dict:

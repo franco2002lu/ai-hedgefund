@@ -588,3 +588,21 @@ class TestOverlaysHaveParallelStructure:
         assert g_sections == v_sections, (
             f"Overlay structure drift.\n  Growth sections: {g_sections}\n  Value sections:  {v_sections}"
         )
+
+
+# ---------------------------------------------------------------------------
+# compose_ranking_prompt tests
+# ---------------------------------------------------------------------------
+
+
+class TestComposeRankingPrompt:
+    def test_compose_ranking_prompt_loads_base_ranking_skill(self):
+        from app.modules.equities.agents.skills.loader import compose_ranking_prompt
+
+        prompt = compose_ranking_prompt("news", "growth")
+        assert "rank" in prompt.lower()
+        # analyst_type placeholder substituted
+        assert "{analyst_type}" not in prompt
+        assert "news" in prompt
+        # must NOT append the per-stock output format (different response schema)
+        assert "bullish_score" not in prompt
