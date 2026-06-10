@@ -1,6 +1,7 @@
 """Unit tests for WeeklyRunner idempotency and summary rendering."""
 
 from datetime import UTC, date
+from datetime import date as _date
 from datetime import datetime as dt
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -8,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.models import PipelineRunModel
+from app.modules.equities.attribution import AttributionReport
 from app.modules.equities.models import RunResult
 from app.modules.equities.weekly_runner import (
     ManualInterventionRequired,
@@ -255,15 +257,22 @@ def test_render_digest_mixed_success_and_failure():
         run_id="2026-04-27-growth",
         branch_name="growth",
         status="completed",
-        universe_count=50, screened_count=30, orders_placed=10,
-        trades_executed=8, duration_seconds=300.0, error=None,
+        universe_count=50,
+        screened_count=30,
+        orders_placed=10,
+        trades_executed=8,
+        duration_seconds=300.0,
+        error=None,
     )
     s2 = WeeklyRunSummary(
         run_id="2026-04-27-value",
         branch_name="value",
         status="failed",
-        universe_count=0, screened_count=0, orders_placed=0,
-        trades_executed=0, duration_seconds=12.0,
+        universe_count=0,
+        screened_count=0,
+        orders_placed=0,
+        trades_executed=0,
+        duration_seconds=12.0,
         error="RuntimeError: yfinance rate limited",
     )
     out = render_digest([s1, s2], run_date=date(2026, 4, 27))
@@ -272,3 +281,52 @@ def test_render_digest_mixed_success_and_failure():
     assert "## value" in out
     assert "❌" in out or "failed" in out
     assert "yfinance rate limited" in out
+
+
+class TestDigestAttribution:
+    def test_digest_includes_attribution_section(self):
+        report = AttributionReport(
+            branch_name="growth",
+            decision_date=_date(2026, 6, 1),
+            as_of_date=_date(2026, 6, 8),
+            basket_return_conviction=0.012,
+            basket_return_equal=0.009,
+            benchmark_return=0.004,
+            benchmark_symbol="VOOG",
+            spy_return=-0.003,
+            analyst_ics={"fundamentals": 0.11, "news": -0.18, "technical": None},
+            n_holdings=20,
+            n_holdings_priced=20,
+        )
+        summary = WeeklyRunSummary(
+            run_id="2026-06-08-growth",
+            branch_name="growth",
+            status="completed",
+            universe_count=50,
+            screened_count=24,
+            orders_placed=20,
+            trades_executed=20,
+            duration_seconds=75.0,
+            attribution=report,
+        )
+        digest = render_digest([summary], run_date=_date(2026, 6, 8))
+        assert "Last week (2026-06-01)" in digest
+        assert "+1.20%" in digest  # conviction basket
+        assert "eq-wt +0.90%" in digest
+        assert "VOOG +0.40%" in digest
+        assert "fund +0.11" in digest
+        assert "tech n/a" in digest
+
+    def test_digest_without_attribution_unchanged(self):
+        summary = WeeklyRunSummary(
+            run_id="x",
+            branch_name="growth",
+            status="completed",
+            universe_count=1,
+            screened_count=1,
+            orders_placed=1,
+            trades_executed=1,
+            duration_seconds=1.0,
+        )
+        digest = render_digest([summary], run_date=_date(2026, 6, 8))
+        assert "Last week" not in digest

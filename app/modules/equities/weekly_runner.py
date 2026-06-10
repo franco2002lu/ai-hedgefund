@@ -26,6 +26,7 @@ from app.db.models import PipelineRunModel
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.modules.equities.attribution import AttributionReport
     from app.modules.equities.service import EquitiesBranchService
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class WeeklyRunSummary:
     trades_executed: int
     duration_seconds: float
     error: str | None = None
+    attribution: AttributionReport | None = None
 
 
 _NY_TZ = ZoneInfo("America/New_York")
@@ -66,9 +68,7 @@ class PipelineRunsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def find_latest(
-        self, branch_id: str, run_date: date
-    ) -> PipelineRunModel | None:
+    async def find_latest(self, branch_id: str, run_date: date) -> PipelineRunModel | None:
         bid = uuid.UUID(branch_id) if isinstance(branch_id, str) else branch_id
         stmt = (
             select(PipelineRunModel)
@@ -102,9 +102,7 @@ class PipelineRunsRepository:
         self.session.add(row)
         await self.session.flush()
 
-    async def mark_completed(
-        self, run_id: str, summary: dict[str, Any]
-    ) -> None:
+    async def mark_completed(self, run_id: str, summary: dict[str, Any]) -> None:
         row = await self.session.get(PipelineRunModel, run_id)
         if row is None:
             raise RuntimeError(f"pipeline_runs row {run_id} not found")
@@ -238,15 +236,11 @@ class WeeklyRunner:
             logger.info("Run %s already completed — skipping", latest.run_id)
             return 0, latest.run_id
         if latest.status == "running":
-            raise RunInFlightError(
-                f"Prior run {latest.run_id} is status=running. "
-                "Inspect manually before re-running."
-            )
+            raise RunInFlightError(f"Prior run {latest.run_id} is status=running. Inspect manually before re-running.")
         # latest.status == "failed"
         if not force_retry:
             raise ManualInterventionRequired(
-                f"Prior run {latest.run_id} failed. "
-                "Re-trigger with force_retry=true to create a new attempt."
+                f"Prior run {latest.run_id} failed. Re-trigger with force_retry=true to create a new attempt."
             )
         next_attempt = latest.attempt + 1
         new_run_id = f"{run_date.isoformat()}-{branch_name}-attempt{next_attempt}"
@@ -259,6 +253,14 @@ def _format_duration(seconds: float) -> str:
     if m == 0:
         return f"{s}s"
     return f"{m}m {s:02d}s"
+
+
+def _fmt_pct(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:+.2%}"
+
+
+def _fmt_ic(x: float | None) -> str:
+    return "n/a" if x is None else f"{x:+.2f}"
 
 
 def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
@@ -277,6 +279,19 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
             lines.append(f"- Duration: {_format_duration(s.duration_seconds)}")
             if s.orders_placed == 0:
                 lines.append("- ⚠️ 0 orders — check data freshness")
+            if s.attribution is not None:
+                a = s.attribution
+                ics = a.analyst_ics
+                lines.append(
+                    f"- Last week ({a.decision_date.isoformat()}): "
+                    f"basket {_fmt_pct(a.basket_return_conviction)} "
+                    f"(eq-wt {_fmt_pct(a.basket_return_equal)}) vs "
+                    f"{a.benchmark_symbol} {_fmt_pct(a.benchmark_return)}, "
+                    f"SPY {_fmt_pct(a.spy_return)} · "
+                    f"IC fund {_fmt_ic(ics.get('fundamentals'))} / "
+                    f"news {_fmt_ic(ics.get('news'))} / "
+                    f"tech {_fmt_ic(ics.get('technical'))}"
+                )
         elif s.status == "failed":
             lines.append(f"- Duration before failure: {_format_duration(s.duration_seconds)}")
             lines.append(f"- Error: `{s.error or 'unknown'}`")
