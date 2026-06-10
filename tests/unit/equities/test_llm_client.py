@@ -178,9 +178,7 @@ class TestAnthropicAnalystClientResponseCache:
             )
             # Swap in a mock that would FAIL the test if called
             client._client = AsyncMock()
-            client._client.messages.create.side_effect = AssertionError(
-                "should not hit API on cache hit"
-            )
+            client._client.messages.create.side_effect = AssertionError("should not hit API on cache hit")
 
             result = await client.invoke("usr", system_prompt="sys")
             assert result == {"bullish_score": 9, "confidence": 8, "summary": "cached"}
@@ -243,3 +241,53 @@ class TestAnthropicAnalystClientResponseCache:
         result2 = await client.invoke("usr", system_prompt="sys")
         assert result2["bullish_score"] == 5
         assert client._client.messages.create.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# invoke_raw tests
+# ---------------------------------------------------------------------------
+
+
+async def test_invoke_raw_returns_text_without_parsing(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    client = AnthropicAnalystClient()
+    fake_response = MagicMock()
+    fake_response.content = [MagicMock(text='{"ranking": ["A", "B"]}')]
+    client._client = MagicMock()
+    client._client.messages.create = AsyncMock(return_value=fake_response)
+
+    text = await client.invoke_raw("rank these", system_prompt="you are a ranker")
+
+    assert text == '{"ranking": ["A", "B"]}'
+    kwargs = client._client.messages.create.call_args.kwargs
+    assert kwargs["max_tokens"] == 2048
+
+
+async def test_invoke_raw_uses_response_cache(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    cache = MagicMock()
+    cache.get.return_value = {"raw_text": "cached!"}
+    client = AnthropicAnalystClient(response_cache=cache)
+    client._client = MagicMock()
+    client._client.messages.create = AsyncMock()
+
+    text = await client.invoke_raw("p", system_prompt="s")
+
+    assert text == "cached!"
+    client._client.messages.create.assert_not_called()
+
+
+async def test_invoke_raw_stores_to_cache_on_miss(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    cache = MagicMock()
+    cache.get.return_value = None
+    client = AnthropicAnalystClient(response_cache=cache)
+    fake_response = MagicMock()
+    fake_response.content = [MagicMock(text="raw output")]
+    client._client = MagicMock()
+    client._client.messages.create = AsyncMock(return_value=fake_response)
+
+    text = await client.invoke_raw("p", system_prompt="s")
+
+    assert text == "raw output"
+    cache.put.assert_called_once_with("s", "p", client.model, client.temperature, {"raw_text": "raw output"})

@@ -65,9 +65,7 @@ class AnthropicAnalystClient:
 
         # Cache lookup — only when both a cache and a system_prompt are present
         if self._response_cache is not None and system_prompt is not None:
-            cached = self._response_cache.get(
-                system_prompt, prompt, self.model, self.temperature
-            )
+            cached = self._response_cache.get(system_prompt, prompt, self.model, self.temperature)
             if cached is not None:
                 return cached
 
@@ -118,7 +116,33 @@ class AnthropicAnalystClient:
 
         # Store in cache on miss
         if self._response_cache is not None and system_prompt is not None:
-            self._response_cache.put(
-                system_prompt, prompt, self.model, self.temperature, parsed
-            )
+            self._response_cache.put(system_prompt, prompt, self.model, self.temperature, parsed)
         return parsed
+
+    async def invoke_raw(self, prompt: str, *, system_prompt: str, max_tokens: int = 2048) -> str:
+        """Send prompt and return raw text (no analyst-JSON parsing/clamping).
+
+        Used by the cross-sectional ranker, whose response is a ranking JSON,
+        not a bullish_score object. Flows through the same response cache as
+        invoke() so LLM-mode backtests stay reproducible.
+        """
+        if self._client is None:
+            raise RuntimeError("ANTHROPIC_API_KEY not set — cannot invoke LLM analyst")
+
+        if self._response_cache is not None:
+            cached = self._response_cache.get(system_prompt, prompt, self.model, self.temperature)
+            if cached is not None and "raw_text" in cached:
+                return cached["raw_text"]
+
+        system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+        response = await self._client.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            temperature=self.temperature,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = response.content[0].text.strip()
+        if self._response_cache is not None:
+            self._response_cache.put(system_prompt, prompt, self.model, self.temperature, {"raw_text": text})
+        return text
