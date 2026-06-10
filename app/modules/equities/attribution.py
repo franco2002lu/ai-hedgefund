@@ -8,8 +8,13 @@ avoid a scipy dependency.
 from __future__ import annotations
 
 import logging
+import uuid as _uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta
+
+from sqlalchemy import select
+
+from app.db.models import AgentSignalModel, AttributionReportModel, PortfolioDecisionModel
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +91,10 @@ def resolve_weights(
 
 
 def _window_return(series: list[tuple[date, float]], d0: date, d1: date) -> float | None:
-    """Return from first close on/after d0 to last close on/before d1."""
+    """Return from first close on/after d0 to last close on/before d1.
+
+    Precondition: series must be sorted ascending by date.
+    """
     on_or_after = [c for d, c in series if d >= d0]
     in_window = [c for d, c in series if d0 <= d <= d1]
     if not on_or_after or not in_window:
@@ -143,3 +151,115 @@ def compute_report(
         n_holdings=len(weights),
         n_holdings_priced=len(returns),
     )
+
+
+# ============================================================
+# AttributionEngine — DB orchestration + price fetch + upsert
+# ============================================================
+
+MAX_DECISION_AGE_DAYS = 14
+_PRICE_LOOKBACK_PAD_DAYS = 0
+
+
+class AttributionEngine:
+    """Loads the prior decision + signals, fetches prices, computes and persists."""
+
+    def __init__(self, data_service) -> None:
+        self.data_service = data_service
+
+    async def compute_and_persist(
+        self, session, *, branch_id: str, branch_name: str, as_of: date
+    ) -> AttributionReport | None:
+        bid = _uuid.UUID(branch_id) if isinstance(branch_id, str) else branch_id
+
+        stmt = (
+            select(PortfolioDecisionModel)
+            .where(
+                PortfolioDecisionModel.branch_id == bid,
+                PortfolioDecisionModel.decided_at < datetime(as_of.year, as_of.month, as_of.day),
+            )
+            .order_by(PortfolioDecisionModel.decided_at.desc())
+            .limit(1)
+        )
+        decision = (await session.execute(stmt)).scalar_one_or_none()
+        if decision is None:
+            logger.info("Attribution: no prior decision for %s", branch_name)
+            return None
+        decision_date = decision.decided_at.date()
+        if (as_of - decision_date).days > MAX_DECISION_AGE_DAYS:
+            logger.info(
+                "Attribution: latest decision %s is stale (> %d days) — skipping",
+                decision_date,
+                MAX_DECISION_AGE_DAYS,
+            )
+            return None
+
+        sig_stmt = select(AgentSignalModel).where(AgentSignalModel.screening_run_id == decision.screening_run_id)
+        signal_rows = (await session.execute(sig_stmt)).scalars().all()
+        signals = [
+            {"symbol": r.symbol, "analyst_type": r.analyst_type, "bullish_score": r.bullish_score} for r in signal_rows
+        ]
+
+        buy_symbols = [o["symbol"] for o in (decision.orders_generated or []) if o.get("side") == "buy"]
+        weights = resolve_weights(
+            target_holdings=decision.target_holdings or {},
+            composite_scores=decision.composite_scores or {},
+            buy_symbols=buy_symbols,
+        )
+
+        benchmark = BENCHMARK_MAP.get("growth" if "growth" in branch_name.lower() else "value", "SPY")
+        symbols = set(weights) | {s["symbol"] for s in signals} | {benchmark, "SPY"}
+        prices = await self._fetch_prices(sorted(symbols), decision_date, as_of)
+
+        report = compute_report(
+            branch_name=branch_name,
+            decision_date=decision_date,
+            as_of=as_of,
+            weights=weights,
+            signals=signals,
+            prices=prices,
+            benchmark_symbol=benchmark,
+        )
+        await self._upsert(session, bid, report)
+        return report
+
+    async def _fetch_prices(self, symbols: list[str], d0: date, d1: date) -> dict[str, list[tuple[date, float]]]:
+        out: dict[str, list[tuple[date, float]]] = {}
+        start = d0 - timedelta(days=_PRICE_LOOKBACK_PAD_DAYS)
+        for sym in symbols:
+            try:
+                result = await self.data_service.get_prices(sym, start, d1)
+                series = []
+                for bar in result.get("bars", []):
+                    ts = bar["timestamp"]
+                    d = date.fromisoformat(ts[:10]) if isinstance(ts, str) else ts.date()
+                    series.append((d, float(bar["close"])))
+                out[sym] = sorted(series)
+            except Exception:
+                logger.warning("Attribution: no prices for %s", sym)
+        return out
+
+    async def _upsert(self, session, branch_id, report: AttributionReport) -> None:
+        stmt = select(AttributionReportModel).where(
+            AttributionReportModel.branch_id == branch_id,
+            AttributionReportModel.decision_date == report.decision_date,
+        )
+        existing = (await session.execute(stmt)).scalar_one_or_none()
+        values = {
+            "branch_name": report.branch_name,
+            "as_of_date": report.as_of_date,
+            "basket_return_conviction": report.basket_return_conviction,
+            "basket_return_equal": report.basket_return_equal,
+            "benchmark_return": report.benchmark_return,
+            "benchmark_symbol": report.benchmark_symbol,
+            "spy_return": report.spy_return,
+            "analyst_ics": report.analyst_ics,
+            "n_holdings": report.n_holdings,
+            "n_holdings_priced": report.n_holdings_priced,
+        }
+        if existing is not None:
+            for k, v in values.items():
+                setattr(existing, k, v)
+        else:
+            session.add(AttributionReportModel(branch_id=branch_id, decision_date=report.decision_date, **values))
+        await session.flush()
