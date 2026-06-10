@@ -48,6 +48,10 @@ class BacktestEngine:
         ctx.llm_cache is a dict[(date, symbol, analyst_type), StockSignal]
         populated by CachedAnalystWrapper during the run. Returns an empty
         list if the cache is empty or missing.
+
+        Note: harvested signals are stage-1 (pre-ranking) scores; the cross-sectional
+        ranking stage applies downstream in the graph, so these do not reflect the
+        decile scores that drove decisions.
         """
         from app.modules.backtest.result_store import StockSignalRecord
 

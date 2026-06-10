@@ -97,8 +97,7 @@ async def _resolve_branch_id(session, branch_name: str) -> str:
     if len(rows) > 1:
         names = sorted(r.name for r in rows)
         raise RuntimeError(
-            f"Branch name '{branch_name}' matched {len(rows)} branches: {names}. "
-            "Use a more specific name."
+            f"Branch name '{branch_name}' matched {len(rows)} branches: {names}. Use a more specific name."
         )
     return str(rows[0].id)
 
@@ -128,8 +127,11 @@ async def _run_one_branch(
                 run_id=f"dry-run-{branch_name}",
                 branch_name=branch_name,
                 status="skipped",
-                universe_count=0, screened_count=0, orders_placed=0,
-                trades_executed=0, duration_seconds=0.0,
+                universe_count=0,
+                screened_count=0,
+                orders_placed=0,
+                trades_executed=0,
+                duration_seconds=0.0,
             )
 
         # Build per-request services (same as FastAPI Depends())
@@ -156,9 +158,7 @@ async def _run_one_branch(
         equities_service.event_log = event_log
 
         repo = PipelineRunsRepository(session)
-        runner = WeeklyRunner(
-            service=equities_service, repo=repo, session=session
-        )
+        runner = WeeklyRunner(service=equities_service, repo=repo, session=session)
 
         summary = await runner.execute(
             branch_name=branch_name,
@@ -198,7 +198,10 @@ async def _main_async(args: argparse.Namespace) -> int:
 
     logger.info(
         "Weekly run: branches=%s top_n=%s force_retry=%s dry_run=%s",
-        branches, top_n, args.force_retry, args.dry_run,
+        branches,
+        top_n,
+        args.force_retry,
+        args.dry_run,
     )
 
     summaries: list[WeeklyRunSummary] = []
@@ -214,25 +217,35 @@ async def _main_async(args: argparse.Namespace) -> int:
             summaries.append(s)
         except (RunInFlightError, ManualInterventionRequired) as exc:
             logger.error("Branch %s aborted: %s", branch, exc)
-            summaries.append(WeeklyRunSummary(
-                run_id=f"aborted-{branch}",
-                branch_name=branch,
-                status="failed",
-                universe_count=0, screened_count=0, orders_placed=0,
-                trades_executed=0, duration_seconds=0.0,
-                error=repr(exc),
-            ))
+            summaries.append(
+                WeeklyRunSummary(
+                    run_id=f"aborted-{branch}",
+                    branch_name=branch,
+                    status="failed",
+                    universe_count=0,
+                    screened_count=0,
+                    orders_placed=0,
+                    trades_executed=0,
+                    duration_seconds=0.0,
+                    error=repr(exc),
+                )
+            )
             any_failed = True
         except Exception as exc:
             logger.exception("Branch %s failed", branch)
-            summaries.append(WeeklyRunSummary(
-                run_id=f"failed-{branch}",
-                branch_name=branch,
-                status="failed",
-                universe_count=0, screened_count=0, orders_placed=0,
-                trades_executed=0, duration_seconds=0.0,
-                error=repr(exc),
-            ))
+            summaries.append(
+                WeeklyRunSummary(
+                    run_id=f"failed-{branch}",
+                    branch_name=branch,
+                    status="failed",
+                    universe_count=0,
+                    screened_count=0,
+                    orders_placed=0,
+                    trades_executed=0,
+                    duration_seconds=0.0,
+                    error=repr(exc),
+                )
+            )
             any_failed = True
 
     digest = render_digest(summaries, run_date=today_ny())
@@ -247,14 +260,16 @@ async def _main_async(args: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the weekly equities paper-trading pipeline")
-    parser.add_argument("--branches", nargs="*", default=None,
-                        help="Branches to run (default: $HEDGE_EQUITIES_ENABLED_BRANCHES)")
-    parser.add_argument("--top-n", type=int, default=None,
-                        help="Top N holdings per branch (default: $HEDGE_EQUITIES_TOP_N)")
-    parser.add_argument("--force-retry", action="store_true",
-                        help="If prior run for today failed, create a new attempt row")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Validate plumbing without invoking the pipeline")
+    parser.add_argument(
+        "--branches", nargs="*", default=None, help="Branches to run (default: $HEDGE_EQUITIES_ENABLED_BRANCHES)"
+    )
+    parser.add_argument(
+        "--top-n", type=int, default=None, help="Top N holdings per branch (default: $HEDGE_EQUITIES_TOP_N)"
+    )
+    parser.add_argument(
+        "--force-retry", action="store_true", help="If prior run for today failed, create a new attempt row"
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Validate plumbing without invoking the pipeline")
     args = parser.parse_args()
 
     try:

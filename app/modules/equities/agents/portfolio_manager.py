@@ -79,7 +79,7 @@ class PortfolioManager:
             and s.composite_score >= cfg.exit_score_threshold
             and i < cfg.max_holdings
         ]
-        # keeps are already conviction-sorted; cap drops the lowest first
+        # defensive cap; keeps are bounded by the rank window so this slice is normally a no-op
         return (selected + keeps)[: cfg.max_holdings]
 
     def size_positions(

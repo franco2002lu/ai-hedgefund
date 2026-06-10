@@ -1,7 +1,6 @@
 """Unit tests for WeeklyRunner idempotency and summary rendering."""
 
 from datetime import UTC, date
-from datetime import date as _date
 from datetime import datetime as dt
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -287,8 +286,8 @@ class TestDigestAttribution:
     def test_digest_includes_attribution_section(self):
         report = AttributionReport(
             branch_name="growth",
-            decision_date=_date(2026, 6, 1),
-            as_of_date=_date(2026, 6, 8),
+            decision_date=date(2026, 6, 1),
+            as_of_date=date(2026, 6, 8),
             basket_return_conviction=0.012,
             basket_return_equal=0.009,
             benchmark_return=0.004,
@@ -309,7 +308,7 @@ class TestDigestAttribution:
             duration_seconds=75.0,
             attribution=report,
         )
-        digest = render_digest([summary], run_date=_date(2026, 6, 8))
+        digest = render_digest([summary], run_date=date(2026, 6, 8))
         assert "Last week (2026-06-01)" in digest
         assert "+1.20%" in digest  # conviction basket
         assert "eq-wt +0.90%" in digest
@@ -328,5 +327,5 @@ class TestDigestAttribution:
             trades_executed=1,
             duration_seconds=1.0,
         )
-        digest = render_digest([summary], run_date=_date(2026, 6, 8))
+        digest = render_digest([summary], run_date=date(2026, 6, 8))
         assert "Last week" not in digest

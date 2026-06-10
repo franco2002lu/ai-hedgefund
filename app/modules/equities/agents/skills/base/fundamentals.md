@@ -57,8 +57,8 @@ Step-by-step reasoning:
 5. **Cash flow**: FCF $2.1B positive, FCF Yield 4.8% — close to 5% threshold. Neutral to mildly bullish.
 6. **No red flags identified.**
 
-Synthesis: 5 of 5 factors are bullish or mildly bullish. Strong fundamentals with improving trajectory.
-Result: bullish_score: 7, confidence: 8
+Synthesis: 5 of 5 factors are bullish or mildly bullish. Strong fundamentals with improving trajectory, but no concrete dated catalyst forces near-term market recognition.
+Result: bullish_score: 7, confidence: 6
 
 ## Red Flags
 

@@ -37,8 +37,9 @@ class PortfolioConfig(BaseModel):
     max_position_weight: float = 0.50
     min_rebalance_threshold: float = 0.02
     min_composite_score: float = 4.0
-    # A held stock exits only when its composite score drops below this
-    # threshold or it falls outside max_holdings by conviction rank.
+    # A held stock exits when its composite score drops below
+    # max(exit_score_threshold, min_composite_score) or it falls outside
+    # max_holdings by conviction rank.
     exit_score_threshold: float = 4.0
 
 

@@ -53,6 +53,8 @@ def build_ranker(analyst, a_type: str, branch_name: str):
     llm = getattr(analyst, "llm_client", None) or getattr(inner, "llm_client", None)
     if llm is not None and hasattr(llm, "invoke_raw"):
         skills_dir = getattr(analyst, "skills_dir", None) or getattr(inner, "skills_dir", None)
+        # Note: ranking calls go to the client directly and are not counted against
+        # the backtest per-rebalance LLM call cap (3 small calls per run).
         return CrossSectionalRanker(llm, analyst_type=a_type, branch_name=branch_name, skills_dir=skills_dir)
     return DeterministicRanker()
 
