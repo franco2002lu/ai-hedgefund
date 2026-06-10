@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from app.modules.equities.agents.graph import EquitiesWorkflowState, build_equities_graph
-from app.modules.equities.models import CompositeScore, RebalanceOrder, UniverseStock
+from app.modules.equities.models import CompositeScore, RebalanceOrder, StockSignal, UniverseStock
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -227,6 +227,21 @@ class TestGraphEndToEnd:
         result = await graph.ainvoke(state)
 
         assert result.get("targets") == sized
+
+    async def test_rankers_applied_after_each_analyst(self):
+        state, _ = self._initial_state([], n_orders=0)
+        ranked_marker = [
+            StockSignal(symbol="AAPL", analyst_type="news", bullish_score=10, confidence=5, summary="ranked")
+        ]
+        ranker = MagicMock()
+        ranker.rank = AsyncMock(return_value=ranked_marker)
+        state["deps"]["rankers"] = {"news": ranker, "fundamentals": ranker, "technical": ranker}
+
+        graph = build_equities_graph("growth")
+        result = await graph.ainvoke(state)
+
+        assert ranker.rank.await_count == 3
+        assert result["signals"] == ranked_marker * 3
 
 
 class TestGraphCompilation:

@@ -13,6 +13,7 @@ from app.common.models.order import OrderRequest
 from app.db.models import AgentSignalModel, PortfolioDecisionModel, ScreeningRunModel
 from app.modules.equities.agents.graph import build_equities_graph
 from app.modules.equities.agents.portfolio_manager import PortfolioManager
+from app.modules.equities.agents.ranker import CrossSectionalRanker, DeterministicRanker
 from app.modules.equities.config import EquitiesConfig
 from app.modules.equities.models import RebalanceOrder, RunResult
 from app.modules.equities.universe.provider import UniverseProvider
@@ -40,6 +41,20 @@ from app.modules.portfolio.service import PortfolioService
 from app.modules.trade_execution.service import TradeExecutionService
 
 logger = logging.getLogger(__name__)
+
+
+def build_ranker(analyst, a_type: str, branch_name: str):
+    """LLM ranker when the analyst exposes an LLM client with invoke_raw
+    (production and LLM-mode backtests, incl. CachedAnalystWrapper-wrapped
+    analysts); deterministic rank-normalization otherwise (quant backtests)."""
+    if analyst is None:
+        return None
+    inner = getattr(analyst, "_analyst", None)
+    llm = getattr(analyst, "llm_client", None) or getattr(inner, "llm_client", None)
+    if llm is not None and hasattr(llm, "invoke_raw"):
+        skills_dir = getattr(analyst, "skills_dir", None) or getattr(inner, "skills_dir", None)
+        return CrossSectionalRanker(llm, analyst_type=a_type, branch_name=branch_name, skills_dir=skills_dir)
+    return DeterministicRanker()
 
 
 class EquitiesBranchService:
@@ -258,6 +273,16 @@ class EquitiesBranchService:
             portfolio_config=self.config.portfolio,
         )
 
+        rankers = {
+            a_type: r
+            for a_type, r in (
+                ("news", build_ranker(self.news_analyst, "news", branch_name)),
+                ("fundamentals", build_ranker(self.fundamentals_analyst, "fundamentals", branch_name)),
+                ("technical", build_ranker(self.technical_analyst, "technical", branch_name)),
+            )
+            if r is not None
+        }
+
         graph = build_equities_graph(branch_name)
 
         initial_state = {
@@ -285,6 +310,7 @@ class EquitiesBranchService:
                 "as_of_date": as_of_date,
                 "news_window_days": news_window_days,
                 "manual_news_root": manual_news_root,
+                "rankers": rankers,
             },
         }
 

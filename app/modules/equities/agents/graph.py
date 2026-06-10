@@ -119,6 +119,9 @@ async def _run_news_analysis(state: EquitiesWorkflowState) -> dict:
         articles_by_symbol=articles_by_symbol,
         max_concurrent=max_concurrent,
     )
+    ranker = deps.get("rankers", {}).get("news")
+    if ranker is not None:
+        signals = await ranker.rank(list(signals))
     logger.info("News analyst produced %d signals", len(signals))
     return {"signals": list(signals)}
 
@@ -155,6 +158,9 @@ def build_equities_graph(branch_name: str):
         analyst = deps["fundamentals_analyst"]
         max_concurrent = deps.get("max_concurrent_analyses", 10)
         signals = await analyst.analyze_batch(state["screened"], max_concurrent=max_concurrent)
+        ranker = deps.get("rankers", {}).get("fundamentals")
+        if ranker is not None:
+            signals = await ranker.rank(list(signals))
         logger.info("Fundamentals analyst produced %d signals", len(signals))
         return {"signals": list(signals)}
 
@@ -163,6 +169,9 @@ def build_equities_graph(branch_name: str):
         analyst = deps["technical_analyst"]
         max_concurrent = deps.get("max_concurrent_analyses", 10)
         signals = await analyst.analyze_batch(state["screened"], max_concurrent=max_concurrent)
+        ranker = deps.get("rankers", {}).get("technical")
+        if ranker is not None:
+            signals = await ranker.rank(list(signals))
         logger.info("Technical analyst produced %d signals", len(signals))
         return {"signals": list(signals)}
 
