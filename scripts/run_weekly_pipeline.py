@@ -92,6 +92,24 @@ async def _run_one_branch(
             duration_seconds=0.0,
         )
 
+    # Phase D: score last week's decision BEFORE trading (2026-07-16 spec) so
+    # this run's adaptive weights see the freshest IC, and so the IC series
+    # keeps accruing even when the trading run later fails. Own session;
+    # never allowed to block the trading run. Which decision gets scored is
+    # unchanged (the engine selects decided_at < midnight of run_date).
+    attribution_report = None
+    try:
+        engine = AttributionEngine(data_service=equities_service.data_service)
+        async with async_session_factory() as session, session.begin():
+            attribution_report = await engine.compute_and_persist(
+                session,
+                branch_id=branch_id,
+                branch_name=branch_name,
+                as_of=run_date,
+            )
+    except Exception:
+        logger.warning("Attribution failed for %s — continuing", branch_name, exc_info=True)
+
     # The run_fn closure captures equities_service and branch_name.
     # It receives the trading session and the run_id (decided by WeeklyRunner)
     # so it can pass run_id to run_pipeline for logging.
@@ -135,21 +153,7 @@ async def _run_one_branch(
         force_retry=force_retry,
         run_fn=_run_pipeline_in,
     )
-
-    # Phase D: score last week's decision now that a week of prices exists.
-    # Runs in its own dedicated session after the trading data is durable.
-    # Never allowed to fail the trading run.
-    try:
-        engine = AttributionEngine(data_service=equities_service.data_service)
-        async with async_session_factory() as session, session.begin():
-            summary.attribution = await engine.compute_and_persist(
-                session,
-                branch_id=branch_id,
-                branch_name=branch_name,
-                as_of=run_date,
-            )
-    except Exception:
-        logger.warning("Attribution failed for %s — continuing", branch_name, exc_info=True)
+    summary.attribution = attribution_report
 
     # Mark to market, snapshot, and build the portfolio report for the digest.
     # Runs in its own dedicated session after the trading data is durable.

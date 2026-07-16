@@ -238,3 +238,28 @@ async def test_all_price_fetches_fail_returns_none_without_persisting():
     session.flush.assert_not_called()
     # upsert never ran: only decision + signals queries were executed
     assert session.execute.await_count == 2
+
+
+async def test_composite_ic_flows_from_decision_scores():
+    decision = _decision_row(date(2026, 6, 1))
+    decision.composite_scores = {s: {"score": i + 1, "confidence": 5} for i, s in enumerate("ABCDE")}
+    signals = []
+    prices = {
+        "A": [100, 102],
+        "B": [50, 52],
+        "C": [10, 10.6],
+        "D": [20, 21.6],
+        "E": [30, 33],
+        "VOOG": [200, 202],
+        "SPY": [400, 400],
+    }
+    session = _session_returning(decision, signals)
+    engine = AttributionEngine(data_service=_data_service(prices))
+
+    report = await engine.compute_and_persist(
+        session, branch_id=BRANCH_ID, branch_name="growth", as_of=date(2026, 6, 8)
+    )
+
+    assert report is not None
+    # returns 2%,4%,6%,8%,10% align perfectly with conviction 5..25
+    assert report.analyst_ics["composite"] == pytest.approx(1.0)

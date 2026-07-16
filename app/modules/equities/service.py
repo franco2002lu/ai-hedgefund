@@ -11,6 +11,7 @@ from app.common.events.signal import SignalGeneratedEvent
 from app.common.interfaces.repositories import EventLogRepository
 from app.common.models.order import OrderRequest
 from app.db.models import AgentSignalModel, PortfolioDecisionModel, ScreeningRunModel
+from app.modules.equities.adaptive_weights import resolve_analyst_weights
 from app.modules.equities.agents.graph import build_equities_graph
 from app.modules.equities.agents.portfolio_manager import PortfolioManager
 from app.modules.equities.agents.ranker import CrossSectionalRanker, DeterministicRanker
@@ -270,9 +271,20 @@ class EquitiesBranchService:
 
             execute_trade_fn = _execute_trade
 
+        # Adaptive composite weights (2026-07-16 spec). Resolution never
+        # raises; backtests (session=None) and thin history fall back static.
+        weights_report = await resolve_analyst_weights(
+            session=session, branch_id=branch_id, agents_config=self.config.agents
+        )
+        if weights_report.mode == "adaptive":
+            logger.info(
+                "Adaptive weights for %s: %s (EWICs %s)", branch_name, weights_report.weights, weights_report.ewics
+            )
+
         pm = PortfolioManager(
             agents_config=self.config.agents,
             portfolio_config=self.config.portfolio,
+            analyst_weights=weights_report.weights,
         )
 
         rankers = {
@@ -342,6 +354,7 @@ class EquitiesBranchService:
                 orders,
                 current_positions,
                 targets=targets,
+                analyst_weights_report=weights_report,
             )
 
         return RunResult(
@@ -352,6 +365,7 @@ class EquitiesBranchService:
             composite_scores=scores,
             orders=orders,
             trades_executed=len(result.get("trades", [])),
+            analyst_weights_report=weights_report,
         )
 
     async def _log_signal_events(
@@ -401,6 +415,7 @@ class EquitiesBranchService:
         orders: list,
         current_positions: dict,
         targets: list | None = None,
+        analyst_weights_report=None,
     ) -> None:
         try:
             bid = uuid.UUID(branch_id) if isinstance(branch_id, str) else branch_id
@@ -450,6 +465,9 @@ class EquitiesBranchService:
                     current_holdings=current_positions,
                     orders_generated=orders_list,
                     composite_scores=composite_scores_dict,
+                    analyst_weights=(
+                        analyst_weights_report.model_dump(mode="json") if analyst_weights_report else None
+                    ),
                 )
             )
             await session.flush()

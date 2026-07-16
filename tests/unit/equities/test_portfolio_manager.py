@@ -620,3 +620,26 @@ class TestSelectStocksHysteresis:
         pm = _pm(target_holdings=2, max_holdings=4)
         scores = [_score(f"S{i}", 9 - i) for i in range(4)]
         assert [s.symbol for s in pm.select_stocks(scores)] == ["S0", "S1"]
+
+
+class TestAnalystWeightsOverride:
+    def test_override_changes_composite(self):
+        signals = [
+            _make_signal("AAPL", "fundamentals", 10, 10),
+            _make_signal("AAPL", "news", 2, 10),
+            _make_signal("AAPL", "technical", 2, 10),
+        ]
+        default_pm = _make_pm()
+        override_pm = PortfolioManager(
+            agents_config=AgentsConfig(),
+            portfolio_config=PortfolioConfig(),
+            analyst_weights={"fundamentals": 0.10, "news": 0.45, "technical": 0.45},
+        )
+        default_score = default_pm.compute_composite_scores(signals)[0].composite_score
+        override_score = override_pm.compute_composite_scores(signals)[0].composite_score
+        assert default_score == pytest.approx(0.6 * 10 + 0.2 * 2 + 0.2 * 2)
+        assert override_score == pytest.approx(0.1 * 10 + 0.45 * 2 + 0.45 * 2)
+
+    def test_default_none_uses_config_statics(self):
+        pm = _make_pm()
+        assert pm.analyst_weights == {"fundamentals": 0.60, "news": 0.20, "technical": 0.20}

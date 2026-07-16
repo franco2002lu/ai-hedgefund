@@ -14,9 +14,17 @@ class PortfolioManager:
         self,
         agents_config: AgentsConfig,
         portfolio_config: PortfolioConfig,
+        analyst_weights: dict[str, float] | None = None,
     ) -> None:
         self.agents_config = agents_config
         self.portfolio_config = portfolio_config
+        # Adaptive weights (2026-07-16 spec) override the static config when
+        # provided; both are keyed fundamentals/news/technical and sum to 1.
+        self.analyst_weights = analyst_weights or {
+            "fundamentals": agents_config.weight_fundamentals,
+            "news": agents_config.weight_news,
+            "technical": agents_config.weight_technical,
+        }
 
     def compute_composite_scores(
         self,
@@ -28,11 +36,7 @@ class PortfolioManager:
         by_symbol: dict[str, dict[str, StockSignal]] = defaultdict(dict)
         for sig in signals:
             by_symbol[sig.symbol][sig.analyst_type] = sig
-        weight_map = {
-            "fundamentals": self.agents_config.weight_fundamentals,
-            "news": self.agents_config.weight_news,
-            "technical": self.agents_config.weight_technical,
-        }
+        weight_map = self.analyst_weights
         scores = []
         for symbol, analyst_signals in by_symbol.items():
             composite_score = 0.0

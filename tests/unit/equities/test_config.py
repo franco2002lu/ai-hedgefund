@@ -1,8 +1,10 @@
 """Unit tests for equities branch configuration."""
 
 import pytest
+from pydantic import ValidationError
 
 from app.modules.equities.config import (
+    AdaptiveWeightsConfig,
     AgentsConfig,
     AnalystLLMConfig,
     EquitiesConfig,
@@ -150,3 +152,37 @@ def test_composite_weights_favor_fundamentals():
     assert cfg.weight_fundamentals == 0.60
     assert cfg.weight_news == 0.20
     assert cfg.weight_technical == 0.20
+
+
+class TestAdaptiveWeightsConfig:
+    def test_defaults(self):
+        cfg = AdaptiveWeightsConfig()
+        assert cfg.enabled is True
+        assert cfg.lookback_weeks == 12
+        assert cfg.half_life_weeks == pytest.approx(4.0)
+        assert cfg.min_history_weeks == 6
+        assert cfg.weight_floor == pytest.approx(0.10)
+        assert cfg.max_weekly_shift == pytest.approx(0.05)
+        assert cfg.ic_tilt_scale == pytest.approx(0.40)
+        assert cfg.alert_streak_weeks == 4
+
+    def test_nested_on_agents_config(self):
+        assert AgentsConfig().adaptive.enabled is True
+
+    def test_floor_must_leave_feasible_simplex(self):
+        with pytest.raises(ValidationError):
+            AdaptiveWeightsConfig(weight_floor=0.40)  # 3*0.40 > 1
+
+    def test_lookback_must_cover_min_history(self):
+        with pytest.raises(ValidationError):
+            AdaptiveWeightsConfig(lookback_weeks=4, min_history_weeks=6)
+
+    def test_positive_scales(self):
+        with pytest.raises(ValidationError):
+            AdaptiveWeightsConfig(half_life_weeks=0)
+        with pytest.raises(ValidationError):
+            AdaptiveWeightsConfig(ic_tilt_scale=0)
+        with pytest.raises(ValidationError):
+            AdaptiveWeightsConfig(max_weekly_shift=0)
+        with pytest.raises(ValidationError):
+            AdaptiveWeightsConfig(max_weekly_shift=1.5)

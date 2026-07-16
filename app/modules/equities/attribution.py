@@ -114,6 +114,7 @@ def compute_report(
     signals: list[dict],
     prices: dict[str, list[tuple[date, float]]],
     benchmark_symbol: str,
+    composite_scores: dict | None = None,
 ) -> AttributionReport:
     returns: dict[str, float] = {}
     for sym in weights:
@@ -137,6 +138,21 @@ def compute_report(
             analyst_ics[a_type] = None
         else:
             analyst_ics[a_type] = spearman([p[0] for p in pairs], [p[1] for p in pairs])
+
+    # Composite conviction IC (measurement for the adaptive-weights loop —
+    # never read back by the weights policy, which uses the analyst keys only).
+    if composite_scores:
+        pairs = []
+        for sym, cs in composite_scores.items():
+            r = _window_return(prices.get(sym, []), decision_date, as_of)
+            if r is None or not cs:
+                continue
+            comp_conviction = float(cs.get("score", 0)) * float(cs.get("confidence", 0))
+            pairs.append((comp_conviction, r))
+        if len(pairs) < MIN_IC_SAMPLES:
+            analyst_ics["composite"] = None
+        else:
+            analyst_ics["composite"] = spearman([p[0] for p in pairs], [p[1] for p in pairs])
 
     return AttributionReport(
         branch_name=branch_name,
@@ -209,7 +225,8 @@ class AttributionEngine:
         )
 
         benchmark = BENCHMARK_MAP["growth" if "growth" in branch_name.lower() else "value"]
-        symbols = set(weights) | {s["symbol"] for s in signals} | {benchmark, "SPY"}
+        composite_scores = decision.composite_scores or {}
+        symbols = set(weights) | {s["symbol"] for s in signals} | set(composite_scores) | {benchmark, "SPY"}
         prices = await self._fetch_prices(sorted(symbols), decision_date, as_of)
 
         report = compute_report(
@@ -220,6 +237,7 @@ class AttributionEngine:
             signals=signals,
             prices=prices,
             benchmark_symbol=benchmark,
+            composite_scores=composite_scores,
         )
         if weights and report.n_holdings_priced == 0:
             logger.warning(

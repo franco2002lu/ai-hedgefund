@@ -127,3 +127,76 @@ class TestComputeReport:
         )
         assert report.analyst_ics["fundamentals"] == pytest.approx(1.0)
         assert report.analyst_ics["news"] is None
+
+
+class TestCompositeIC:
+    def test_composite_ic_computed_from_composite_scores(self):
+        prices = {
+            s: _series(100.0, px) for s, px in [("A", 110.0), ("B", 108.0), ("C", 106.0), ("D", 104.0), ("E", 102.0)]
+        }
+        composite_scores = {
+            "A": {"score": 9.0, "confidence": 9.0},
+            "B": {"score": 8.0, "confidence": 8.0},
+            "C": {"score": 7.0, "confidence": 7.0},
+            "D": {"score": 6.0, "confidence": 6.0},
+            "E": {"score": 5.0, "confidence": 5.0},
+        }
+        report = compute_report(
+            branch_name="growth",
+            decision_date=D0,
+            as_of=D1,
+            weights={"A": 1.0},
+            signals=[],
+            prices=prices,
+            benchmark_symbol="VOOG",
+            composite_scores=composite_scores,
+        )
+        # conviction 81..25 perfectly rank-aligned with returns 10%..2%
+        assert report.analyst_ics["composite"] == pytest.approx(1.0)
+
+    def test_composite_ic_requires_min_samples(self):
+        prices = {s: _series(100.0, 101.0) for s in ("A", "B")}
+        report = compute_report(
+            branch_name="growth",
+            decision_date=D0,
+            as_of=D1,
+            weights={"A": 1.0},
+            signals=[],
+            prices=prices,
+            benchmark_symbol="VOOG",
+            composite_scores={"A": {"score": 9, "confidence": 9}, "B": {"score": 5, "confidence": 5}},
+        )
+        assert report.analyst_ics["composite"] is None
+
+    def test_no_composite_scores_no_composite_key(self):
+        report = compute_report(
+            branch_name="growth",
+            decision_date=D0,
+            as_of=D1,
+            weights={},
+            signals=[],
+            prices={},
+            benchmark_symbol="VOOG",
+        )
+        assert "composite" not in report.analyst_ics
+
+    def test_composite_scores_do_not_clobber_basket_return(self):
+        """Regression: the composite-IC loop must not shadow the conviction
+        basket return (a bug here once persisted score*confidence as the
+        basket return)."""
+        prices = {
+            s: _series(100.0, px) for s, px in [("A", 110.0), ("B", 108.0), ("C", 106.0), ("D", 104.0), ("E", 102.0)]
+        }
+        composite_scores = {s: {"score": 9.0, "confidence": 9.0} for s in "ABCDE"}
+        report = compute_report(
+            branch_name="growth",
+            decision_date=D0,
+            as_of=D1,
+            weights={"A": 1.0},
+            signals=[],
+            prices=prices,
+            benchmark_symbol="VOOG",
+            composite_scores=composite_scores,
+        )
+        assert report.basket_return_conviction == pytest.approx(0.10)  # A: 100 -> 110
+        assert report.basket_return_conviction < 1.0  # never score*confidence

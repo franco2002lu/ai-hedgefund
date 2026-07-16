@@ -331,6 +331,10 @@ class PortfolioDecisionModel(Base):
     current_holdings: Mapped[dict] = mapped_column(JSONB, nullable=False)
     orders_generated: Mapped[dict] = mapped_column(JSONB, nullable=False)
     composite_scores: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Weights the composite actually used this run (2026-07-16 adaptive
+    # weights spec): {"weights": {...}, "mode", "reason", "ewics",
+    # "valid_weeks", "alerts"}. Nullable: rows before the feature carry NULL.
+    analyst_weights: Mapped[dict | None] = mapped_column(JSONB)
 
     screening_run: Mapped["ScreeningRunModel"] = relationship(back_populates="portfolio_decisions")
 

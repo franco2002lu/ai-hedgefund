@@ -36,6 +36,7 @@ from app.db.models import PipelineRunModel
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.modules.equities.adaptive_weights import AnalystWeightsReport
     from app.modules.equities.attribution import AttributionReport
     from app.modules.equities.models import RunResult
     from app.modules.equities.service import EquitiesBranchService
@@ -81,6 +82,7 @@ class WeeklyRunSummary:
     error: str | None = None
     attribution: AttributionReport | None = None
     portfolio_report: PortfolioReport | None = None
+    analyst_weights_report: AnalystWeightsReport | None = None
 
 
 _NY_TZ = ZoneInfo("America/New_York")
@@ -266,6 +268,7 @@ class WeeklyRunner:
             orders_placed=orders_placed,
             trades_executed=result.trades_executed,
             duration_seconds=duration,
+            analyst_weights_report=getattr(result, "analyst_weights_report", None),
         )
 
     async def _mark_completed(self, run_id: str, summary: dict[str, Any]) -> None:
@@ -380,8 +383,35 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
                     f"SPY {_fmt_pct(a.spy_return)} · "
                     f"IC fund {_fmt_ic(ics.get('fundamentals'))} / "
                     f"news {_fmt_ic(ics.get('news'))} / "
-                    f"tech {_fmt_ic(ics.get('technical'))}"
+                    f"tech {_fmt_ic(ics.get('technical'))} / "
+                    f"comp {_fmt_ic(ics.get('composite'))}"
                 )
+            if s.analyst_weights_report is not None:
+                w = s.analyst_weights_report
+                ww = w.weights
+                weights_str = (
+                    f"fund {ww.get('fundamentals', 0):.2f} / news {ww.get('news', 0):.2f} / "
+                    f"tech {ww.get('technical', 0):.2f}"
+                )
+                if w.mode == "adaptive":
+                    wks = min(w.valid_weeks.values()) if w.valid_weeks else 0
+                    ew = w.ewics
+                    lines.append(
+                        f"- Weights: {weights_str} (adaptive, {wks} wks; "
+                        f"EWIC fund {_fmt_ic(ew.get('fundamentals'))} / "
+                        f"news {_fmt_ic(ew.get('news'))} / "
+                        f"tech {_fmt_ic(ew.get('technical'))})"
+                    )
+                else:
+                    detail = f" — {w.reason}"
+                    if w.reason == "insufficient_history" and w.valid_weeks:
+                        detail += f", min {min(w.valid_weeks.values())} valid wks"
+                    lines.append(f"- Weights: {weights_str} (static{detail})")
+                for alert in w.alerts:
+                    lines.append(
+                        f"- ⚠️ {alert['analyst']} rolling IC ≤ 0 for {alert['streak']} "
+                        f"consecutive weeks (EWIC {alert['ewic']:+.2f})"
+                    )
             if s.portfolio_report is not None:
                 r = s.portfolio_report
                 # No baseline (initial_capital == 0 → inception_return_pct is

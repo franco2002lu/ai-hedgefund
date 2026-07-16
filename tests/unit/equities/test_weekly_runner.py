@@ -597,7 +597,7 @@ class TestDigestAttribution:
             benchmark_return=0.004,
             benchmark_symbol="VOOG",
             spy_return=-0.003,
-            analyst_ics={"fundamentals": 0.11, "news": -0.18, "technical": None},
+            analyst_ics={"fundamentals": 0.11, "news": -0.18, "technical": None, "composite": 0.05},
             n_holdings=20,
             n_holdings_priced=20,
         )
@@ -619,6 +619,7 @@ class TestDigestAttribution:
         assert "VOOG +0.40%" in digest
         assert "fund +0.11" in digest
         assert "tech n/a" in digest
+        assert "comp +0.05" in digest
 
     def test_digest_without_attribution_unchanged(self):
         summary = WeeklyRunSummary(
@@ -633,3 +634,66 @@ class TestDigestAttribution:
         )
         digest = render_digest([summary], run_date=date(2026, 6, 8))
         assert "Last week" not in digest
+
+
+class TestDigestAnalystWeights:
+    @staticmethod
+    def _weights_report(mode="adaptive", reason="ok", alerts=None):
+        from app.modules.equities.adaptive_weights import AnalystWeightsReport
+
+        return AnalystWeightsReport(
+            weights={"fundamentals": 0.65, "news": 0.19, "technical": 0.16},
+            mode=mode,
+            reason=reason,
+            ewics={"fundamentals": 0.09, "news": 0.0, "technical": -0.08},
+            valid_weeks={"fundamentals": 9, "news": 9, "technical": 9},
+            alerts=alerts or [],
+        )
+
+    @staticmethod
+    def _summary(**overrides):
+        base = dict(
+            run_id="r",
+            branch_name="growth",
+            status="completed",
+            universe_count=1,
+            screened_count=1,
+            orders_placed=1,
+            trades_executed=1,
+            duration_seconds=1.0,
+        )
+        base.update(overrides)
+        return WeeklyRunSummary(**base)
+
+    def test_digest_renders_adaptive_weights_line(self):
+        s = self._summary(analyst_weights_report=self._weights_report())
+        digest = render_digest([s], run_date=date(2026, 7, 20))
+        assert (
+            "- Weights: fund 0.65 / news 0.19 / tech 0.16 (adaptive, 9 wks; EWIC fund +0.09 / news +0.00 / tech -0.08)"
+        ) in digest
+
+    def test_digest_renders_static_reason(self):
+        from app.modules.equities.adaptive_weights import AnalystWeightsReport
+
+        s = self._summary(
+            analyst_weights_report=AnalystWeightsReport(
+                weights={"fundamentals": 0.60, "news": 0.20, "technical": 0.20},
+                mode="static",
+                reason="insufficient_history",
+                valid_weeks={"fundamentals": 4, "news": 4, "technical": 4},
+            )
+        )
+        digest = render_digest([s], run_date=date(2026, 7, 20))
+        assert "- Weights: fund 0.60 / news 0.20 / tech 0.20 (static — insufficient_history, min 4 valid wks)" in digest
+
+    def test_digest_renders_ic_alert(self):
+        s = self._summary(
+            branch_name="value",
+            analyst_weights_report=self._weights_report(alerts=[{"analyst": "technical", "streak": 4, "ewic": -0.17}]),
+        )
+        digest = render_digest([s], run_date=date(2026, 7, 20))
+        assert "- ⚠️ technical rolling IC ≤ 0 for 4 consecutive weeks (EWIC -0.17)" in digest
+
+    def test_digest_without_weights_report_unchanged(self):
+        digest = render_digest([self._summary()], run_date=date(2026, 7, 20))
+        assert "Weights:" not in digest

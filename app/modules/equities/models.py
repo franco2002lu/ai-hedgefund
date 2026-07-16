@@ -1,6 +1,7 @@
 from pydantic import BaseModel, field_validator
 
 from app.common.enums import OrderSide
+from app.modules.equities.adaptive_weights import AnalystWeightsReport
 
 
 class UniverseStock(BaseModel):
@@ -67,3 +68,5 @@ class RunResult(BaseModel):
     composite_scores: list[CompositeScore]
     orders: list[RebalanceOrder]
     trades_executed: int
+    # Weights the composite actually used (2026-07-16 adaptive weights spec)
+    analyst_weights_report: AnalystWeightsReport | None = None

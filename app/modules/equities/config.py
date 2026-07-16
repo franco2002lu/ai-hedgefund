@@ -54,6 +54,41 @@ class AnalystLLMConfig(BaseModel):
     temperature: float = 0.3
 
 
+class AdaptiveWeightsConfig(BaseModel):
+    """IC-feedback policy for composite weights (see
+    docs/superpowers/specs/2026-07-16-adaptive-analyst-weights-design.md).
+
+    Weights tilt off the static prior by trailing rank-IC evidence:
+    target ∝ static · exp(EWIC / ic_tilt_scale), then are clamped to a floor
+    and a max weekly move and renormalized.
+    """
+
+    enabled: bool = True
+    lookback_weeks: int = 12
+    half_life_weeks: float = 4.0
+    min_history_weeks: int = 6
+    weight_floor: float = 0.10
+    max_weekly_shift: float = 0.05
+    ic_tilt_scale: float = 0.40
+    alert_streak_weeks: int = 4
+
+    @model_validator(mode="after")
+    def _feasible(self) -> "AdaptiveWeightsConfig":
+        if self.half_life_weeks <= 0:
+            raise ValueError("half_life_weeks must be > 0")
+        if self.ic_tilt_scale <= 0:
+            raise ValueError("ic_tilt_scale must be > 0")
+        if not (0 < self.max_weekly_shift <= 1):
+            raise ValueError("max_weekly_shift must be in (0, 1]")
+        if not (self.weight_floor > 0 and 3 * self.weight_floor <= 1):
+            raise ValueError("weight_floor must be > 0 and 3*floor <= 1")
+        if not (1 <= self.min_history_weeks <= self.lookback_weeks):
+            raise ValueError("need 1 <= min_history_weeks <= lookback_weeks")
+        if self.alert_streak_weeks < 1:
+            raise ValueError("alert_streak_weeks must be >= 1")
+        return self
+
+
 class AgentsConfig(BaseModel):
     """Agent-level configuration."""
 
@@ -72,6 +107,10 @@ class AgentsConfig(BaseModel):
     weight_fundamentals: float = 0.60
     weight_news: float = 0.20
     weight_technical: float = 0.20
+
+    # IC-feedback loop (2026-07-16 spec); the static weight_* above remain the
+    # prior and the fallback whenever adaptation cannot run.
+    adaptive: AdaptiveWeightsConfig = AdaptiveWeightsConfig()
 
     @model_validator(mode="after")
     def _weights_sum_to_one(self) -> "AgentsConfig":
