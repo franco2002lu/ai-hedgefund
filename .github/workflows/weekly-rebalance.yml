@@ -35,6 +35,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: write
     env:
       HEDGE_DATABASE_URL: ${{ secrets.HEDGE_DATABASE_URL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -72,4 +74,23 @@ jobs:
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
-          python -m scripts.run_weekly_pipeline $ARGS
+          python -m scripts.run_weekly_pipeline $ARGS --report-dir scheduled_run_results
+
+      - name: Build report.json
+        if: always()
+        run: python -m scripts.build_report_json --out scheduled_run_results/report.json
+
+      - name: Commit weekly report
+        if: always()
+        run: |
+          mkdir -p scheduled_run_results
+          git config user.name "hedgefund-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add scheduled_run_results/
+          if git diff --cached --quiet; then
+            echo "No report changes to commit"
+          else
+            git commit -m "chore(report): weekly report $(date -u +%F) [skip ci]"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi

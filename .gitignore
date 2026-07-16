@@ -66,3 +66,8 @@ data/noise_floor_cache.db-shm
 
 # Git worktrees
 .worktrees/
+
+# Local prod DB dumps (must never be committed by the auto-commit path or a local `git add`)
+scheduled_run_results/*_neondb_*.json
+# Atomic-write leftovers from a crashed build_report_json (must not be auto-committed)
+scheduled_run_results/*.tmp

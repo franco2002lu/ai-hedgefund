@@ -27,6 +27,21 @@ class PortfolioSummary(BaseModel):
     updated_at: datetime
 
 
+class MarkToMarketResult(BaseModel):
+    """Result of repricing a portfolio's open positions at market."""
+
+    nav: float
+    cash: float
+    unrealized_pnl: float
+    realized_pnl: float
+    priced: int
+    unpriced: int
+    # Per position, sorted by market_value desc:
+    # {symbol, quantity, price (None if unpriced), market_value, cost_basis,
+    #  unrealized_pnl, weight}
+    positions_detail: list[dict] = []
+
+
 class PortfolioSnapshot(BaseModel):
     id: str
     portfolio_id: str
@@ -44,5 +59,9 @@ class PortfolioSnapshot(BaseModel):
 
     position_count: int
     top_holdings: list[dict] = []
+
+    # Per-position detail captured at snapshot time (symbol, quantity, price,
+    # market_value, cost_basis, unrealized_pnl, weight). None for legacy rows.
+    positions_detail: list[dict] | None = None
 
     snapshot_at: datetime

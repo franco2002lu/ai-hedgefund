@@ -106,7 +106,9 @@ class InMemorySnapshotRepository(SnapshotRepository):
     def __init__(self) -> None:
         self._store: list[PortfolioSnapshot] = []
 
-    async def create(self, portfolio_id: str, branch_id: str) -> PortfolioSnapshot:
+    async def create(
+        self, portfolio_id: str, branch_id: str, positions_detail: list[dict] | None = None
+    ) -> PortfolioSnapshot:
         snapshot = PortfolioSnapshot(
             id=str(uuid.uuid4()),
             portfolio_id=portfolio_id,
@@ -121,6 +123,7 @@ class InMemorySnapshotRepository(SnapshotRepository):
             realized_pnl=0.0,
             margin_used=0.0,
             position_count=0,
+            positions_detail=positions_detail,
             snapshot_at=datetime.now(UTC),
         )
         self._store.append(snapshot)
@@ -132,6 +135,12 @@ class InMemorySnapshotRepository(SnapshotRepository):
         filtered = [s for s in self._store if s.branch_id == branch_id]
         total = len(filtered)
         return filtered[offset : offset + limit], total
+
+    async def latest_by_branch(self, branch_id: str, before: datetime | None = None) -> PortfolioSnapshot | None:
+        rows = [s for s in self._store if s.branch_id == branch_id]
+        if before is not None:
+            rows = [s for s in rows if s.snapshot_at < before]
+        return max(rows, key=lambda s: s.snapshot_at, default=None)
 
 
 class InMemoryOrderRepository(OrderRepository):

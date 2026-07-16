@@ -235,7 +235,7 @@ class PortfolioSnapshotModel(Base):
     realized_pnl: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
     margin_used: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
     position_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    positions_detail: Mapped[dict | None] = mapped_column(JSONB)
+    positions_detail: Mapped[list[dict] | None] = mapped_column(JSONB)
     snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 

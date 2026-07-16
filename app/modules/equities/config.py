@@ -41,6 +41,10 @@ class PortfolioConfig(BaseModel):
     # max(exit_score_threshold, min_composite_score) or it falls outside
     # max_holdings by conviction rank.
     exit_score_threshold: float = 4.0
+    # Fraction of NAV deliberately left uninvested so buy fills (slippage,
+    # decision-to-fill drift) cannot overdraw cash. Target weights sum to
+    # 1 - cash_buffer_pct.
+    cash_buffer_pct: float = 0.01
 
 
 class AnalystLLMConfig(BaseModel):

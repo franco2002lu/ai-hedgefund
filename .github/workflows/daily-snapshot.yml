@@ -1,0 +1,40 @@
+name: Daily Snapshot
+
+on:
+  schedule:
+    # 21:30 UTC = 4:30pm America/New_York during EST (winter)
+    # = 5:30pm EDT (summer), after market close. GH cron does not respect
+    # DST, so the run shifts by 1h with seasons; acceptable for a daily paper job.
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch: {}
+
+concurrency:
+  group: daily-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEDGE_DATABASE_URL: ${{ secrets.HEDGE_DATABASE_URL }}
+      HEDGE_EQUITIES_ENABLED_BRANCHES: ${{ vars.HEDGE_EQUITIES_ENABLED_BRANCHES || 'growth,value' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Take daily snapshot
+        run: python -m scripts.take_daily_snapshot

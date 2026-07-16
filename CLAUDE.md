@@ -16,6 +16,12 @@ alembic upgrade head
 # Run server
 uvicorn app.main:app --port 8000
 
+# Investor reporting
+python -m scripts.take_daily_snapshot                         # EOD mark-to-market + snapshot (idempotent per NY day)
+python -m scripts.backfill_snapshots --branches growth value  # dry-run reconstruction vs live DB
+python -m scripts.backfill_snapshots --branches growth value --apply
+python -m scripts.build_report_json --out scheduled_run_results/report.json
+
 # Tests
 pytest tests/unit/ -q                           # all unit tests (fast, no DB needed)
 pytest tests/unit/equities/test_screener.py -q  # single file
@@ -186,12 +192,12 @@ alembic upgrade head
 docker exec infrastructure-postgres-1 psql -U hedgefund -d hedgefund -c "
 BEGIN;
 INSERT INTO funds (id, name, total_aum, execution_mode, created_at)
-VALUES ('11111111-1111-1111-1111-111111111111', 'Test Fund', 0.00, 'paper', NOW());
+VALUES ('11111111-1111-1111-1111-111111111111', 'Test Fund', 2000000.00, 'paper', NOW());
 INSERT INTO branches (id, fund_id, name, branch_type, status, allocated_capital, execution_cadence, created_at)
 VALUES
   ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'US Equities', 'equities', 'active', 0.00, 'daily', NOW()),
-  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Equities Growth', 'equities', 'active', 0.00, 'daily', NOW()),
-  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Equities Value', 'equities', 'active', 0.00, 'daily', NOW());
+  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'Equities Growth', 'equities', 'active', 1000000.00, 'daily', NOW()),
+  ('44444444-4444-4444-4444-444444444444', '11111111-1111-1111-1111-111111111111', 'Equities Value', 'equities', 'active', 1000000.00, 'daily', NOW());
 COMMIT;
 "
 
@@ -246,10 +252,12 @@ pytest tests/integration/test_e2e_smoke.py -m e2e -v
 - **`DataPlatformService.get_metrics()` wraps adapter output** — returns `{"metrics": [...], "symbol": ..., "source": ...}` (a dict), not a raw list. Code consuming metrics must extract via `result.get("metrics", [])`.
 - **In-memory position repo generates UUIDs** — `PortfolioService.handle_trade_executed()` creates positions with `id=""` (expects DB to assign). `InMemoryPositionRepository.upsert()` generates a UUID when id is empty to avoid dict key collisions.
 - **Analyst `analyze_batch()` must accept `**kwargs`** — `graph.py` calls `analyst.analyze_batch(stocks, max_concurrent=N)`. Any new analyst class (including quantitative replacements) must have `analyze_batch(self, stocks, **kwargs)` or the pipeline will crash with `TypeError`.
+- **NAV is marked to market weekly (pipeline) and each weekday (daily-snapshot workflow)** — between marks, `portfolios.nav` is as-of the last mark. Snapshot consumers must dedupe to the last snapshot per NY date (see `scripts/build_report_json.dedupe_last_per_day`); Monday's point is the pipeline's morning mark, Tue–Fri are EOD.
+- **BUY orders are rejected at fill time if cost exceeds cash** (`TradeExecutionService`). Sizing leaves `cash_buffer_pct` (1%) uninvested and orders execute sells-first, so rejections should be rare; a rejection means sizing drifted — investigate.
 
 ## Running the Weekly Pipeline
 
-The weekly paper-trading pipeline runs autonomously via GitHub Actions on Mondays at 13:00 UTC (~8am ET winter, ~9am EDT summer; no DST adjustment). Full design: `docs/superpowers/specs/2026-04-23-weekly-autonomous-paper-trading-design.md`.
+The weekly paper-trading pipeline runs autonomously via GitHub Actions on Mondays at 13:00 UTC (~8am ET winter, ~9am EDT summer; no DST adjustment). Full design: `docs/superpowers/specs/2026-04-23-weekly-autonomous-paper-trading-design.md`. The workflow auto-commits `scheduled_run_results/` (digest markdown + `report.json`) back to `main` with a `[skip ci]` commit message; a separate daily-snapshot workflow (weekdays at 21:30 UTC) marks-to-market and snapshots each branch so the NAV series stays daily even on non-rebalance days.
 
 ### Manual dispatch
 

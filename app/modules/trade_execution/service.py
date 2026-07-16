@@ -93,6 +93,35 @@ class TradeExecutionService:
         result = await self.broker.submit_order(req)
 
         if result.success and result.trade:
+            # Cash gate at the exact fill price: a BUY that would overdraw the
+            # portfolio is rejected, not filled — the paper broker itself has no
+            # account state to enforce this.
+            if req.side == OrderSide.BUY:
+                portfolio = await self.portfolio_service.get_portfolio(req.branch_id)
+                cost = result.trade.price * req.quantity + result.trade.commission
+                available = float(portfolio.cash) if portfolio else 0.0
+                if cost > available + 1e-6:
+                    reason = f"Insufficient cash: cost {cost:.2f} > available {available:.2f}"
+                    await self.order_repo.update_status(order.id, OrderStatus.REJECTED, rejection_reason=reason)
+                    await self.event_log.append(
+                        TradeRejectedEvent(
+                            source="trade_execution_service",
+                            order_id=order.id,
+                            branch_id=req.branch_id,
+                            instrument_id=req.instrument_id,
+                            symbol=req.symbol,
+                            side=req.side,
+                            quantity=req.quantity,
+                            rejection_reason=reason,
+                        )
+                    )
+                    return {
+                        "success": False,
+                        "order_id": order.id,
+                        "status": "rejected",
+                        "message": reason,
+                    }
+
             # Update trade with the persisted order ID
             trade = result.trade.model_copy(update={"order_id": order.id})
 
@@ -198,8 +227,10 @@ class TradeExecutionService:
             return f"No portfolio for branch {req.branch_id}"
 
         if req.side == OrderSide.BUY:
-            # Simple cash check (exact cost requires market price, so approximate)
-            # The actual cash deduction happens in handle_trade_executed
+            # No pre-trade cash check here: the exact cost isn't known until
+            # the broker returns a fill price. Cash IS enforced at fill time
+            # in submit_order, at the exact fill price — see the cash gate
+            # there, which rejects (rather than fills) an overdrawing BUY.
             pass
 
         elif req.side == OrderSide.SELL:

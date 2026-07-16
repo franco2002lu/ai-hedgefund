@@ -20,22 +20,16 @@ import asyncio
 import logging
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()  # Make ANTHROPIC_API_KEY and HEDGE_* available
 
-from sqlalchemy import select  # noqa: E402
-
 from app.config import settings  # noqa: E402
 from app.db.connection import async_session_factory  # noqa: E402
-from app.db.models import BranchModel  # noqa: E402
 from app.dependencies import get_equities_service, get_paper_broker, init_services  # noqa: E402
-from app.modules.data_platform.adapters.yahoo_finance import YahooFinanceAdapter  # noqa: E402
-from app.modules.data_platform.cache import DataCache  # noqa: E402
-from app.modules.data_platform.rate_limiter import RateLimiter  # noqa: E402
-from app.modules.data_platform.service import DataPlatformService  # noqa: E402
 from app.modules.equities.attribution import AttributionEngine  # noqa: E402
 from app.modules.equities.weekly_runner import (  # noqa: E402
     ManualInterventionRequired,
@@ -57,6 +51,7 @@ from app.modules.trade_execution.repository import (  # noqa: E402
     PostgresTradeRepository,
 )
 from app.modules.trade_execution.service import TradeExecutionService  # noqa: E402
+from scripts.common import init_data_platform, resolve_branch_id  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,41 +59,6 @@ logging.basicConfig(
 )
 logging.getLogger("yfinance").setLevel(logging.WARNING)
 logger = logging.getLogger("weekly_pipeline")
-
-
-def _init_data_platform() -> DataPlatformService:
-    """Reproduce what app/main.py::lifespan does for DataPlatformService."""
-    yahoo = YahooFinanceAdapter()
-    registry = {
-        "prices": {"equity": [yahoo], "crypto": [yahoo], "all": [yahoo]},
-        "fundamentals": {"equity": [yahoo]},
-        "news": {"all": [yahoo]},
-    }
-    return DataPlatformService(
-        adapter_registry=registry,
-        cache=DataCache(),
-        rate_limiter=RateLimiter(),
-    )
-
-
-async def _resolve_branch_id(session, branch_name: str) -> str:
-    """Resolve a short branch key (e.g., 'growth') to its branches.id UUID.
-
-    Uses a case-insensitive substring match (branches are named 'Equities Growth'
-    but the CLI accepts 'growth'). If multiple branches match, raises — the
-    caller should pick a more specific name rather than letting us guess.
-    """
-    stmt = select(BranchModel).where(BranchModel.name.ilike(f"%{branch_name}%"))
-    result = await session.execute(stmt)
-    rows = result.scalars().all()
-    if not rows:
-        raise RuntimeError(f"No branch found matching '{branch_name}'")
-    if len(rows) > 1:
-        names = sorted(r.name for r in rows)
-        raise RuntimeError(
-            f"Branch name '{branch_name}' matched {len(rows)} branches: {names}. Use a more specific name."
-        )
-    return str(rows[0].id)
 
 
 async def _run_one_branch(
@@ -113,7 +73,7 @@ async def _run_one_branch(
 
     # Resolve branch_id in a short read-only session before building the runner.
     async with async_session_factory() as session:
-        branch_id = await _resolve_branch_id(session, branch_name)
+        branch_id = await resolve_branch_id(session, branch_name)
 
     # Single date for the whole run — a run straddling midnight ET must not
     # use different dates for the trading run and the attribution pass.
@@ -167,6 +127,7 @@ async def _run_one_branch(
 
     runner = WeeklyRunner(session_factory=async_session_factory)
 
+    run_started_at = datetime.now(UTC)
     summary = await runner.execute(
         branch_name=branch_name,
         branch_id=branch_id,
@@ -190,11 +151,118 @@ async def _run_one_branch(
     except Exception:
         logger.warning("Attribution failed for %s — continuing", branch_name, exc_info=True)
 
+    # Mark to market, snapshot, and build the portfolio report for the digest.
+    # Runs in its own dedicated session after the trading data is durable.
+    # render_digest only renders portfolio_report for status == "completed";
+    # this still runs on "skipped" (idempotent rerun) because the point there
+    # is refreshing the mark and taking the once-per-day snapshot, not
+    # populating today's digest.
+    if summary.status in ("completed", "skipped"):
+        await _mark_snapshot_and_report(
+            branch_id=branch_id,
+            branch_name=branch_name,
+            data_service=equities_service.data_service,
+            summary=summary,
+            run_started_at=run_started_at,
+        )
+
     return summary
 
 
+async def _mark_snapshot_and_report(
+    *,
+    branch_id: str,
+    branch_name: str,
+    data_service,
+    summary: WeeklyRunSummary,
+    run_started_at: datetime,
+) -> None:
+    """Mark to market, snapshot (once per NY day), and attach a PortfolioReport.
+
+    Runs in its own session after trading data is durable. Never raises.
+    """
+    from datetime import time as dtime
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
+    from app.modules.equities.weekly_runner import PortfolioReport, ny_date
+
+    try:
+        async with async_session_factory() as session, session.begin():
+            event_log = PostgresEventLogRepository(session)
+            snapshot_repo = PostgresSnapshotRepository(session)
+            portfolio_service = PortfolioService(
+                portfolio_repo=PostgresPortfolioRepository(session),
+                position_repo=PostgresPositionRepository(session),
+                snapshot_repo=snapshot_repo,
+                event_log=event_log,
+            )
+            portfolio = await portfolio_service.get_portfolio(branch_id)
+            if portfolio is None:
+                logger.warning("No portfolio for %s — skipping mark/snapshot", branch_name)
+                return
+
+            prices: dict[str, float | None] = {}
+            for pos in portfolio.positions:
+                if pos.long_quantity > 0:
+                    prices[pos.symbol] = await data_service.get_current_price(pos.symbol)
+
+            mtm = await portfolio_service.mark_to_market(branch_id, prices)
+
+            today = today_ny()
+            latest = await snapshot_repo.latest_by_branch(branch_id)
+            if latest is None or ny_date(latest.snapshot_at) != today:
+                await portfolio_service.take_snapshot(branch_id, positions_detail=mtm.positions_detail)
+
+            # WoW baseline = latest snapshot strictly before (today − 6d)
+            # NY-midnight, i.e. the prior week's mark. Anchoring at plain
+            # "before today" would make Monday's baseline Friday's EOD
+            # snapshot (~18h window, ≈0%) once the daily job fills Tue–Fri;
+            # −6d resolves to the prior Monday's mark, falling back to an
+            # older EOD if that's missing (no snapshot at all → None → n/a).
+            ny_midnight = datetime.combine(today, dtime.min, tzinfo=ZoneInfo("America/New_York")).astimezone(UTC)
+            wow_anchor = ny_midnight - timedelta(days=6)
+            prev = await snapshot_repo.latest_by_branch(branch_id, before=wow_anchor)
+            wow = (mtm.nav - prev.nav) / prev.nav if prev and prev.nav > 0 else None
+
+            initial = float(portfolio.allocated_capital)
+            trades, _total = await PostgresTradeRepository(session).list_trades(
+                branch_id=branch_id, since=run_started_at, limit=200
+            )
+            report = PortfolioReport(
+                nav=mtm.nav,
+                cash=mtm.cash,
+                cash_pct=mtm.cash / mtm.nav if mtm.nav > 0 else 0.0,
+                unrealized_pnl=mtm.unrealized_pnl,
+                realized_pnl=mtm.realized_pnl,
+                initial_capital=initial,
+                inception_return_pct=(mtm.nav - initial) / initial if initial > 0 else None,
+                wow_return_pct=wow,
+                top_holdings=[{"symbol": d["symbol"], "weight": d["weight"]} for d in mtm.positions_detail[:5]],
+                trades=[
+                    {
+                        "symbol": t.symbol,
+                        "side": str(t.side),
+                        "quantity": float(t.quantity),
+                        "price": float(t.price),
+                        "notional": float(t.quantity) * float(t.price),
+                    }
+                    for t in trades
+                ],
+                unpriced=mtm.unpriced,
+            )
+        # Assign only after the `async with` block above has exited normally,
+        # i.e. the transaction committed. If commit itself raises, control
+        # skips straight to `except` below and portfolio_report is left
+        # unset — a failed commit can never leave unpersisted numbers in the
+        # digest.
+        summary.portfolio_report = report
+    except Exception:
+        logger.warning("Mark/snapshot/report failed for %s — continuing", branch_name, exc_info=True)
+
+
 async def _main_async(args: argparse.Namespace) -> int:
-    data_service = _init_data_platform()
+    data_service = init_data_platform()
     init_services(data_service)
 
     # Resolve configuration
@@ -260,6 +328,13 @@ async def _main_async(args: argparse.Namespace) -> int:
     else:
         print(digest)
 
+    # Skip the file write on dry runs — a dry-run dispatch must not overwrite
+    # a real same-day digest in scheduled_run_results/.
+    if args.report_dir and not args.dry_run:
+        report_dir = Path(args.report_dir)
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / f"{today_ny().isoformat()}.md").write_text(digest, encoding="utf-8")
+
     return 1 if any_failed else 0
 
 
@@ -275,6 +350,11 @@ def main() -> None:
         "--force-retry", action="store_true", help="If prior run for today failed, create a new attempt row"
     )
     parser.add_argument("--dry-run", action="store_true", help="Validate plumbing without invoking the pipeline")
+    parser.add_argument(
+        "--report-dir",
+        default=None,
+        help="Also write the digest to <dir>/<run_date>.md (workflow passes scheduled_run_results)",
+    )
     args = parser.parse_args()
 
     try:

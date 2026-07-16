@@ -52,6 +52,23 @@ class ManualInterventionRequired(Exception):
 
 
 @dataclass
+class PortfolioReport:
+    """Marked portfolio state attached to a WeeklyRunSummary for the digest."""
+
+    nav: float
+    cash: float
+    cash_pct: float
+    unrealized_pnl: float
+    realized_pnl: float
+    initial_capital: float
+    inception_return_pct: float | None
+    wow_return_pct: float | None
+    top_holdings: list[dict]  # [{symbol, weight}, ...] best-first
+    trades: list[dict]  # [{symbol, side, quantity, price, notional}, ...]
+    unpriced: int = 0
+
+
+@dataclass
 class WeeklyRunSummary:
     run_id: str
     branch_name: str
@@ -63,6 +80,7 @@ class WeeklyRunSummary:
     duration_seconds: float
     error: str | None = None
     attribution: AttributionReport | None = None
+    portfolio_report: PortfolioReport | None = None
 
 
 _NY_TZ = ZoneInfo("America/New_York")
@@ -71,6 +89,11 @@ _NY_TZ = ZoneInfo("America/New_York")
 def today_ny() -> date:
     """Return today's date in America/New_York (not UTC)."""
     return datetime.now(_NY_TZ).date()
+
+
+def ny_date(ts: datetime) -> date:
+    """The America/New_York calendar date of an aware timestamp."""
+    return ts.astimezone(_NY_TZ).date()
 
 
 class PipelineRunsRepository:
@@ -326,6 +349,10 @@ def _fmt_ic(x: float | None) -> str:
     return "n/a" if x is None else f"{x:+.2f}"
 
 
+def _fmt_money(x: float) -> str:
+    return f"-${abs(x):,.0f}" if x < 0 else f"${x:,.0f}"
+
+
 def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
     """Build the markdown digest written to $GITHUB_STEP_SUMMARY."""
     lines = [f"# Weekly Rebalance — {run_date.isoformat()}", ""]
@@ -355,6 +382,41 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
                     f"news {_fmt_ic(ics.get('news'))} / "
                     f"tech {_fmt_ic(ics.get('technical'))}"
                 )
+            if s.portfolio_report is not None:
+                r = s.portfolio_report
+                # No baseline (initial_capital == 0 → inception_return_pct is
+                # None): render "n/a" with no dollar delta — `nav - 0` would
+                # present the entire NAV as profit.
+                if r.inception_return_pct is None:
+                    inception = "n/a"
+                else:
+                    inception = f"{_fmt_pct(r.inception_return_pct)} / {_fmt_money(r.nav - r.initial_capital)}"
+                lines.append(
+                    f"- NAV: {_fmt_money(r.nav)} (WoW {_fmt_pct(r.wow_return_pct)}, since inception {inception})"
+                )
+                lines.append(
+                    f"- Cash: {_fmt_money(r.cash)} ({r.cash_pct:.1%}) · "
+                    f"Unrealized P&L: {_fmt_money(r.unrealized_pnl)} · "
+                    f"Realized: {_fmt_money(r.realized_pnl)}"
+                )
+                if r.top_holdings:
+                    tops = ", ".join(f"{h['symbol']} {h['weight']:.1%}" for h in r.top_holdings[:5])
+                    lines.append(f"- Top holdings: {tops}")
+                if r.trades:
+                    lines.append("- Trades this run:")
+                    lines.append("")
+                    lines.append("  | Symbol | Side | Qty | Fill | Notional |")
+                    lines.append("  |---|---|---|---|---|")
+                    for t in r.trades:
+                        lines.append(
+                            f"  | {t['symbol']} | {t['side']} | {t['quantity']:g} "
+                            f"| ${t['price']:,.2f} | {_fmt_money(t['notional'])} |"
+                        )
+                    lines.append("")
+                if r.unpriced > 0:
+                    lines.append(f"- ⚠️ {r.unpriced} position(s) unpriced — carried at cost basis")
+                if r.cash < 0:
+                    lines.append("- ⚠️ Negative cash balance — check order sizing")
         elif s.status == "failed":
             lines.append(f"- Duration before failure: {_format_duration(s.duration_seconds)}")
             lines.append(f"- Error: `{s.error or 'unknown'}`")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from app.common.enums import OrderSide
 from app.modules.equities.config import AgentsConfig, PortfolioConfig
 from app.modules.equities.models import CompositeScore, RebalanceOrder, StockSignal
 
@@ -86,10 +87,21 @@ class PortfolioManager:
         self,
         selected: list[CompositeScore],
     ) -> list[CompositeScore]:
-        """Assign conviction-weighted target weights with 50% cap."""
+        """Assign conviction-weighted target weights with 50% cap.
+
+        Target weights sum to 1 - cash_buffer_pct: the buffer is deliberate
+        headroom so buy fills (slippage, decision-to-fill drift) can't
+        overdraw cash. See generate_orders for the sells-first complement.
+
+        The realized max weight for any single position is therefore
+        max_position_weight * (1 - cash_buffer_pct), not max_position_weight
+        outright — the gap between the two is the buffer and is deliberately
+        NOT redistributed back onto the capped position.
+        """
         if not selected:
             return []
         cap = self.portfolio_config.max_position_weight
+        buffer_scale = 1.0 - self.portfolio_config.cash_buffer_pct
         total_conviction = sum(s.conviction for s in selected)
         if total_conviction == 0:
             equal = 1.0 / len(selected)
@@ -99,7 +111,7 @@ class PortfolioManager:
                     composite_score=s.composite_score,
                     composite_confidence=s.composite_confidence,
                     conviction=s.conviction,
-                    target_weight=min(equal, cap),
+                    target_weight=min(equal, cap) * buffer_scale,
                 )
                 for s in selected
             ]
@@ -122,6 +134,7 @@ class PortfolioManager:
                     if capped[sym] < cap:
                         capped[sym] += excess * (capped[sym] / uncapped_total)
             weights = capped
+        weights = {sym: w * buffer_scale for sym, w in weights.items()}
         return [
             CompositeScore(
                 symbol=s.symbol,
@@ -175,4 +188,7 @@ class PortfolioManager:
                     reason=reason,
                 )
             )
+        # Sells first so proceeds fund the buys; alphabetical within side keeps
+        # the deterministic ordering downstream execution depends on.
+        orders.sort(key=lambda o: (0 if o.side == OrderSide.SELL else 1, o.symbol))
         return orders

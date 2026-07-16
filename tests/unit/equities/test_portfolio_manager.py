@@ -211,12 +211,14 @@ class TestPositionSizing:
         return results
 
     def test_weights_sum_to_one(self):
+        """Weights sum to the fully-invested fraction (1 - cash_buffer_pct);
+        the buffer itself is covered by test_order_generation_cash.py."""
         pm = _make_pm()
         selected = self._make_selected(20)
         sized = pm.size_positions(selected)
 
         total = sum(s.target_weight for s in sized)
-        assert total == pytest.approx(1.0)
+        assert total == pytest.approx(1.0 - pm.portfolio_config.cash_buffer_pct)
 
     def test_conviction_weighted_proportional(self):
         """Stock with 2x conviction gets ~2x weight."""
@@ -266,7 +268,7 @@ class TestPositionSizing:
 
     def test_excess_redistributed_pro_rata(self):
         """After capping at 50%, remaining stocks get extra proportionally.
-        Sum still == 1.0."""
+        Sum still == 1 - cash_buffer_pct."""
         pc = PortfolioConfig(max_position_weight=0.50)
         pm = _make_pm(portfolio_config=pc)
         selected = [
@@ -292,16 +294,18 @@ class TestPositionSizing:
         sized = pm.size_positions(selected)
 
         total = sum(s.target_weight for s in sized)
-        assert total == pytest.approx(1.0)
+        assert total == pytest.approx(1.0 - pc.cash_buffer_pct)
 
     def test_all_equal_conviction(self):
-        """20 stocks with same conviction -> equal weights (0.05 each)."""
+        """20 stocks with same conviction -> equal weights (0.0495 each:
+        1/20 scaled down by the default 1% cash buffer)."""
         pm = _make_pm()
         selected = self._make_selected(20, conviction_fn=lambda _: 50.0)
         sized = pm.size_positions(selected)
 
+        expected = (1.0 / 20) * (1.0 - pm.portfolio_config.cash_buffer_pct)
         for s in sized:
-            assert s.target_weight == pytest.approx(0.05, abs=1e-9)
+            assert s.target_weight == pytest.approx(expected, abs=1e-9)
 
     def test_two_stocks_one_gets_capped(self):
         """2 stocks; one has 80% of total conviction -> capped at 50%,
@@ -328,7 +332,7 @@ class TestPositionSizing:
         assert by_sym["BIG"].target_weight == pytest.approx(0.50, abs=1e-2)
         assert by_sym["SML"].target_weight == pytest.approx(0.50, abs=1e-2)
         total = sum(s.target_weight for s in sized)
-        assert total == pytest.approx(1.0)
+        assert total == pytest.approx(1.0 - pc.cash_buffer_pct)
 
 
 # ---------------------------------------------------------------------------

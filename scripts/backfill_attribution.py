@@ -20,14 +20,14 @@ from app.db.connection import async_session_factory  # noqa: E402
 from app.db.models import BranchModel, PortfolioDecisionModel  # noqa: E402
 from app.modules.equities.attribution import AttributionEngine  # noqa: E402
 from app.modules.equities.weekly_runner import today_ny  # noqa: E402
-from scripts.run_weekly_pipeline import _init_data_platform  # noqa: E402
+from scripts.common import init_data_platform  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("backfill_attribution")
 
 
 async def main() -> None:
-    engine = AttributionEngine(data_service=_init_data_platform())
+    engine = AttributionEngine(data_service=init_data_platform())
     async with async_session_factory() as session, session.begin():
         decisions = (
             (await session.execute(select(PortfolioDecisionModel).order_by(PortfolioDecisionModel.decided_at)))

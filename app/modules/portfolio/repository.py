@@ -71,12 +71,9 @@ class PostgresPortfolioRepository(PortfolioRepository):
             raise ValueError(f"Insufficient cash: have {float(portfolio.cash)}, tried to withdraw {abs(amount)}")
 
         portfolio.cash = new_cash
-        portfolio.nav = (
-            new_cash
-            + float(portfolio.total_long_exposure)
-            - float(portfolio.total_short_exposure)
-            + float(portfolio.unrealized_pnl)
-        )
+        # total_long_exposure is market-valued after a mark_to_market, so adding
+        # unrealized_pnl on top would double-count it.
+        portfolio.nav = new_cash + float(portfolio.total_long_exposure) - float(portfolio.total_short_exposure)
         portfolio.updated_at = datetime.now(UTC)
         await self.session.flush()
 
@@ -139,6 +136,7 @@ class PostgresPortfolioRepository(PortfolioRepository):
                     "unrealized_pnl": float(portfolio.unrealized_pnl),
                     "realized_pnl": float(portfolio.realized_pnl),
                     "position_count": pos_count,
+                    "inception_date": portfolio.created_at.date().isoformat() if portfolio.created_at else None,
                 }
             )
 
@@ -266,7 +264,9 @@ class PostgresSnapshotRepository(SnapshotRepository):
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, portfolio_id: str, branch_id: str) -> PortfolioSnapshot:
+    async def create(
+        self, portfolio_id: str, branch_id: str, positions_detail: list[dict] | None = None
+    ) -> PortfolioSnapshot:
         # Get current portfolio state
         portfolio = await self.session.get(PortfolioModel, uuid.UUID(portfolio_id))
         if portfolio is None:
@@ -291,6 +291,7 @@ class PostgresSnapshotRepository(SnapshotRepository):
             realized_pnl=float(portfolio.realized_pnl),
             margin_used=float(portfolio.margin_used),
             position_count=pos_count,
+            positions_detail=positions_detail,
         )
         self.session.add(snapshot)
         await self.session.flush()
@@ -313,6 +314,19 @@ class PostgresSnapshotRepository(SnapshotRepository):
         snapshots = [self._to_domain(row) for row in result.scalars().all()]
         return snapshots, total
 
+    async def latest_by_branch(self, branch_id: str, before: datetime | None = None) -> PortfolioSnapshot | None:
+        stmt = (
+            select(PortfolioSnapshotModel)
+            .where(PortfolioSnapshotModel.branch_id == branch_id)
+            .order_by(PortfolioSnapshotModel.snapshot_at.desc())
+            .limit(1)
+        )
+        if before is not None:
+            stmt = stmt.where(PortfolioSnapshotModel.snapshot_at < before)
+        result = await self.session.execute(stmt)
+        row = result.scalar_one_or_none()
+        return self._to_domain(row) if row else None
+
     def _to_domain(self, model: PortfolioSnapshotModel) -> PortfolioSnapshot:
         return PortfolioSnapshot(
             id=str(model.id),
@@ -328,5 +342,6 @@ class PostgresSnapshotRepository(SnapshotRepository):
             realized_pnl=float(model.realized_pnl),
             margin_used=float(model.margin_used),
             position_count=model.position_count,
+            positions_detail=model.positions_detail,
             snapshot_at=model.snapshot_at,
         )

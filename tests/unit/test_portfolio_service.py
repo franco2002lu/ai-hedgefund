@@ -1,7 +1,13 @@
-"""Unit tests for PortfolioService business logic."""
+"""Unit tests for PortfolioService business logic.
 
+Also holds Postgres repository statement-shape tests (compiled-SQL assertions
+on `PostgresPortfolioRepository`/`PostgresSnapshotRepository` query builders).
+"""
+
+import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -9,6 +15,7 @@ from app.common.enums import ExecutionMode, OrderSide
 from app.common.models.portfolio import PortfolioSummary
 from app.common.models.position import Position
 from app.common.models.trade import Trade
+from app.modules.portfolio.repository import PostgresPortfolioRepository, PostgresSnapshotRepository
 from app.modules.portfolio.service import PortfolioService
 
 # ---------------------------------------------------------------------------
@@ -312,6 +319,21 @@ class TestHandleTradeEdgeCases:
         assert update_call.kwargs["total_long_exposure"] == 1500.0
         assert update_call.kwargs["nav"] == pytest.approx(100_000.0 - 1500.0 + 1500.0)
 
+    async def test_trade_resets_unrealized_pnl_to_zero(self, service, mocks):
+        """A trade reverts exposures/NAV to cost basis, so a stale marked
+        unrealized_pnl must be reset alongside them (consistent until next mark)."""
+        portfolio_repo, position_repo, _, _ = mocks
+        portfolio_repo.get_by_branch.return_value = _make_portfolio(unrealized_pnl=2_500.0)
+        position_repo.get_by_symbol.return_value = None
+        position_repo.upsert.side_effect = lambda p: p
+        position_repo.get_by_portfolio.return_value = []
+
+        trade = _make_trade(OrderSide.BUY, quantity=10, price=150.0, commission=0.0)
+        await service.handle_trade_executed(trade)
+
+        update_call = portfolio_repo.update_portfolio_fields.call_args
+        assert update_call.kwargs["unrealized_pnl"] == 0.0
+
 
 # ---------------------------------------------------------------------------
 # adjust_cash
@@ -334,3 +356,115 @@ class TestAdjustCash:
 
         with pytest.raises(ValueError, match="Insufficient cash"):
             await service.adjust_cash("branch-1", -200_000.0, "withdrawal")
+
+
+# ---------------------------------------------------------------------------
+# PostgresPortfolioRepository.update_cash — NAV recomputation formula
+# ---------------------------------------------------------------------------
+
+
+def _fake_portfolio_row(**overrides):
+    """Bare ORM-row stand-in with the numeric fields update_cash touches."""
+    defaults = dict(
+        id=uuid.uuid4(),
+        branch_id=uuid.uuid4(),
+        cash=10_000.0,
+        margin_requirement=0.0,
+        margin_used=0.0,
+        nav=0.0,
+        total_long_exposure=16_500.0,
+        total_short_exposure=1_000.0,
+        unrealized_pnl=1_500.0,
+        realized_pnl=0.0,
+        updated_at=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+class TestUpdateCashNavFormula:
+    async def test_nav_excludes_unrealized_pnl(self):
+        """total_long_exposure is market-valued after a mark_to_market, so NAV
+        must not add unrealized_pnl on top — that would double-count it."""
+        row = _fake_portfolio_row()
+        session = MagicMock()
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none.return_value = row
+        session.execute = AsyncMock(return_value=exec_result)
+        session.flush = AsyncMock()
+        session.get = AsyncMock(return_value=None)
+
+        repo = PostgresPortfolioRepository(session)
+        summary = await repo.update_cash(str(row.branch_id), 500.0, "funding")
+
+        # new_cash 10_500 + long 16_500 - short 1_000 = 26_000 (unrealized 1_500 NOT added)
+        assert row.nav == pytest.approx(26_000.0)
+        assert summary.nav == pytest.approx(26_000.0)
+        assert summary.cash == pytest.approx(10_500.0)
+
+
+# ---------------------------------------------------------------------------
+# PostgresSnapshotRepository.latest_by_branch — filter/order/limit shape
+# ---------------------------------------------------------------------------
+
+
+def _fake_snapshot_row(**overrides):
+    """Bare ORM-row stand-in with the fields PostgresSnapshotRepository._to_domain touches."""
+    defaults = dict(
+        id=uuid.uuid4(),
+        portfolio_id=uuid.uuid4(),
+        branch_id=uuid.uuid4(),
+        cash=10_000.0,
+        nav=10_500.0,
+        total_long_exposure=500.0,
+        total_short_exposure=0.0,
+        gross_exposure=500.0,
+        net_exposure=500.0,
+        unrealized_pnl=0.0,
+        realized_pnl=0.0,
+        margin_used=0.0,
+        position_count=1,
+        positions_detail=None,
+        snapshot_at=datetime.now(UTC),
+    )
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+class TestSnapshotLatestByBranch:
+    async def test_with_before_filters_orders_and_limits(self):
+        """latest_by_branch must filter by branch_id AND snapshot_at < before,
+        order by snapshot_at desc, and limit to 1 row — and map the row to a
+        PortfolioSnapshot domain object."""
+        row = _fake_snapshot_row()
+        session = MagicMock()
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none.return_value = row
+        session.execute = AsyncMock(return_value=exec_result)
+
+        repo = PostgresSnapshotRepository(session)
+        before = datetime.now(UTC)
+        result = await repo.latest_by_branch(str(row.branch_id), before=before)
+
+        stmt = session.execute.call_args[0][0]
+        sql = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "portfolio_snapshots.branch_id = " in sql
+        assert "portfolio_snapshots.snapshot_at < " in sql
+        assert "ORDER BY portfolio_snapshots.snapshot_at DESC" in sql
+        assert "LIMIT" in sql
+
+        assert result is not None
+        assert result.id == str(row.id)
+        assert result.branch_id == str(row.branch_id)
+        assert result.nav == pytest.approx(10_500.0)
+
+    async def test_no_row_returns_none(self):
+        session = MagicMock()
+        exec_result = MagicMock()
+        exec_result.scalar_one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=exec_result)
+
+        repo = PostgresSnapshotRepository(session)
+        result = await repo.latest_by_branch("branch-x")
+        assert result is None

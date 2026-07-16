@@ -44,12 +44,17 @@ class PositionRepository(ABC):
 
 class SnapshotRepository(ABC):
     @abstractmethod
-    async def create(self, portfolio_id: str, branch_id: str) -> PortfolioSnapshot: ...
+    async def create(
+        self, portfolio_id: str, branch_id: str, positions_detail: list[dict] | None = None
+    ) -> PortfolioSnapshot: ...
 
     @abstractmethod
     async def list_by_branch(
         self, branch_id: str, limit: int = 30, offset: int = 0
     ) -> tuple[list[PortfolioSnapshot], int]: ...
+
+    @abstractmethod
+    async def latest_by_branch(self, branch_id: str, before: datetime | None = None) -> PortfolioSnapshot | None: ...
 
 
 class OrderRepository(ABC):
@@ -98,9 +103,7 @@ class BacktestRepository(ABC):
     async def get_result(self, backtest_id: str): ...
 
     @abstractmethod
-    async def list_runs(
-        self, status: str | None = None, limit: int = 20, offset: int = 0
-    ) -> tuple[list, int]: ...
+    async def list_runs(self, status: str | None = None, limit: int = 20, offset: int = 0) -> tuple[list, int]: ...
 
     @abstractmethod
     async def mark_stale_runs_failed(self) -> int: ...
