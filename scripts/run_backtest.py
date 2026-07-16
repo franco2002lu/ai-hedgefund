@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Load .env so ANTHROPIC_API_KEY is available for LLM-mode backtests
 
-from app.modules.backtest.config import BacktestConfig, LLMBacktestConfig, RebalanceFrequency
-from app.modules.backtest.engine import BacktestEngine
+from app.modules.backtest.config import BacktestConfig, LLMBacktestConfig, RebalanceFrequency  # noqa: E402
+from app.modules.backtest.engine import BacktestEngine  # noqa: E402
 
 logging.basicConfig(level=logging.WARNING)
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)

@@ -336,6 +336,68 @@ class TestHandleTradeEdgeCases:
 
 
 # ---------------------------------------------------------------------------
+# handle_trade_executed — portfolio-level realized P&L accumulation
+# ---------------------------------------------------------------------------
+
+
+class TestRealizedPnlAccumulation:
+    """portfolios.realized_pnl is ledger-lifetime, not a sum over surviving rows.
+
+    delete_if_flat removes fully-closed positions, so recomputing realized from
+    position rows silently drops their P&L (prod: SCHW closure 2026-06-22 lost
+    +951.58 on the value branch). The portfolio-level figure must accumulate
+    incrementally, mirroring the cash update.
+    """
+
+    async def test_full_close_preserves_realized_at_portfolio_level(self, service, mocks):
+        portfolio_repo, position_repo, _, _ = mocks
+        portfolio_repo.get_by_branch.return_value = _make_portfolio(realized_pnl=500.0)
+        existing = _make_position(long_quantity=10.0, long_cost_basis=1500.0)
+        position_repo.get_by_symbol.return_value = existing
+        position_repo.upsert.side_effect = lambda p: p
+        # Position fully closed and deleted — no surviving rows to sum over.
+        position_repo.get_by_portfolio.return_value = []
+
+        trade = _make_trade(OrderSide.SELL, quantity=10, price=160.0, commission=0.0)
+        await service.handle_trade_executed(trade)
+
+        update_call = portfolio_repo.update_portfolio_fields.call_args
+        # (160 - 150) * 10 = +100 realized on the closing trade, on top of 500.
+        assert update_call.kwargs["realized_pnl"] == pytest.approx(600.0)
+
+    async def test_partial_sell_accumulates_from_portfolio_not_rows(self, service, mocks):
+        portfolio_repo, position_repo, _, _ = mocks
+        portfolio_repo.get_by_branch.return_value = _make_portfolio(realized_pnl=500.0)
+        existing = _make_position(long_quantity=10.0, long_cost_basis=1500.0)
+        position_repo.get_by_symbol.return_value = existing
+        position_repo.upsert.side_effect = lambda p: p
+        # Surviving rows carry an unrelated per-row figure; it must NOT be the
+        # source of the portfolio-level number.
+        stale_row = _make_position(id="pos-2", instrument_id="inst-2", symbol="OTHER", realized_pnl_long=999.0)
+        position_repo.get_by_portfolio.return_value = [existing, stale_row]
+
+        trade = _make_trade(OrderSide.SELL, quantity=5, price=160.0, commission=0.0)
+        await service.handle_trade_executed(trade)
+
+        update_call = portfolio_repo.update_portfolio_fields.call_args
+        # (160 - 150) * 5 = +50 on top of 500 — not 50 + 999 from the rows.
+        assert update_call.kwargs["realized_pnl"] == pytest.approx(550.0)
+
+    async def test_buy_leaves_realized_unchanged(self, service, mocks):
+        portfolio_repo, position_repo, _, _ = mocks
+        portfolio_repo.get_by_branch.return_value = _make_portfolio(realized_pnl=500.0)
+        position_repo.get_by_symbol.return_value = None
+        position_repo.upsert.side_effect = lambda p: p
+        position_repo.get_by_portfolio.return_value = []
+
+        trade = _make_trade(OrderSide.BUY, quantity=10, price=150.0, commission=0.0)
+        await service.handle_trade_executed(trade)
+
+        update_call = portfolio_repo.update_portfolio_fields.call_args
+        assert update_call.kwargs["realized_pnl"] == pytest.approx(500.0)
+
+
+# ---------------------------------------------------------------------------
 # adjust_cash
 # ---------------------------------------------------------------------------
 

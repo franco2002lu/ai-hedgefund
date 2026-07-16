@@ -234,6 +234,7 @@ class PortfolioService:
 
         trade_cost = trade.price * trade.quantity + trade.commission
         trade_proceeds = trade.price * trade.quantity - trade.commission
+        realized_delta = 0.0  # this trade's contribution to lifetime realized P&L
 
         if trade.side == OrderSide.BUY:
             position.long_quantity += trade.quantity
@@ -250,6 +251,7 @@ class PortfolioService:
             position.long_cost_basis -= avg_cost * trade.quantity
             position.long_quantity -= trade.quantity
             cash_delta = trade_proceeds
+            realized_delta = realized
 
         elif trade.side == OrderSide.SHORT:
             position.short_quantity += trade.quantity
@@ -266,6 +268,7 @@ class PortfolioService:
             avg_short_price = position.short_cost_basis / position.short_quantity if position.short_quantity > 0 else 0
             realized = (avg_short_price - trade.price) * trade.quantity - trade.commission
             position.realized_pnl_short += realized
+            realized_delta = realized
             position.short_cost_basis -= avg_short_price * trade.quantity
             margin_release = (
                 position.short_margin_used * (trade.quantity / position.short_quantity)
@@ -286,12 +289,16 @@ class PortfolioService:
         if position.long_quantity == 0 and position.short_quantity == 0:
             await self.position_repo.delete_if_flat(summary.id, trade.instrument_id)
 
-        # Recalculate portfolio aggregates
+        # Recalculate row-derived aggregates (exposures/margin live on position rows).
         all_positions = await self.position_repo.get_by_portfolio(summary.id)
         total_long_exposure = sum(p.long_cost_basis for p in all_positions)
         total_short_exposure = sum(p.short_cost_basis for p in all_positions)
         total_margin_used = sum(p.short_margin_used for p in all_positions)
-        total_realized = sum(p.realized_pnl_long + p.realized_pnl_short for p in all_positions)
+
+        # Realized P&L is ledger-derived, not row-derived: delete_if_flat removes
+        # fully-closed positions, so summing surviving rows silently drops their
+        # lifetime P&L. Accumulate incrementally, mirroring the cash update.
+        new_realized = float(summary.realized_pnl) + realized_delta
 
         new_cash = float(summary.cash) + cash_delta
         new_nav = new_cash + total_long_exposure
@@ -304,7 +311,7 @@ class PortfolioService:
             total_short_exposure=total_short_exposure,
             margin_used=total_margin_used,
             unrealized_pnl=0.0,  # exposures revert to cost basis until the next mark
-            realized_pnl=total_realized,
+            realized_pnl=new_realized,
         )
 
         # Log event
@@ -321,6 +328,6 @@ class PortfolioService:
                 total_long_exposure=total_long_exposure,
                 total_short_exposure=total_short_exposure,
                 unrealized_pnl=0.0,  # Requires market prices to compute
-                realized_pnl=total_realized,
+                realized_pnl=new_realized,
             )
         )

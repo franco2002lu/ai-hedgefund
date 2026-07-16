@@ -254,6 +254,7 @@ pytest tests/integration/test_e2e_smoke.py -m e2e -v
 - **Analyst `analyze_batch()` must accept `**kwargs`** — `graph.py` calls `analyst.analyze_batch(stocks, max_concurrent=N)`. Any new analyst class (including quantitative replacements) must have `analyze_batch(self, stocks, **kwargs)` or the pipeline will crash with `TypeError`.
 - **NAV is marked to market weekly (pipeline) and each weekday (daily-snapshot workflow)** — between marks, `portfolios.nav` is as-of the last mark. Snapshot consumers must dedupe to the last snapshot per NY date (see `scripts/build_report_json.dedupe_last_per_day`); Monday's point is the pipeline's morning mark, Tue–Fri are EOD.
 - **BUY orders are rejected at fill time if cost exceeds cash** (`TradeExecutionService`). Sizing leaves `cash_buffer_pct` (1%) uninvested and orders execute sells-first, so rejections should be rare; a rejection means sizing drifted — investigate.
+- **`portfolios.realized_pnl` is accumulated incrementally at the portfolio level** (`handle_trade_executed`), NOT summed from position rows — `delete_if_flat` removes fully-closed positions, so a row-sum silently drops their lifetime P&L (this bug once cost the value branch $951.58 of reported realized). Per-position `realized_pnl_long/short` only covers the row's own lifetime.
 
 ## Running the Weekly Pipeline
 
