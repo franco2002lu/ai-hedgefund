@@ -41,13 +41,13 @@ async def run_one(
     analyst_mode = "LLM" if use_llm else "Quantitative"
     universe_desc = f"top-{top_n}" if top_n is not None else "full"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  BACKTEST: {branch.upper()} BRANCH ({universe_desc} universe)")
     print(f"  Period: {start} to {end} | Weekly Rebalance")
     print(f"  Capital: ${capital:,.0f} | {analyst_mode} Analysts")
     if skills_bundle:
         print(f"  Skills bundle: {skills_bundle}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Build the LLMBacktestConfig with any cap override
     llm_cfg = LLMBacktestConfig(
@@ -102,7 +102,9 @@ async def run_one(
         try:
             save_git_sha = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
-                check=True, capture_output=True, text=True,
+                check=True,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
         except Exception:
             save_git_sha = "unknown"
@@ -219,28 +221,30 @@ async def main():
     parser = argparse.ArgumentParser(description="Run backtests with ETF-based universes")
     parser.add_argument("start_date", help="Start date (YYYY-MM-DD)")
     parser.add_argument("end_date", help="End date (YYYY-MM-DD)")
-    parser.add_argument("branches", nargs="*", default=["growth", "value"],
-                        help="Branches to run (default: both)")
-    parser.add_argument("--capital", type=float, default=1_000.0,
-                        help="Initial capital (default: 1000)")
-    parser.add_argument("--top-n", type=int, default=None,
-                        help="Top N holdings by weight for all branches (default: all)")
-    parser.add_argument("--growth-top-n", type=int, default=None,
-                        help="Top N holdings for growth branch (overrides --top-n)")
-    parser.add_argument("--value-top-n", type=int, default=None,
-                        help="Top N holdings for value branch (overrides --top-n)")
-    parser.add_argument("--llm", action="store_true",
-                        help="Enable LLM-mode analysts (default: quantitative)")
-    parser.add_argument("--temperature", type=float, default=None,
-                        help="Override analyst LLM temperature")
-    parser.add_argument("--max-llm-calls-per-rebalance", type=int, default=None,
-                        help="Override the per-rebalance LLM call cap")
-    parser.add_argument("--no-llm-cache", action="store_true",
-                        help="Disable the persistent LLM response cache")
-    parser.add_argument("--skills-bundle", type=str, default=None,
-                        help="Load skills from data/skill_bundles/<name> instead of the live directory")
-    parser.add_argument("--save", action="store_true",
-                        help="Persist the result to data/backtest_runs/")
+    parser.add_argument("branches", nargs="*", default=["growth", "value"], help="Branches to run (default: both)")
+    parser.add_argument("--capital", type=float, default=1_000.0, help="Initial capital (default: 1000)")
+    parser.add_argument(
+        "--top-n", type=int, default=None, help="Top N holdings by weight for all branches (default: all)"
+    )
+    parser.add_argument(
+        "--growth-top-n", type=int, default=None, help="Top N holdings for growth branch (overrides --top-n)"
+    )
+    parser.add_argument(
+        "--value-top-n", type=int, default=None, help="Top N holdings for value branch (overrides --top-n)"
+    )
+    parser.add_argument("--llm", action="store_true", help="Enable LLM-mode analysts (default: quantitative)")
+    parser.add_argument("--temperature", type=float, default=None, help="Override analyst LLM temperature")
+    parser.add_argument(
+        "--max-llm-calls-per-rebalance", type=int, default=None, help="Override the per-rebalance LLM call cap"
+    )
+    parser.add_argument("--no-llm-cache", action="store_true", help="Disable the persistent LLM response cache")
+    parser.add_argument(
+        "--skills-bundle",
+        type=str,
+        default=None,
+        help="Load skills from data/skill_bundles/<name> instead of the live directory",
+    )
+    parser.add_argument("--save", action="store_true", help="Persist the result to data/backtest_runs/")
     args = parser.parse_args()
 
     start = date.fromisoformat(args.start_date)
@@ -270,11 +274,11 @@ async def main():
 
     if "growth" in results and "value" in results and results["growth"].metrics and results["value"].metrics:
         g, v = results["growth"].metrics, results["value"].metrics
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("  COMPARISON: GROWTH vs VALUE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"  {'Metric':<22s} {'Growth':>10s} {'Value':>10s}")
-        print(f"  {'-'*44}")
+        print(f"  {'-' * 44}")
         print(f"  {'Total Return':<22s} {g.total_return:>+9.2%} {v.total_return:>+9.2%}")
         print(f"  {'Volatility':<22s} {g.volatility:>9.2%} {v.volatility:>9.2%}")
         print(f"  {'Sharpe Ratio':<22s} {g.sharpe_ratio:>10.2f} {v.sharpe_ratio:>10.2f}")
@@ -297,16 +301,16 @@ async def main():
         if bench is None:
             continue
         m = r.metrics
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  {branch.upper()} BRANCH vs {etf}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"  {'Metric':<22s} {branch.upper():>10s} {etf:>10s}")
-        print(f"  {'-'*44}")
+        print(f"  {'-' * 44}")
         print(f"  {'Total Return':<22s} {m.total_return:>+9.2%} {bench.benchmark_total_return:>+9.2%}")
         print(f"  {'Ann. Return':<22s} {m.annualized_return:>+9.2%} {bench.benchmark_annualized_return:>+9.2%}")
         print(f"  {'Sharpe Ratio':<22s} {m.sharpe_ratio:>10.2f} {bench.benchmark_sharpe:>10.2f}")
         print(f"  {'Max Drawdown':<22s} {m.max_drawdown:>9.2%} {bench.benchmark_max_drawdown:>9.2%}")
-        print(f"  {'-'*44}")
+        print(f"  {'-' * 44}")
         print(f"  {'Alpha':<22s} {bench.alpha:>+9.2%}")
         print(f"  {'Beta':<22s} {bench.beta:>10.2f}")
         print(f"  {'Info Ratio':<22s} {bench.information_ratio:>10.2f}")
