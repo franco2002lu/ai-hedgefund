@@ -7,6 +7,7 @@ RiskAlert drafts. Persistence and digest rendering happen in the weekly CLI.
 from __future__ import annotations
 
 from app.common.enums import RiskAlertLevel
+from app.common.events.risk import RiskAlertEvent
 from app.common.models.risk import RiskAlert
 from app.modules.equities.config import PortfolioConfig
 
@@ -81,3 +82,25 @@ def evaluate_post_run_invariants(
             )
 
     return alerts
+
+
+async def persist_alerts(alerts: list[RiskAlert], *, repo, event_log) -> None:
+    """Persist alerts as risk_alerts rows plus risk.alert event-log entries.
+
+    repo: RiskAlertRepository; event_log: EventLogRepository. The caller owns
+    transaction scoping (the weekly CLI wraps this in a savepoint).
+    """
+    for alert in alerts:
+        await repo.create(alert)
+        await event_log.append(
+            RiskAlertEvent(
+                source=alert.source,
+                level=alert.level,
+                metric=alert.metric,
+                current_value=alert.current_value,
+                threshold=alert.threshold,
+                message=alert.message,
+                action_required=alert.action_required,
+                affected_branches=alert.affected_branches,
+            )
+        )

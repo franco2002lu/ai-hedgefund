@@ -6,6 +6,7 @@ from app.modules.equities.risk_checks import (
     CASH_PCT_WARN,
     POSITION_WEIGHT_TOLERANCE,
     evaluate_post_run_invariants,
+    persist_alerts,
 )
 
 
@@ -83,3 +84,40 @@ def test_zero_nav_does_not_divide():
     # cash-pct check requires nav > 0; negative-cash check still fires
     alerts = _run(cash=-5.0, nav=0.0)
     assert [a.metric for a in alerts] == ["cash"]
+
+
+class FakeRepo:
+    def __init__(self):
+        self.created = []
+
+    async def create(self, alert):
+        self.created.append(alert)
+        return alert
+
+
+class FakeEventLog:
+    def __init__(self):
+        self.events = []
+
+    async def append(self, event):
+        self.events.append(event)
+
+
+async def test_persist_alerts_writes_rows_and_events():
+    alerts = _run(cash=-1.0, weights={"A": 0.60}, cap=0.50)
+    assert len(alerts) == 2
+    repo, log = FakeRepo(), FakeEventLog()
+
+    await persist_alerts(alerts, repo=repo, event_log=log)
+
+    assert [a.metric for a in repo.created] == ["cash", "position_weight"]
+    assert [e.event_type for e in log.events] == ["risk.alert", "risk.alert"]
+    assert log.events[0].metric == "cash"
+    assert log.events[0].level == RiskAlertLevel.CRITICAL
+    assert log.events[0].affected_branches == ["growth"]
+
+
+async def test_persist_alerts_empty_is_noop():
+    repo, log = FakeRepo(), FakeEventLog()
+    await persist_alerts([], repo=repo, event_log=log)
+    assert repo.created == [] and log.events == []
