@@ -121,6 +121,18 @@ class TestAgentsConfig:
         assert cfg.max_concurrent_analyses == 10
 
 
+class TestCompanyNewsConfig:
+    def test_company_news_defaults(self):
+        config = AgentsConfig()
+        assert config.company_news_fetch_limit == 10
+        assert config.company_news_prompt_cap == 6
+
+    def test_company_news_overridable(self):
+        config = AgentsConfig(company_news_fetch_limit=5, company_news_prompt_cap=3)
+        assert config.company_news_fetch_limit == 5
+        assert config.company_news_prompt_cap == 3
+
+
 class TestEquitiesConfig:
     def test_default_etfs(self):
         cfg = EquitiesConfig()

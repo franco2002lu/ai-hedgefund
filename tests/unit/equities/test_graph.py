@@ -146,6 +146,7 @@ class TestGraphEndToEnd:
         data_service = AsyncMock()
         data_service.get_market_news = AsyncMock(return_value={"articles": []})
         data_service.get_sector_news = AsyncMock(return_value={"articles": []})
+        data_service.get_news = AsyncMock(return_value={"articles": [], "source": "mock"})
         data_service.get_current_price = AsyncMock(return_value=100.0)
         analyst = AsyncMock()
         analyst.analyze_batch = AsyncMock(return_value=[])

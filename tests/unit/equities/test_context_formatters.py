@@ -93,14 +93,16 @@ def _make_bars(num_bars=252, base_price=200.0, base_volume=50_000_000) -> list[d
     bars = []
     for i in range(num_bars):
         close = base_price + i * 0.2
-        bars.append({
-            "timestamp": str(date(2025, 1, 2).toordinal() + i),  # placeholder
-            "open": close - 1.0,
-            "high": close + 1.5,
-            "low": close - 1.5,
-            "close": close,
-            "volume": base_volume + i * 1000,
-        })
+        bars.append(
+            {
+                "timestamp": str(date(2025, 1, 2).toordinal() + i),  # placeholder
+                "open": close - 1.0,
+                "high": close + 1.5,
+                "low": close - 1.5,
+                "close": close,
+                "volume": base_volume + i * 1000,
+            }
+        )
     return bars
 
 
@@ -121,17 +123,24 @@ def _make_articles(count=5, base_date=None) -> list[dict]:
     articles = []
     for i in range(min(count, len(titles))):
         pub = datetime(
-            base.year, base.month, max(1, base.day - i * 3),
-            12, 0, 0, tzinfo=UTC,
+            base.year,
+            base.month,
+            max(1, base.day - i * 3),
+            12,
+            0,
+            0,
+            tzinfo=UTC,
         )
-        articles.append({
-            "title": titles[i],
-            "author": sources[i],
-            "source": "yahoo_finance",
-            "published_at": pub.isoformat(),
-            "url": f"https://example.com/article-{i}",
-            "symbols": ["AAPL"],
-        })
+        articles.append(
+            {
+                "title": titles[i],
+                "author": sources[i],
+                "source": "yahoo_finance",
+                "published_at": pub.isoformat(),
+                "url": f"https://example.com/article-{i}",
+                "symbols": ["AAPL"],
+            }
+        )
     return articles
 
 
@@ -258,8 +267,23 @@ class TestComputeRsi:
         assert rsi == pytest.approx(0.0, abs=0.1)
 
     def test_mixed_returns_between_0_and_100(self):
-        closes = [100.0, 102.0, 101.0, 103.0, 102.0, 104.0, 103.0,
-                  105.0, 104.0, 106.0, 105.0, 107.0, 106.0, 108.0, 107.0]
+        closes = [
+            100.0,
+            102.0,
+            101.0,
+            103.0,
+            102.0,
+            104.0,
+            103.0,
+            105.0,
+            104.0,
+            106.0,
+            105.0,
+            107.0,
+            106.0,
+            108.0,
+            107.0,
+        ]
         rsi = _compute_rsi(closes, 14)
         assert 0 < rsi < 100
 
@@ -684,21 +708,6 @@ class TestFormatNewsContext:
         )
         assert "5" in result
 
-    def test_contains_time_buckets(self):
-        result = format_news_context(
-            symbol="AAPL",
-            company_name="Apple Inc.",
-            sector="Technology",
-            articles=_make_articles(8, base_date=datetime(2026, 3, 18, 12, 0, 0, tzinfo=UTC)),
-        )
-        # Should have at least one bucket header
-        has_bucket = (
-            "Last 7 Days" in result
-            or "Last 30 Days" in result
-            or "Older" in result
-        )
-        assert has_bucket
-
     def test_contains_source_attribution(self):
         result = format_news_context(
             symbol="AAPL",
@@ -786,3 +795,75 @@ class TestFormatNewsContext:
         assert "Mar 18" in result
         # Should NOT contain full ISO format
         assert "2026-03-18T" not in result
+
+
+class TestFormatNewsContextScopeSections:
+    def _articles(self):
+        return [
+            {"title": "AAPL beats", "source": "Reuters", "scope": "company", "published_at": "2026-04-14T10:00:00Z"},
+            {"title": "Tech leads", "source": "Bloomberg", "scope": "sector", "published_at": "2026-04-13T10:00:00Z"},
+            {"title": "Market up", "source": "WSJ", "scope": "market", "published_at": "2026-04-12T10:00:00Z"},
+            {"title": "Curated note", "source": "Analyst", "scope": "manual", "published_at": "2026-04-11T10:00:00Z"},
+        ]
+
+    def test_sections_in_scope_order(self):
+        result = format_news_context("AAPL", "Apple Inc", "Technology", self._articles())
+        i_company = result.index("## Company-specific (AAPL)")
+        i_sector = result.index("## Sector (Technology)")
+        i_market = result.index("## Market")
+        i_manual = result.index("## Curated")
+        assert i_company < i_sector < i_market < i_manual
+
+    def test_empty_company_section_rendered_explicitly(self):
+        articles = [a for a in self._articles() if a["scope"] != "company"]
+        result = format_news_context("AAPL", "Apple Inc", "Technology", articles)
+        assert "## Company-specific (AAPL)" in result
+        assert "No company-specific headlines found for AAPL." in result
+
+    def test_empty_non_company_sections_omitted(self):
+        articles = [a for a in self._articles() if a["scope"] == "company"]
+        result = format_news_context("AAPL", "Apple Inc", "Technology", articles)
+        assert "## Sector" not in result
+        assert "## Market" not in result
+        assert "## Curated" not in result
+
+    def test_untagged_articles_fall_back_to_market(self):
+        result = format_news_context(
+            "AAPL",
+            "Apple Inc",
+            "Technology",
+            [{"title": "Legacy article", "source": "X", "published_at": "2026-04-14T10:00:00Z"}],
+        )
+        assert "## Market" in result
+        assert "Legacy article" in result
+
+    def test_rows_sorted_newest_first_within_section(self):
+        articles = [
+            {"title": "older", "source": "A", "scope": "company", "published_at": "2026-04-10T10:00:00Z"},
+            {"title": "newer", "source": "B", "scope": "company", "published_at": "2026-04-14T10:00:00Z"},
+        ]
+        result = format_news_context("AAPL", "Apple Inc", "Technology", articles)
+        assert result.index("newer") < result.index("older")
+
+    def test_no_articles_at_all(self):
+        result = format_news_context("AAPL", "Apple Inc", "Technology", [])
+        assert "No recent news available for AAPL." in result
+
+    def test_headlines_render_only_under_their_own_section(self):
+        result = format_news_context("AAPL", "Apple Inc", "Technology", self._articles())
+        sections = {}
+        current = None
+        for line in result.splitlines():
+            if line.startswith("## "):
+                current = line
+                sections[current] = []
+            elif current:
+                sections[current].append(line)
+        body = {h: "\n".join(ls) for h, ls in sections.items()}
+        assert "AAPL beats" in body["## Company-specific (AAPL)"]
+        assert "AAPL beats" not in body["## Sector (Technology)"]
+        assert "Tech leads" in body["## Sector (Technology)"]
+        assert "Tech leads" not in body["## Market"]
+        assert "Market up" in body["## Market"]
+        assert "Curated note" in body["## Curated"]
+        assert "Curated note" not in body["## Market"]

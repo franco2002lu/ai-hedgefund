@@ -357,7 +357,7 @@ class TestNewsGrowthOverlayStructure:
 
     def test_growth_overlay_has_layer_guidance_section(self):
         prompt = compose_system_prompt("news", "growth")
-        assert "## Reading the Three Layers" in prompt
+        assert "## Reading the Sections" in prompt
 
     def test_growth_overlay_has_stock_exposure_emphasis(self):
         prompt = compose_system_prompt("news", "growth")
@@ -400,7 +400,7 @@ class TestNewsValueOverlayStructure:
 
     def test_value_overlay_has_layer_guidance_section(self):
         prompt = compose_system_prompt("news", "value")
-        assert "## Reading the Three Layers" in prompt
+        assert "## Reading the Sections" in prompt
 
     def test_value_overlay_has_stock_exposure_emphasis(self):
         prompt = compose_system_prompt("news", "value")

@@ -10,6 +10,11 @@ from typing import Annotated, TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.modules.data_platform.manual_news import ManualNewsLoader
+from app.modules.equities.agents.news_scope import (
+    filter_company_articles,
+    merge_and_dedupe,
+    tag_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +42,11 @@ def _window_start(as_of: date | None, window_days: int) -> date | None:
 
 
 async def _run_prefetch_news(state: EquitiesWorkflowState) -> dict:
-    """Fetch market + per-sector news once per rebalance and load manual articles."""
+    """Fetch market + per-sector + per-company news once per rebalance and load manual articles.
+
+    Returns news_context with keys: market, sectors, company (symbol->articles),
+    manual, and company_prompt_cap (int rendering cap consumed by _articles_for_stock).
+    """
     deps = state["deps"]
     data_service = deps["data_service"]
     as_of_date = deps.get("as_of_date")
@@ -69,6 +78,18 @@ async def _run_prefetch_news(state: EquitiesWorkflowState) -> dict:
     else:
         sector_articles = {}
 
+    company_fetch_limit = deps.get("company_news_fetch_limit", 10)
+    company_articles: dict[str, list[dict]] = {}
+    for stock in sorted(state.get("screened", []), key=lambda s: s.symbol):
+        try:
+            company_result = await data_service.get_news(symbols=[stock.symbol], since=since, limit=company_fetch_limit)
+            raw = list(company_result.get("articles", []))
+        except Exception:
+            logger.warning("Company news fetch failed for %s", stock.symbol, exc_info=True)
+            raw = []
+        filtered = filter_company_articles(raw, stock.symbol, stock.company_name)
+        company_articles[stock.symbol] = tag_scope(filtered, "company")
+
     manual_articles: list[dict] = []
     if manual_root is not None and as_of_date is not None:
         try:
@@ -78,10 +99,11 @@ async def _run_prefetch_news(state: EquitiesWorkflowState) -> dict:
             logger.warning("Manual news load failed", exc_info=True)
 
     logger.info(
-        "News prefetch: %d market + %d sector articles across %d sectors + %d manual",
+        "News prefetch: %d market + %d sector articles across %d sectors + %d company + %d manual",
         len(market_articles),
         sum(len(v) for v in sector_articles.values()),
         len(unique_sectors),
+        sum(len(v) for v in company_articles.values()),
         len(manual_articles),
     )
 
@@ -89,21 +111,36 @@ async def _run_prefetch_news(state: EquitiesWorkflowState) -> dict:
         "news_context": {
             "market": market_articles,
             "sectors": sector_articles,
+            "company": company_articles,
             "manual": manual_articles,
+            "company_prompt_cap": deps.get("company_news_prompt_cap", 6),
         }
     }
 
 
 def _articles_for_stock(stock, news_context: dict) -> list[dict]:
-    """Merge market + stock-sector + manual articles scoped to market or the stock's sector."""
-    market = list(news_context.get("market", []))
+    """Merge manual + company + sector + market articles for one stock.
+
+    Articles are scope-tagged, URL/title-deduped (manual > company > sector >
+    market), and company articles are capped (newest first). Manual articles
+    match by scope == "market", the stock's sector, or the stock's symbol.
+    """
+    market = tag_scope(list(news_context.get("market", [])), "market")
     sector_map = news_context.get("sectors", {})
-    sector_articles = list(sector_map.get(stock.sector, [])) if stock.sector else []
-    manual = news_context.get("manual", [])
-    manual_matching = [
-        a for a in manual if a.get("scope") == "market" or (stock.sector and a.get("scope") == stock.sector)
-    ]
-    return market + sector_articles + manual_matching
+    sector = tag_scope(list(sector_map.get(stock.sector, [])) if stock.sector else [], "sector")
+    company = news_context.get("company", {}).get(stock.symbol, [])
+    manual = tag_scope(
+        [
+            a
+            for a in news_context.get("manual", [])
+            if a.get("scope") == "market"
+            or (stock.sector and a.get("scope") == stock.sector)
+            or a.get("scope") == stock.symbol
+        ],
+        "manual",
+    )
+    cap = news_context.get("company_prompt_cap", 6)
+    return merge_and_dedupe(manual, company, sector, market, company_cap=cap)
 
 
 async def _run_news_analysis(state: EquitiesWorkflowState) -> dict:

@@ -42,6 +42,7 @@ infrastructure/pgdata/
 # per-developer state and get regenerated from the source tree.
 # Reference data under data/universes/ is NOT ignored.
 data/backtest_runs/
+data/experiments/
 data/skill_bundles/
 data/llm_response_cache.db
 data/llm_response_cache.db-journal

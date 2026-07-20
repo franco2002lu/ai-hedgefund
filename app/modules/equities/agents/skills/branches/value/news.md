@@ -8,13 +8,13 @@ Value investors pay less than intrinsic value for existing cash flows. Returns d
 - Catalysts that force the market to re-evaluate an underpriced asset — insider buying, activist involvement, material capital-return announcements.
 - Rotation dynamics — value tends to underperform in growth-euphoria environments and outperform when investors rotate toward near-term cash flows (often during rising-rate or risk-off periods).
 
-## Reading the Three Layers
+## Reading the Sections
 
-When reading the three input layers through a value-branch lens:
+When reading the input sections through a value-branch lens:
 
-- **Market layer**: weight rotation signals heavily. Rising rates favor near-term cash flows (value tailwind); a clear growth-to-value rotation in market commentary is a direct signal. Flight to quality during risk-off episodes tends to help established value franchises. Rapid risk-on rallies and falling rates drive investors away from value into long-duration growth.
-- **Sector layer**: traditional value sectors (financials, energy, industrials, utilities, materials) have distinct drivers — rising net interest margins for financials, commodity price strength for energy and materials, capex cycles for industrials. Watch carefully for structural-decline narratives dominating sector news: these are the seeds of value traps where the sector is cheap because its terminal value is eroding.
-- **Stock-specific layer**: prioritize concrete re-rating catalysts — insider buying (especially CEO/CFO personal share purchases), activist investor involvement, dividend increases, buybacks executed at depressed valuations, analyst upgrades from sell or underperform ratings.
+- **Market section**: weight rotation signals heavily. Rising rates favor near-term cash flows (value tailwind); a clear growth-to-value rotation in market commentary is a direct signal. Flight to quality during risk-off episodes tends to help established value franchises. Rapid risk-on rallies and falling rates drive investors away from value into long-duration growth.
+- **Sector section**: traditional value sectors (financials, energy, industrials, utilities, materials) have distinct drivers — rising net interest margins for financials, commodity price strength for energy and materials, capex cycles for industrials. Watch carefully for structural-decline narratives dominating sector news: these are the seeds of value traps where the sector is cheap because its terminal value is eroding.
+- **Company-specific section (and ticker-relevant curated notes)**: prioritize concrete re-rating catalysts — insider buying (especially CEO/CFO personal share purchases), activist investor involvement, dividend increases, buybacks executed at depressed valuations, analyst upgrades from sell or underperform ratings.
 
 ## Stock-Exposure Emphasis
 
@@ -22,7 +22,7 @@ Within sector tailwinds, favor established franchises with durable cash flows ov
 
 ## Signals That Warrant Strong Conviction
 
-**Strongly bullish — typically an 8-9 signal zone when isolated, a 9 when multiple layers align:**
+**Strongly bullish — typically an 8-9 signal zone when isolated, a 9 when multiple scopes align:**
 - Insider buying with personal funds — the strongest conviction signal available, because insiders are betting their own capital
 - An activist investor taking a meaningful position with a public thesis
 - Dividend raise or a buyback announcement at a clearly depressed valuation
@@ -33,7 +33,7 @@ Within sector tailwinds, favor established franchises with durable cash flows ov
 - Sector tailwind from a known driver but without stock-specific corroboration
 - Stock-specific: analyst upgrade off a neutral rating, modest capital-return increase
 
-**Strongly bearish — typically a 2-3 signal zone, a 1-2 when multiple layers align:**
+**Strongly bearish — typically a 2-3 signal zone, a 1-2 when multiple scopes align:**
 - Dividend cut — directly destroys the capital-return thesis, and usually signals deeper business distress
 - A structural-decline narrative dominating sector news (not a cyclical headwind but secular erosion of the business model)
 - A growth-euphoria melt-up environment where long-duration assets are rallying and value is being left behind

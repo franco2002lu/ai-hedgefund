@@ -100,6 +100,12 @@ class AgentsConfig(BaseModel):
 
     max_concurrent_analyses: int = 10
 
+    # Per-ticker company news (2026-07-17 per-ticker news spec):
+    # fetch_limit = raw articles requested per symbol from Yahoo;
+    # prompt_cap = filtered company articles rendered per stock prompt.
+    company_news_fetch_limit: int = 10
+    company_news_prompt_cap: int = 6
+
     # Composite score weights (must sum to 1.0).
     # 2026-06-10: reweighted toward fundamentals based on live rank-IC
     # (fund +0.04, news -0.20, tech -0.19 over 5 production weeks) — see

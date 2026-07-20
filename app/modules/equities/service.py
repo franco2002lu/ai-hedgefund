@@ -324,6 +324,8 @@ class EquitiesBranchService:
                 "as_of_date": as_of_date,
                 "news_window_days": news_window_days,
                 "manual_news_root": manual_news_root,
+                "company_news_fetch_limit": self.config.agents.company_news_fetch_limit,
+                "company_news_prompt_cap": self.config.agents.company_news_prompt_cap,
                 "rankers": rankers,
             },
         }

@@ -6,7 +6,7 @@ that LLMs can reason over effectively. Pure functions — no state, no DI.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 
 # ---------------------------------------------------------------------------
 # Fundamentals metric definitions: (metric_key, display_label, format_type)
@@ -169,10 +169,7 @@ def _compute_macd(
     offset = slow - fast
     if offset >= len(fast_ema):
         return None
-    macd_line_series = [
-        fast_ema[i + offset] - slow_ema[i]
-        for i in range(len(slow_ema))
-    ]
+    macd_line_series = [fast_ema[i + offset] - slow_ema[i] for i in range(len(slow_ema))]
     if len(macd_line_series) < signal:
         return None
     signal_ema = _ema(macd_line_series, signal)
@@ -469,20 +466,24 @@ def format_technical_context(
         except (ValueError, TypeError):
             ts_display = str(ts)
 
-        price_rows.append((
-            ts_display,
-            f"${b['open']:,.2f}",
-            f"${b['high']:,.2f}",
-            f"${b['low']:,.2f}",
-            f"${b['close']:,.2f}",
-            _fmt_number(b["volume"], "auto"),
-        ))
+        price_rows.append(
+            (
+                ts_display,
+                f"${b['open']:,.2f}",
+                f"${b['high']:,.2f}",
+                f"${b['low']:,.2f}",
+                f"${b['close']:,.2f}",
+                _fmt_number(b["volume"], "auto"),
+            )
+        )
 
     lines.append(f"## Recent Price Action ({len(recent)} Days)")
-    lines.append(_render_table(
-        ["Date", "Open", "High", "Low", "Close", "Volume"],
-        price_rows,
-    ))
+    lines.append(
+        _render_table(
+            ["Date", "Open", "High", "Low", "Close", "Volume"],
+            price_rows,
+        )
+    )
     lines.append("")
 
     return "\n".join(lines)
@@ -507,37 +508,19 @@ def _parse_datetime(value) -> datetime | None:
     return None
 
 
-def _bucket_articles(
-    articles: list[dict],
-    as_of: datetime | None = None,
-) -> dict[str, list[dict]]:
-    """Sort articles into time buckets: Last 7 Days, Last 30 Days, Older."""
-    now = as_of or datetime.now(UTC)
-    cutoff_7d = now - timedelta(days=7)
-    cutoff_30d = now - timedelta(days=30)
-
-    buckets: dict[str, list[dict]] = {
-        "Last 7 Days": [],
-        "Last 30 Days": [],
-        "Older": [],
-    }
-
-    # Parse and sort articles by date descending
-    parsed: list[tuple[datetime, dict]] = []
-    for article in articles:
-        pub = _parse_datetime(article.get("published_at"))
-        parsed.append((pub or datetime.min.replace(tzinfo=UTC), article))
-    parsed.sort(key=lambda x: x[0], reverse=True)
-
-    for pub, article in parsed:
-        if pub >= cutoff_7d:
-            buckets["Last 7 Days"].append(article)
-        elif pub >= cutoff_30d:
-            buckets["Last 30 Days"].append(article)
-        else:
-            buckets["Older"].append(article)
-
-    return buckets
+def _news_rows(items: list[dict]) -> list[tuple]:
+    """Date/Source/Headline rows sorted newest-first."""
+    parsed = []
+    for a in items:
+        pub = _parse_datetime(a.get("published_at"))
+        parsed.append((pub or datetime.min.replace(tzinfo=UTC), pub, a))
+    parsed.sort(key=lambda t: t[0], reverse=True)
+    rows = []
+    for _, pub, a in parsed:
+        date_str = pub.strftime("%b %d") if pub else "--"
+        source = a.get("author") or a.get("source", "--")
+        rows.append((date_str, source, a.get("title", "No title")))
+    return rows
 
 
 def format_news_context(
@@ -546,7 +529,13 @@ def format_news_context(
     sector: str | None,
     articles: list[dict],
 ) -> str:
-    """Format news articles as structured markdown with dates and sources."""
+    """Format news articles as scope-grouped markdown sections.
+
+    Section order: Company-specific, Sector, Market, Curated. An empty company
+    section renders an explicit absence line (the analyst treats it as
+    neutral); other empty sections are omitted. Untagged articles fall back to
+    market scope.
+    """
     sector_display = sector or "Unknown"
     lines = [
         f"# {symbol} — {company_name} | Recent News",
@@ -558,26 +547,26 @@ def format_news_context(
         lines.append(f"No recent news available for {symbol}.")
         return "\n".join(lines)
 
-    # Determine reference time from the most recent article
-    most_recent = None
-    for a in articles:
-        pub = _parse_datetime(a.get("published_at"))
-        if pub and (most_recent is None or pub > most_recent):
-            most_recent = pub
-    buckets = _bucket_articles(articles, as_of=most_recent)
+    by_scope: dict[str, list[dict]] = {"company": [], "sector": [], "market": [], "manual": []}
+    for article in articles:
+        scope = article.get("scope")
+        by_scope[scope if scope in by_scope else "market"].append(article)
 
-    for bucket_name, bucket_articles in buckets.items():
-        if not bucket_articles:
+    sections = [
+        ("company", f"Company-specific ({symbol})"),
+        ("sector", f"Sector ({sector_display})"),
+        ("market", "Market"),
+        ("manual", "Curated"),
+    ]
+    for scope, title in sections:
+        items = by_scope[scope]
+        if not items and scope != "company":
             continue
-        lines.append(f"## {bucket_name}")
-        rows = []
-        for a in bucket_articles:
-            pub = _parse_datetime(a.get("published_at"))
-            date_str = pub.strftime("%b %d") if pub else "--"
-            source = a.get("author") or a.get("source", "--")
-            title = a.get("title", "No title")
-            rows.append((date_str, source, title))
-        lines.append(_render_table(["Date", "Source", "Headline"], rows))
+        lines.append(f"## {title}")
+        if not items:
+            lines.append(f"No company-specific headlines found for {symbol}.")
+        else:
+            lines.append(_render_table(["Date", "Source", "Headline"], _news_rows(items)))
         lines.append("")
 
     return "\n".join(lines)

@@ -103,6 +103,7 @@ Each module in `app/modules/` follows: `api.py` (FastAPI router) → `service.py
 - `universe/provider.py` fetches stock universe, `universe/screener.py` applies filter pipeline
 - Screener builds branch-specific filters at runtime: 5 shared + 6 growth-specific or 6 value-specific filters via `_build_screener(branch_name)`
 - 3 LLM analyst agents (`news_analyst.py`, `fundamentals_analyst.py`, `technical_analyst.py`) run as a LangGraph fan-out/fan-in in `agents/graph.py`
+- News context is scope-labeled since 2026-07 (per-ticker news spec): graph-level prefetch fetches market (SPY) + per-sector ETF + **per-company** headlines (screened symbols only, sequential, TTL-cached via `DataPlatformService`), applies a ticker/company-name title filter (`agents/news_scope.py`), tags scope (`company`/`sector`/`market`/`manual`), and merges with URL dedupe (manual > company > sector > market, company capped by `AgentsConfig.company_news_prompt_cap`). A failed company fetch degrades that symbol to sector+market only. Backtests have no news adapters, so company scope is always empty there.
 - `agents/portfolio_manager.py` aggregates signals into composite scores and generates rebalance orders
 - Per-request services (trade execution, portfolio, event log, DB session) are injected at `run_pipeline()` call time from the API endpoint, not at singleton init
 
