@@ -32,7 +32,10 @@ def test_negative_cash_is_critical():
     assert a.metric == "cash"
     assert a.current_value == -55_473.33
     assert a.threshold == 0.0
+    assert a.source == "b-1"
     assert "growth" in a.message
+    assert "(-$55,473.33)" in a.message
+    assert "2026-06-22" in a.action_required
     assert a.affected_branches == ["growth"]
 
 
@@ -45,6 +48,7 @@ def test_high_cash_pct_is_warning():
     assert len(alerts) == 1
     assert alerts[0].level == RiskAlertLevel.WARNING
     assert alerts[0].metric == "cash_pct"
+    assert alerts[0].current_value == 0.06  # 60_000/1_000_000 is exact in binary
     assert alerts[0].threshold == CASH_PCT_WARN
 
 

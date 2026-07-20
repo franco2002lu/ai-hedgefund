@@ -6,13 +6,9 @@ RiskAlert drafts. Persistence and digest rendering happen in the weekly CLI.
 
 from __future__ import annotations
 
-import logging
-
 from app.common.enums import RiskAlertLevel
 from app.common.models.risk import RiskAlert
 from app.modules.equities.config import PortfolioConfig
-
-logger = logging.getLogger(__name__)
 
 # Check parameters — invariant tolerances, not strategy knobs, so they are
 # module constants rather than PortfolioConfig fields.
@@ -37,6 +33,9 @@ def evaluate_post_run_invariants(
     """
     alerts: list[RiskAlert] = []
 
+    # Deliberately zero-tolerance: with the fill-time cash gate + 1% sizing
+    # buffer, ANY overdraft (even cents) means an execution-logic flaw, not
+    # noise.
     if cash < 0:
         alerts.append(
             RiskAlert(
@@ -45,7 +44,7 @@ def evaluate_post_run_invariants(
                 metric="cash",
                 current_value=cash,
                 threshold=0.0,
-                message=f"{branch_name}: cash is negative (${cash:,.2f}) — long-only book must not overdraw",
+                message=f"{branch_name}: cash is negative (-${abs(cash):,.2f}) — long-only book must not overdraw",
                 action_required="Investigate order sizing/execution (see 2026-06-22 leverage incident).",
                 affected_branches=[branch_name],
             )
