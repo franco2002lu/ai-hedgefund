@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.common.enums import RiskAlertLevel
 from app.common.events.risk import RiskAlertEvent
+from app.common.interfaces.repositories import EventLogRepository, RiskAlertRepository
 from app.common.models.risk import RiskAlert
 from app.modules.equities.config import PortfolioConfig
 
@@ -84,11 +85,16 @@ def evaluate_post_run_invariants(
     return alerts
 
 
-async def persist_alerts(alerts: list[RiskAlert], *, repo, event_log) -> None:
+async def persist_alerts(
+    alerts: list[RiskAlert],
+    *,
+    repo: RiskAlertRepository,
+    event_log: EventLogRepository,
+) -> None:
     """Persist alerts as risk_alerts rows plus risk.alert event-log entries.
 
-    repo: RiskAlertRepository; event_log: EventLogRepository. The caller owns
-    transaction scoping (the weekly CLI wraps this in a savepoint).
+    The caller owns transaction scoping (the weekly CLI wraps this in a
+    savepoint).
     """
     for alert in alerts:
         await repo.create(alert)
