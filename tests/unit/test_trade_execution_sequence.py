@@ -237,12 +237,17 @@ async def test_jun22_alphabetical_replay_gate_blocks_the_overdraft():
     assert book.min_cash_seen == _JUN22_START_CASH  # never went lower
     expected_final = _JUN22_START_CASH + _SCHW_PROCEEDS - 3984.7789 * 22.1776
     assert book._cash == pytest.approx(expected_final, abs=0.01)  # ≈ +43,260
+    assert sorted(t.symbol for t in svc.trade_repo.created) == ["SCHW", "T"]
 
 
 async def test_jun22_sells_first_replay_funds_buys_until_cash_runs_out():
     """Current generate_orders ordering (sells first, alphabetical within
     side). The order SET is unfundable — the gate converts what used to be
-    -$236k of leverage into rejections of the unaffordable tail."""
+    -$236k of leverage into rejections of the unaffordable tail.
+
+    The sells-first ordering itself is pinned in
+    tests/unit/equities/test_order_generation_cash.py; these tests hardcode
+    the submission order and guard the gate's behavior under it."""
     svc = _jun22_svc()
     results = await _submit_all(svc, ["SCHW", "ACN", "BLK", "CRM", "DIS", "T"])
 
@@ -259,11 +264,16 @@ async def test_jun22_sells_first_replay_funds_buys_until_cash_runs_out():
         _JUN22_START_CASH + _SCHW_PROCEEDS - 435.0051 * 120.8804 - 19.8133 * 1055.6726
     )
     assert book._cash == pytest.approx(expected_final, abs=0.01)  # ≈ +58,134
+    assert sorted(t.symbol for t in svc.trade_repo.created) == ["ACN", "BLK", "SCHW"]
 
 
 async def test_deleverage_from_negative_cash_ends_non_negative():
     """The 2026-07-20 situation: an overdrawn book (growth cash -$55,473) with
-    a net-selling rebalance delevers cleanly — sells first, then buys fit."""
+    a net-selling rebalance delevers cleanly — sells first, then buys fit.
+
+    The sells-first ordering itself is pinned in
+    tests/unit/equities/test_order_generation_cash.py; these tests hardcode
+    the submission order and guard the gate's behavior under it."""
     svc = _svc(
         cash=-55_473.33,
         prices={"AAA": 100.0, "BBB": 100.0},
@@ -276,3 +286,12 @@ async def test_deleverage_from_negative_cash_ends_non_negative():
     book = svc.portfolio_service
     assert book._cash == pytest.approx(4_526.67, abs=0.01)
     assert book._cash >= 0
+
+
+async def test_buy_cents_above_available_cash_is_rejected():
+    """Kills tolerance-magnitude regressions: a buy costing a few cents more
+    than available cash must reject (the gate's tolerance is 1e-6, not dollars)."""
+    svc = _svc(cash=1_000.0, prices={"AAA": 100.005}, positions={})
+    result = await svc.submit_order(_req("AAA", OrderSide.BUY, 10.0))  # cost 1_000.05
+    assert result["success"] is False
+    assert svc.trade_repo.created == []
