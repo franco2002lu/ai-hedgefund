@@ -18,6 +18,10 @@ from app.common.interfaces.repositories import (
 from app.common.models.order import Order, OrderRequest
 from app.modules.portfolio.service import PortfolioService
 
+# Full-exit quantities travel through Decimal->float conversions; treat a
+# quantity within this tolerance of the held quantity as "sell everything".
+FULL_EXIT_QTY_TOLERANCE = 1e-6
+
 
 class TradeExecutionService:
     def __init__(
@@ -48,6 +52,17 @@ class TradeExecutionService:
         validation_error = await self._validate_order(req)
         if validation_error:
             return {"success": False, "order_id": None, "status": "rejected", "message": validation_error}
+
+        # Clamp near-held SELL quantities to exactly the held quantity so a
+        # full exit closes the position to exactly zero (delete_if_flat fires)
+        # and can never trip handle_trade_executed's oversell guard. Must
+        # happen before the Order row is created so order and trade agree.
+        if req.side == OrderSide.SELL:
+            position = await self.portfolio_service.get_position_by_symbol(req.branch_id, req.symbol)
+            if position is not None:
+                held = position.long_quantity
+                if held > 0 and abs(req.quantity - held) <= FULL_EXIT_QTY_TOLERANCE and req.quantity != held:
+                    req = req.model_copy(update={"quantity": held})
 
         # Create order record
         order = Order(
@@ -235,8 +250,11 @@ class TradeExecutionService:
 
         elif req.side == OrderSide.SELL:
             position = await self.portfolio_service.get_position_by_symbol(req.branch_id, req.symbol)
-            if position is None or position.long_quantity < req.quantity:
-                held = position.long_quantity if position else 0
+            held = position.long_quantity if position else 0
+            # 1e-6 tolerance: full-exit quantities travel through float
+            # conversions; a hair above the held quantity is a full exit,
+            # not an oversell.
+            if position is None or req.quantity > held + FULL_EXIT_QTY_TOLERANCE:
                 return f"Insufficient position: hold {held} {req.symbol}, tried to sell {req.quantity}"
 
         elif req.side == OrderSide.COVER:
