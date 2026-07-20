@@ -6,6 +6,7 @@ from app.common.events.base import BaseEvent
 from app.common.models.order import Order
 from app.common.models.portfolio import PortfolioSnapshot, PortfolioSummary
 from app.common.models.position import Position
+from app.common.models.risk import RiskAlert
 from app.common.models.trade import Trade
 
 
@@ -122,3 +123,8 @@ class EventLogRepository(ABC):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict]: ...
+
+
+class RiskAlertRepository(ABC):
+    @abstractmethod
+    async def create(self, alert: RiskAlert) -> RiskAlert: ...

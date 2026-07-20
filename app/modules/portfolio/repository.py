@@ -9,16 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.interfaces.repositories import (
     PortfolioRepository,
     PositionRepository,
+    RiskAlertRepository,
     SnapshotRepository,
 )
 from app.common.models.portfolio import PortfolioSnapshot, PortfolioSummary
 from app.common.models.position import Position
+from app.common.models.risk import RiskAlert
 from app.db.models import (
     BranchModel,
     FundModel,
     PortfolioModel,
     PortfolioSnapshotModel,
     PositionModel,
+    RiskAlertModel,
 )
 
 
@@ -345,3 +348,26 @@ class PostgresSnapshotRepository(SnapshotRepository):
             positions_detail=model.positions_detail,
             snapshot_at=model.snapshot_at,
         )
+
+
+class PostgresRiskAlertRepository(RiskAlertRepository):
+    """First writer to the risk_alerts table (dead schema until Theme A1)."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self, alert: RiskAlert) -> RiskAlert:
+        row = RiskAlertModel(
+            level=str(alert.level),
+            source=alert.source,
+            metric=alert.metric,
+            current_value=alert.current_value,
+            threshold=alert.threshold,
+            message=alert.message,
+            action_required=alert.action_required,
+            affected_branches=alert.affected_branches,
+            resolved=alert.resolved,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return alert.model_copy(update={"id": str(row.id)})
