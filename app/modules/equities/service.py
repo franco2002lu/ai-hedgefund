@@ -152,6 +152,7 @@ class EquitiesBranchService:
 
         # --- Gap 2: Read real portfolio state ---
         current_positions: dict[str, float] = {}
+        current_quantities: dict[str, float] = {}
         nav = 1_000_000.0
         if ps:
             try:
@@ -160,6 +161,7 @@ class EquitiesBranchService:
                     nav = float(portfolio.nav) if portfolio.nav else 1_000_000.0
                     for pos in portfolio.positions:
                         if pos.long_quantity > 0 and nav > 0:
+                            current_quantities[pos.symbol] = float(pos.long_quantity)
                             # Use market value (price × qty) instead of cost basis
                             # so weights reflect current allocation, not historical cost
                             price = None
@@ -318,6 +320,7 @@ class EquitiesBranchService:
                 "technical_analyst": self.technical_analyst,
                 "portfolio_manager": pm,
                 "current_positions": current_positions,
+                "current_quantities": current_quantities,
                 "nav": nav,
                 "execute_trade_fn": execute_trade_fn,
                 "max_concurrent_analyses": self.config.agents.max_concurrent_analyses,

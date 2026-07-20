@@ -217,6 +217,7 @@ def build_equities_graph(branch_name: str):
         pm = deps["portfolio_manager"]
         data_service = deps["data_service"]
         current_positions = deps.get("current_positions", {})
+        current_quantities = deps.get("current_quantities")
         nav = deps.get("nav", 1_000_000.0)
         scores = pm.compute_composite_scores(state["signals"])
         selected = pm.select_stocks(scores, current_holdings=set(current_positions))
@@ -231,7 +232,7 @@ def build_equities_graph(branch_name: str):
                 price = await data_service.get_current_price(sym)
                 if price:
                     prices[sym] = price
-        orders = pm.generate_orders(sized, current_positions, nav, prices)
+        orders = pm.generate_orders(sized, current_positions, nav, prices, current_quantities=current_quantities)
         logger.info("Portfolio manager generated %d orders", len(orders))
         return {"scores": scores, "targets": sized, "orders": orders}
 

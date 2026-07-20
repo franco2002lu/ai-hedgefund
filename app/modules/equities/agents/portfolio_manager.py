@@ -156,8 +156,15 @@ class PortfolioManager:
         current_positions: dict[str, float],
         nav: float,
         prices: dict[str, float],
+        current_quantities: dict[str, float] | None = None,
     ) -> list[RebalanceOrder]:
-        """Generate BUY/SELL orders by diffing target vs current portfolio."""
+        """Generate BUY/SELL orders by diffing target vs current portfolio.
+
+        current_quantities (symbol -> held share count) enables full exits: a
+        held name with target weight 0 sells its ENTIRE held quantity,
+        bypassing the rebalance threshold — no fractional dust survives an
+        exit. Callers that omit it get the legacy delta-only behavior.
+        """
         orders = []
         threshold = self.portfolio_config.min_rebalance_threshold
         target_map = {s.symbol: s.target_weight for s in target}
@@ -169,10 +176,26 @@ class PortfolioManager:
         for symbol in all_symbols:
             target_weight = target_map.get(symbol, 0.0)
             current_weight = current_positions.get(symbol, 0.0)
+            price = prices.get(symbol)
+            held = (current_quantities or {}).get(symbol, 0.0)
+            if target_weight == 0.0 and current_weight > 0.0 and held > 0.0:
+                # Full exit: sell exactly what is held. Unpriced names are
+                # still skipped — execution could not fill them anyway and
+                # they stay visible via the digest 'unpriced' warning.
+                if not price or price <= 0:
+                    continue
+                orders.append(
+                    RebalanceOrder(
+                        symbol=symbol,
+                        side="sell",
+                        quantity=held,
+                        reason="removed_position",
+                    )
+                )
+                continue
             delta = target_weight - current_weight
             if abs(delta) < threshold:
                 continue
-            price = prices.get(symbol)
             if not price or price <= 0:
                 continue
             quantity = round(abs(delta * nav) / price, 4)
