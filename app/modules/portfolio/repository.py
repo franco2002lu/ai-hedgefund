@@ -367,6 +367,7 @@ class PostgresRiskAlertRepository(RiskAlertRepository):
             action_required=alert.action_required,
             affected_branches=alert.affected_branches,
             resolved=alert.resolved,
+            created_at=alert.created_at,
         )
         self.session.add(row)
         await self.session.flush()

@@ -38,8 +38,10 @@ async def test_create_persists_row_and_returns_alert_with_id():
     saved = await repo.create(alert)
 
     assert saved.id is not None
+    assert isinstance(saved.id, str)
     assert len(session.added) == 1
     row = session.added[0]
+    assert saved.id == str(row.id)
     assert row.level == "critical"
     assert row.metric == "cash"
     assert row.current_value == -55473.33
@@ -62,3 +64,4 @@ async def test_create_preserves_action_required_none():
     )
     await repo.create(alert)
     assert session.added[0].action_required is None
+    assert session.added[0].affected_branches == []
