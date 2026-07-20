@@ -36,6 +36,9 @@ class PortfolioConfig(BaseModel):
     max_holdings: int = 30
     max_position_weight: float = 0.50
     min_rebalance_threshold: float = 0.02
+    # Entries trade down to 0.5% targets; the 2% band above applies only to
+    # adjustments of names already held (2026-07-19 Theme A3 decision).
+    min_entry_weight: float = 0.005
     min_composite_score: float = 4.0
     # A held stock exits when its composite score drops below
     # max(exit_score_threshold, min_composite_score) or it falls outside

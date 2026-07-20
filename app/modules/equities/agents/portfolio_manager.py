@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 
 from app.common.enums import OrderSide
 from app.modules.equities.config import AgentsConfig, PortfolioConfig
 from app.modules.equities.models import CompositeScore, RebalanceOrder, StockSignal
+
+logger = logging.getLogger(__name__)
 
 
 class PortfolioManager:
@@ -166,7 +169,6 @@ class PortfolioManager:
         exit. Callers that omit it get the legacy delta-only behavior.
         """
         orders = []
-        threshold = self.portfolio_config.min_rebalance_threshold
         target_map = {s.symbol: s.target_weight for s in target}
         # sorted() is required: iterating a set of symbol strings produces
         # hash-randomized order (PYTHONHASHSEED), which causes the resulting
@@ -194,7 +196,18 @@ class PortfolioManager:
                 )
                 continue
             delta = target_weight - current_weight
+            is_entry = current_weight == 0.0
+            threshold = (
+                self.portfolio_config.min_entry_weight if is_entry else self.portfolio_config.min_rebalance_threshold
+            )
             if abs(delta) < threshold:
+                if is_entry and target_weight > 0.0:
+                    logger.info(
+                        "Skipping sub-threshold entry %s: target %.3f%% < %.3f%%",
+                        symbol,
+                        target_weight * 100,
+                        threshold * 100,
+                    )
                 continue
             if not price or price <= 0:
                 continue
