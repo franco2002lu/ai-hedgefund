@@ -7,6 +7,7 @@ from app.modules.equities.risk_checks import (
     POSITION_WEIGHT_TOLERANCE,
     evaluate_post_run_invariants,
     persist_alerts,
+    to_digest_dicts,
 )
 
 
@@ -121,3 +122,28 @@ async def test_persist_alerts_empty_is_noop():
     repo, log = FakeRepo(), FakeEventLog()
     await persist_alerts([], repo=repo, event_log=log)
     assert repo.created == [] and log.events == []
+
+
+def test_to_digest_dicts_projects_level_and_message():
+    alerts = _run(cash=-1.0, weights={"A": 0.60}, cap=0.50)
+    dicts = to_digest_dicts(alerts)
+    assert dicts == [
+        {"level": "critical", "message": alerts[0].message},
+        {"level": "critical", "message": alerts[1].message},
+    ]
+    assert all(isinstance(d["level"], str) for d in dicts)
+
+
+def test_evaluated_alert_reaches_rendered_digest_end_to_end():
+    """A negative-cash breach must reach the operator-visible digest verbatim."""
+    from datetime import date
+
+    from app.modules.equities.weekly_runner import render_digest
+    from tests.unit.equities.test_digest_portfolio_report import _report, _summary
+
+    alerts = _run(cash=-55_473.33)
+    digest = render_digest(
+        [_summary(portfolio_report=_report(risk_alerts=to_digest_dicts(alerts)))],
+        run_date=date(2026, 7, 27),
+    )
+    assert "- ❌ CRITICAL: growth: cash is negative (-$55,473.33)" in digest

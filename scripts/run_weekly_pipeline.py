@@ -31,6 +31,7 @@ from app.config import settings  # noqa: E402
 from app.db.connection import async_session_factory  # noqa: E402
 from app.dependencies import get_equities_service, get_paper_broker, init_services  # noqa: E402
 from app.modules.equities.attribution import AttributionEngine  # noqa: E402
+from app.modules.equities.risk_checks import evaluate_post_run_invariants, persist_alerts, to_digest_dicts  # noqa: E402
 from app.modules.equities.weekly_runner import (  # noqa: E402
     ManualInterventionRequired,
     RunInFlightError,
@@ -43,6 +44,7 @@ from app.modules.event_log.repository import PostgresEventLogRepository  # noqa:
 from app.modules.portfolio.repository import (  # noqa: E402
     PostgresPortfolioRepository,
     PostgresPositionRepository,
+    PostgresRiskAlertRepository,
     PostgresSnapshotRepository,
 )
 from app.modules.portfolio.service import PortfolioService  # noqa: E402
@@ -166,6 +168,7 @@ async def _run_one_branch(
             branch_id=branch_id,
             branch_name=branch_name,
             data_service=equities_service.data_service,
+            portfolio_config=equities_service.config.portfolio,
             summary=summary,
             run_started_at=run_started_at,
         )
@@ -178,6 +181,7 @@ async def _mark_snapshot_and_report(
     branch_id: str,
     branch_name: str,
     data_service,
+    portfolio_config,
     summary: WeeklyRunSummary,
     run_started_at: datetime,
 ) -> None:
@@ -255,6 +259,39 @@ async def _mark_snapshot_and_report(
                 ],
                 unpriced=mtm.unpriced,
             )
+
+            # Theme A1: post-run invariant checks — completed runs only
+            # (a skipped idempotent rerun must not duplicate alert rows).
+            if summary.status == "completed":
+                weights = {d["symbol"]: d["weight"] for d in mtm.positions_detail}
+                alerts = evaluate_post_run_invariants(
+                    cash=mtm.cash,
+                    nav=mtm.nav,
+                    position_weights=weights,
+                    portfolio_config=portfolio_config,
+                    branch_id=branch_id,
+                    branch_name=branch_name,
+                )
+                report.risk_alerts = to_digest_dicts(alerts)
+                if alerts:
+                    try:
+                        # Savepoint: a persistence failure must not roll back
+                        # the snapshot/mark in the enclosing transaction.
+                        async with session.begin_nested():
+                            await persist_alerts(
+                                alerts,
+                                repo=PostgresRiskAlertRepository(session),
+                                event_log=event_log,
+                            )
+                    except Exception:
+                        logger.warning(
+                            "Risk alert persistence failed for %s — digest still shows them",
+                            branch_name,
+                            exc_info=True,
+                        )
+                        report.risk_alerts.append(
+                            {"level": "warning", "message": "Risk alert persistence failed — see run logs"}
+                        )
         # Assign only after the `async with` block above has exited normally,
         # i.e. the transaction committed. If commit itself raises, control
         # skips straight to `except` below and portfolio_report is left

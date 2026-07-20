@@ -358,6 +358,9 @@ def _fmt_money(x: float) -> str:
     return f"-${abs(x):,.0f}" if x < 0 else f"${x:,.0f}"
 
 
+_ALERT_ICONS = {"critical": "❌ CRITICAL", "warning": "⚠️ WARNING", "info": "ℹ️ INFO"}
+
+
 def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
     """Build the markdown digest written to $GITHUB_STEP_SUMMARY."""
     lines = [f"# Weekly Rebalance — {run_date.isoformat()}", ""]
@@ -448,8 +451,10 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
                 if r.unpriced > 0:
                     lines.append(f"- ⚠️ {r.unpriced} position(s) unpriced — carried at cost basis")
                 for alert in r.risk_alerts:
-                    icon = "❌ CRITICAL" if alert["level"] == "critical" else "⚠️ WARNING"
-                    lines.append(f"- {icon}: {alert['message']}")
+                    # Unknown/malformed levels escalate rather than downgrade:
+                    # this surface exists to expose breaches, never to hide one.
+                    icon = _ALERT_ICONS.get(alert.get("level"), "❌ CRITICAL")
+                    lines.append(f"- {icon}: {alert.get('message', '<malformed alert>')}")
         elif s.status == "failed":
             lines.append(f"- Duration before failure: {_format_duration(s.duration_seconds)}")
             lines.append(f"- Error: `{s.error or 'unknown'}`")

@@ -130,3 +130,19 @@ def test_digest_negative_cash_line_comes_from_alerts_not_hardcode():
     )
     assert "Negative cash balance" not in text
     assert "CRITICAL" not in text
+
+
+def test_digest_unknown_alert_level_escalates_to_critical():
+    text = render_digest(
+        [_summary(portfolio_report=_report(risk_alerts=[{"level": "CRITICAL", "message": "case-drifted level"}]))],
+        run_date=date(2026, 7, 27),
+    )
+    assert "- ❌ CRITICAL: case-drifted level" in text
+
+
+def test_digest_malformed_alert_does_not_crash_rendering():
+    text = render_digest(
+        [_summary(portfolio_report=_report(risk_alerts=[{}]))],
+        run_date=date(2026, 7, 27),
+    )
+    assert "- ❌ CRITICAL: <malformed alert>" in text

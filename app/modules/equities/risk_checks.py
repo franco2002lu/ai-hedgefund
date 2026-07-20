@@ -110,3 +110,8 @@ async def persist_alerts(
                 affected_branches=alert.affected_branches,
             )
         )
+
+
+def to_digest_dicts(alerts: list[RiskAlert]) -> list[dict]:
+    """Project alerts to the digest's rendering shape (see PortfolioReport.risk_alerts)."""
+    return [{"level": str(alert.level), "message": alert.message} for alert in alerts]
