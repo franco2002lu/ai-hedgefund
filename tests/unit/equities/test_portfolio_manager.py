@@ -756,3 +756,15 @@ def test_weight_adjustment_keeps_two_percent_band():
 
 def test_min_entry_weight_default_is_half_percent():
     assert PortfolioConfig().min_entry_weight == 0.005
+
+
+def test_entry_at_exactly_half_percent_trades():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[_score_with_weight("EDGE", 0.005)],  # exactly min_entry_weight: strict < means it trades
+        current_positions={},
+        nav=1_000_000.0,
+        prices={"EDGE": 100.0},
+    )
+    assert len(orders) == 1
+    assert orders[0].quantity == 50.0  # 0.005 * 1M / 100
