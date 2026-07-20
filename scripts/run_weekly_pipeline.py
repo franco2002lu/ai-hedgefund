@@ -176,6 +176,56 @@ async def _run_one_branch(
     return summary
 
 
+async def _evaluate_and_persist_alerts(
+    *,
+    session,
+    alert_repo,
+    event_log,
+    mtm,
+    portfolio_config,
+    branch_id: str,
+    branch_name: str,
+    status: str,
+) -> list[dict]:
+    """Theme A1 post-run invariant checks. Returns digest-shaped alert dicts.
+
+    Completed runs only (a skipped idempotent rerun must not duplicate alert
+    rows). Persistence failures degrade to a digest notice — never raise.
+    """
+    if status != "completed":
+        return []
+    # Weights are market-value/NAV; an unpriced position is carried at cost,
+    # so its weight (and this cap check) can be stale — the digest's separate
+    # "unpriced" warning is the tell.
+    weights = {d["symbol"]: d["weight"] for d in mtm.positions_detail}
+    alerts = evaluate_post_run_invariants(
+        cash=mtm.cash,
+        nav=mtm.nav,
+        position_weights=weights,
+        portfolio_config=portfolio_config,
+        branch_id=branch_id,
+        branch_name=branch_name,
+    )
+    digest_alerts = to_digest_dicts(alerts)
+    if alerts:
+        try:
+            # Pin the savepoint boundary: everything before this (mark,
+            # snapshot, events) must be flushed OUTSIDE the savepoint so a
+            # rollback-to-savepoint can never catch it.
+            await session.flush()
+            async with session.begin_nested():
+                await persist_alerts(alerts, repo=alert_repo, event_log=event_log)
+        except Exception:
+            logger.warning(
+                "Risk alert persistence failed for %s — digest still shows them",
+                branch_name,
+                exc_info=True,
+            )
+            level = "critical" if any(str(a.level) == "critical" for a in alerts) else "warning"
+            digest_alerts.append({"level": level, "message": "Risk alert persistence failed — see run logs"})
+    return digest_alerts
+
+
 async def _mark_snapshot_and_report(
     *,
     branch_id: str,
@@ -260,38 +310,16 @@ async def _mark_snapshot_and_report(
                 unpriced=mtm.unpriced,
             )
 
-            # Theme A1: post-run invariant checks — completed runs only
-            # (a skipped idempotent rerun must not duplicate alert rows).
-            if summary.status == "completed":
-                weights = {d["symbol"]: d["weight"] for d in mtm.positions_detail}
-                alerts = evaluate_post_run_invariants(
-                    cash=mtm.cash,
-                    nav=mtm.nav,
-                    position_weights=weights,
-                    portfolio_config=portfolio_config,
-                    branch_id=branch_id,
-                    branch_name=branch_name,
-                )
-                report.risk_alerts = to_digest_dicts(alerts)
-                if alerts:
-                    try:
-                        # Savepoint: a persistence failure must not roll back
-                        # the snapshot/mark in the enclosing transaction.
-                        async with session.begin_nested():
-                            await persist_alerts(
-                                alerts,
-                                repo=PostgresRiskAlertRepository(session),
-                                event_log=event_log,
-                            )
-                    except Exception:
-                        logger.warning(
-                            "Risk alert persistence failed for %s — digest still shows them",
-                            branch_name,
-                            exc_info=True,
-                        )
-                        report.risk_alerts.append(
-                            {"level": "warning", "message": "Risk alert persistence failed — see run logs"}
-                        )
+            report.risk_alerts = await _evaluate_and_persist_alerts(
+                session=session,
+                alert_repo=PostgresRiskAlertRepository(session),
+                event_log=event_log,
+                mtm=mtm,
+                portfolio_config=portfolio_config,
+                branch_id=branch_id,
+                branch_name=branch_name,
+                status=summary.status,
+            )
         # Assign only after the `async with` block above has exited normally,
         # i.e. the transaction committed. If commit itself raises, control
         # skips straight to `except` below and portfolio_report is left
