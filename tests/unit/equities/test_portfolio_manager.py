@@ -693,3 +693,27 @@ def test_legacy_call_without_quantities_keeps_threshold_behavior():
         prices={"KLAC": 55.0},
     )
     assert orders == []
+
+
+def _score_with_weight(symbol, weight):
+    return CompositeScore(
+        symbol=symbol,
+        composite_score=6.0,
+        composite_confidence=6.0,
+        conviction=36.0,
+        target_weight=weight,
+    )
+
+
+def test_mixed_portfolio_full_exit_sorts_before_buy_and_keeps_threshold_logic():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[_score_with_weight("NEWBUY", 0.05), _score_with_weight("HELD", 0.05)],
+        current_positions={"DUST": 0.0001, "HELD": 0.041},  # HELD delta 0.9% < 2% band
+        nav=1_000_000.0,
+        prices={"DUST": 55.0, "NEWBUY": 100.0, "HELD": 100.0},
+        current_quantities={"DUST": 1.8, "HELD": 410.0},
+    )
+    assert [(o.symbol, str(o.side)) for o in orders] == [("DUST", "sell"), ("NEWBUY", "buy")]
+    assert orders[0].quantity == 1.8  # full exit, exact held
+    # HELD absent: sub-threshold adjustment still blocked by the 2% band

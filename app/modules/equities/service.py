@@ -161,6 +161,10 @@ class EquitiesBranchService:
                     nav = float(portfolio.nav) if portfolio.nav else 1_000_000.0
                     for pos in portfolio.positions:
                         if pos.long_quantity > 0 and nav > 0:
+                            # Lockstep invariant: current_quantities and current_positions
+                            # must be populated under the SAME guard — generate_orders'
+                            # full-exit branch reads held quantities for symbols it
+                            # discovers via current_positions.
                             current_quantities[pos.symbol] = float(pos.long_quantity)
                             # Use market value (price × qty) instead of cost basis
                             # so weights reflect current allocation, not historical cost
