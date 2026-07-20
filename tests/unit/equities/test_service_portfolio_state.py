@@ -59,6 +59,18 @@ async def test_non_positive_nav_raises():
         await read_portfolio_state(ps, None, branch_id="b-1", branch_name="growth")
 
 
+async def test_negative_nav_raises():
+    ps = FakePS(portfolio=_Portfolio(nav=-5.0, positions=[]))
+    with pytest.raises(RuntimeError, match="Non-positive NAV"):
+        await read_portfolio_state(ps, None, branch_id="b-1", branch_name="growth")
+
+
+async def test_zero_quantity_position_is_skipped():
+    ps = FakePS(portfolio=_Portfolio(nav=1_000_000.0, positions=[_Pos("GHOST", 0.0, 0.0)]))
+    nav, weights, quantities = await read_portfolio_state(ps, None, branch_id="b-1", branch_name="growth")
+    assert weights == {} and quantities == {}
+
+
 async def test_empty_book_is_valid_first_run():
     ps = FakePS(portfolio=_Portfolio(nav=1_000_000.0, positions=[]))
     nav, weights, quantities = await read_portfolio_state(ps, None, branch_id="b-1", branch_name="growth")
