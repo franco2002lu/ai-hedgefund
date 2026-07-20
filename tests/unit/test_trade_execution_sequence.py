@@ -169,3 +169,110 @@ async def test_partial_sell_is_not_clamped():
     assert result["success"] is True
     assert svc.trade_repo.created[0].quantity == 4.0
     assert svc.portfolio_service.positions["ACN"] == pytest.approx(6.0)
+
+
+# ---------------------------------------------------------------------------
+# 2026-06-22 incident regression: the value branch filled $368k of buys BEFORE
+# its $132k sell (alphabetical execution, no cash gate) and ran cash to
+# -$236,553 (~24% unintended leverage). These scenarios replay the real order
+# set and assert the fill-time cash gate + sells-first ordering prevent it.
+# Real fills from prod: ACN 435.0051@120.8804, BLK 19.8133@1055.6726,
+# CRM 829.952@147.9439, DIS 821.6356@101.6608, T 3984.7789@22.1776,
+# SELL SCHW 1434.8511@92.0889; starting cash -499.75.
+# ---------------------------------------------------------------------------
+
+_JUN22_PRICES = {
+    "ACN": 120.8804,
+    "BLK": 1055.6726,
+    "CRM": 147.9439,
+    "DIS": 101.6608,
+    "SCHW": 92.0889,
+    "T": 22.1776,
+}
+_JUN22_ORDERS = {
+    "ACN": ("buy", 435.0051),
+    "BLK": ("buy", 19.8133),
+    "CRM": ("buy", 829.952),
+    "DIS": ("buy", 821.6356),
+    "SCHW": ("sell", 1434.8511),
+    "T": ("buy", 3984.7789),
+}
+_JUN22_START_CASH = -499.75
+_SCHW_PROCEEDS = 1434.8511 * 92.0889  # ≈ 132,133.86
+
+
+def _jun22_svc():
+    return _svc(
+        cash=_JUN22_START_CASH,
+        prices=_JUN22_PRICES,
+        positions={"SCHW": 1434.8511},
+    )
+
+
+async def _submit_all(svc, symbols):
+    results = {}
+    for sym in symbols:
+        side, qty = _JUN22_ORDERS[sym]
+        results[sym] = await svc.submit_order(
+            _req(sym, OrderSide.BUY if side == "buy" else OrderSide.SELL, qty)
+        )
+    return results
+
+
+async def test_jun22_alphabetical_replay_gate_blocks_the_overdraft():
+    """Historical submission order (alphabetical). Without the gate this ran
+    cash to -$236,553; with it, every buy ahead of the sell is rejected and
+    cash never drops below its starting value."""
+    svc = _jun22_svc()
+    results = await _submit_all(svc, ["ACN", "BLK", "CRM", "DIS", "SCHW", "T"])
+
+    assert results["ACN"]["success"] is False  # cash was -499.75
+    assert results["BLK"]["success"] is False
+    assert results["CRM"]["success"] is False
+    assert results["DIS"]["success"] is False
+    assert results["SCHW"]["success"] is True  # sells ignore the cash gate
+    assert results["T"]["success"] is True  # funded by the sell proceeds
+
+    book = svc.portfolio_service
+    assert book.min_cash_seen == _JUN22_START_CASH  # never went lower
+    expected_final = _JUN22_START_CASH + _SCHW_PROCEEDS - 3984.7789 * 22.1776
+    assert book._cash == pytest.approx(expected_final, abs=0.01)  # ≈ +43,260
+
+
+async def test_jun22_sells_first_replay_funds_buys_until_cash_runs_out():
+    """Current generate_orders ordering (sells first, alphabetical within
+    side). The order SET is unfundable — the gate converts what used to be
+    -$236k of leverage into rejections of the unaffordable tail."""
+    svc = _jun22_svc()
+    results = await _submit_all(svc, ["SCHW", "ACN", "BLK", "CRM", "DIS", "T"])
+
+    assert results["SCHW"]["success"] is True
+    assert results["ACN"]["success"] is True  # 52,584 ≤ 131,634
+    assert results["BLK"]["success"] is True  # 20,916 ≤ 79,050
+    assert results["CRM"]["success"] is False  # 122,787 > 58,134
+    assert results["DIS"]["success"] is False
+    assert results["T"]["success"] is False
+
+    book = svc.portfolio_service
+    assert book.min_cash_seen == _JUN22_START_CASH
+    expected_final = (
+        _JUN22_START_CASH + _SCHW_PROCEEDS - 435.0051 * 120.8804 - 19.8133 * 1055.6726
+    )
+    assert book._cash == pytest.approx(expected_final, abs=0.01)  # ≈ +58,134
+
+
+async def test_deleverage_from_negative_cash_ends_non_negative():
+    """The 2026-07-20 situation: an overdrawn book (growth cash -$55,473) with
+    a net-selling rebalance delevers cleanly — sells first, then buys fit."""
+    svc = _svc(
+        cash=-55_473.33,
+        prices={"AAA": 100.0, "BBB": 100.0},
+        positions={"AAA": 1_000.0, "BBB": 500.0},
+    )
+    sell = await svc.submit_order(_req("AAA", OrderSide.SELL, 700.0))  # +70,000
+    buy = await svc.submit_order(_req("BBB", OrderSide.BUY, 100.0))  # -10,000
+
+    assert sell["success"] is True and buy["success"] is True
+    book = svc.portfolio_service
+    assert book._cash == pytest.approx(4_526.67, abs=0.01)
+    assert book._cash >= 0
