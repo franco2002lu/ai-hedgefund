@@ -138,6 +138,15 @@ async def test_sell_a_hair_above_held_clamps_to_full_exit():
     assert "ACN" not in svc.portfolio_service.positions  # position closed flat
 
 
+async def test_sell_exactly_held_closes_flat_without_clamp():
+    held = 435.0051
+    svc = _svc(cash=0.0, prices={"ACN": 120.0}, positions={"ACN": held})
+    result = await svc.submit_order(_req("ACN", OrderSide.SELL, held))
+    assert result["success"] is True
+    assert svc.trade_repo.created[0].quantity == held
+    assert "ACN" not in svc.portfolio_service.positions
+
+
 async def test_sell_a_hair_below_held_clamps_up_to_full_exit():
     held = 435.0051
     svc = _svc(cash=0.0, prices={"ACN": 120.0}, positions={"ACN": held})

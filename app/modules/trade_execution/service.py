@@ -57,6 +57,9 @@ class TradeExecutionService:
         # full exit closes the position to exactly zero (delete_if_flat fires)
         # and can never trip handle_trade_executed's oversell guard. Must
         # happen before the Order row is created so order and trade agree.
+        # Clamp-up is safe: order quantities are either 4-dp-grid (delta path)
+        # or exact-held (full exits), so nothing legitimate lands a partial
+        # within tolerance below the held quantity.
         if req.side == OrderSide.SELL:
             position = await self.portfolio_service.get_position_by_symbol(req.branch_id, req.symbol)
             if position is not None:
