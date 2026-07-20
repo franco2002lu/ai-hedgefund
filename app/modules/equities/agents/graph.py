@@ -218,7 +218,9 @@ def build_equities_graph(branch_name: str):
         data_service = deps["data_service"]
         current_positions = deps.get("current_positions", {})
         current_quantities = deps.get("current_quantities")
-        nav = deps.get("nav", 1_000_000.0)
+        if "nav" not in deps:
+            raise RuntimeError("portfolio_decision requires deps['nav'] — refusing to size against a default NAV")
+        nav = deps["nav"]
         scores = pm.compute_composite_scores(state["signals"])
         selected = pm.select_stocks(scores, current_holdings=set(current_positions))
         sized = pm.size_positions(selected)

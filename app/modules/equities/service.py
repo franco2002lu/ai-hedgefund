@@ -60,6 +60,56 @@ def build_ranker(analyst, a_type: str, branch_name: str):
     return DeterministicRanker()
 
 
+async def read_portfolio_state(
+    ps,
+    data_service,
+    *,
+    branch_id: str,
+    branch_name: str,
+) -> tuple[float, dict[str, float], dict[str, float]]:
+    """Read (nav, current weight map, held-quantity map) for a branch.
+
+    Hard-fails on unreadable state: sizing a rebalance against a fictional
+    default NAV (the old 1_000_000.0 fallback) with an empty holdings map
+    would regenerate the whole book as buys. A genuinely empty book on a
+    successful read is valid (first run).
+    """
+    if ps is None:
+        raise RuntimeError(
+            f"Portfolio service unavailable for branch {branch_name} — refusing to size against a fictional NAV"
+        )
+    try:
+        portfolio = await ps.get_portfolio(branch_id)
+    except Exception as exc:
+        raise RuntimeError(f"Portfolio read failed for branch {branch_name}") from exc
+    if portfolio is None:
+        raise RuntimeError(f"No portfolio row for branch {branch_name} ({branch_id})")
+    nav = float(portfolio.nav)
+    if nav <= 0:
+        raise RuntimeError(f"Non-positive NAV {nav} for branch {branch_name}")
+
+    current_positions: dict[str, float] = {}
+    current_quantities: dict[str, float] = {}
+    for pos in portfolio.positions:
+        if pos.long_quantity > 0:
+            # Lockstep invariant: current_quantities and current_positions
+            # must be populated under the SAME guard — generate_orders'
+            # full-exit branch reads held quantities for symbols it
+            # discovers via current_positions.
+            current_quantities[pos.symbol] = float(pos.long_quantity)
+            price = None
+            if data_service:
+                price = await data_service.get_current_price(pos.symbol)
+            if price:
+                # Use market value (price × qty) instead of cost basis
+                # so weights reflect current allocation, not historical cost
+                current_positions[pos.symbol] = (price * float(pos.long_quantity)) / nav
+            else:
+                # long_cost_basis is TOTAL dollars (not per-share)
+                current_positions[pos.symbol] = pos.long_cost_basis / nav
+    return nav, current_positions, current_quantities
+
+
 class EquitiesBranchService:
     """Orchestrates the full equities branch pipeline."""
 
@@ -150,33 +200,10 @@ class EquitiesBranchService:
         # --- Gap 5: Build branch-specific screener ---
         screener = self._build_screener(branch_name)
 
-        # --- Gap 2: Read real portfolio state ---
-        current_positions: dict[str, float] = {}
-        current_quantities: dict[str, float] = {}
-        nav = 1_000_000.0
-        if ps:
-            try:
-                portfolio = await ps.get_portfolio(branch_id)
-                if portfolio:
-                    nav = float(portfolio.nav) if portfolio.nav else 1_000_000.0
-                    for pos in portfolio.positions:
-                        if pos.long_quantity > 0 and nav > 0:
-                            # Lockstep invariant: current_quantities and current_positions
-                            # must be populated under the SAME guard — generate_orders'
-                            # full-exit branch reads held quantities for symbols it
-                            # discovers via current_positions.
-                            current_quantities[pos.symbol] = float(pos.long_quantity)
-                            # Use market value (price × qty) instead of cost basis
-                            # so weights reflect current allocation, not historical cost
-                            price = None
-                            if self.data_service:
-                                price = await self.data_service.get_current_price(pos.symbol)
-                            if price:
-                                current_positions[pos.symbol] = (price * float(pos.long_quantity)) / nav
-                            else:
-                                current_positions[pos.symbol] = pos.long_cost_basis / nav
-            except Exception:
-                logger.warning("Could not read portfolio for %s, using defaults", branch_id)
+        # --- Gap 2: Read real portfolio state (hard-fails; no fictional NAV) ---
+        nav, current_positions, current_quantities = await read_portfolio_state(
+            ps, self.data_service, branch_id=branch_id, branch_name=branch_name
+        )
 
         # --- Upsert instruments so FK constraints are satisfied ---
         # orders.instrument_id, trades.instrument_id, and positions.instrument_id

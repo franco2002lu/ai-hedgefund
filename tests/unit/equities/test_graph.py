@@ -177,6 +177,7 @@ class TestGraphEndToEnd:
             technical_analyst=analyst,
             portfolio_manager=pm,
             execute_trade_fn=AsyncMock(side_effect=trade_results),
+            nav=1_000_000.0,
         )
         state = {
             "branch_name": "growth",
