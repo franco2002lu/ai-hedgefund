@@ -213,9 +213,7 @@ async def _submit_all(svc, symbols):
     results = {}
     for sym in symbols:
         side, qty = _JUN22_ORDERS[sym]
-        results[sym] = await svc.submit_order(
-            _req(sym, OrderSide.BUY if side == "buy" else OrderSide.SELL, qty)
-        )
+        results[sym] = await svc.submit_order(_req(sym, OrderSide.BUY if side == "buy" else OrderSide.SELL, qty))
     return results
 
 
@@ -260,9 +258,7 @@ async def test_jun22_sells_first_replay_funds_buys_until_cash_runs_out():
 
     book = svc.portfolio_service
     assert book.min_cash_seen == _JUN22_START_CASH
-    expected_final = (
-        _JUN22_START_CASH + _SCHW_PROCEEDS - 435.0051 * 120.8804 - 19.8133 * 1055.6726
-    )
+    expected_final = _JUN22_START_CASH + _SCHW_PROCEEDS - 435.0051 * 120.8804 - 19.8133 * 1055.6726
     assert book._cash == pytest.approx(expected_final, abs=0.01)  # ≈ +58,134
     assert sorted(t.symbol for t in svc.trade_repo.created) == ["ACN", "BLK", "SCHW"]
 

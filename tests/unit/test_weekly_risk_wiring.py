@@ -105,9 +105,7 @@ async def test_negative_cash_persists_and_flushes_before_savepoint():
 
 
 async def test_persistence_failure_degrades_to_critical_notice_without_raising():
-    result, session, repo, log = await _call(
-        mtm=_mtm(cash=-55_473.33), repo=FakeRepo(raise_on_create=True)
-    )
+    result, session, repo, log = await _call(mtm=_mtm(cash=-55_473.33), repo=FakeRepo(raise_on_create=True))
     assert repo.created == []
     assert len(result) == 2
     assert result[0]["level"] == "critical" and "cash is negative" in result[0]["message"]
