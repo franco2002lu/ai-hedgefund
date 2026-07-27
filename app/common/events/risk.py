@@ -5,6 +5,7 @@ from app.common.events.base import BaseEvent
 class RiskAlertEvent(BaseEvent):
     event_type: str = "risk.alert"
 
+    branch_id: str | None = None
     level: RiskAlertLevel
     source: str  # "global" or branch_id
     metric: str

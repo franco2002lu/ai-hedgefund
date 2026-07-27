@@ -643,3 +643,128 @@ class TestAnalystWeightsOverride:
     def test_default_none_uses_config_statics(self):
         pm = _make_pm()
         assert pm.analyst_weights == {"fundamentals": 0.60, "news": 0.20, "technical": 0.20}
+
+
+def test_full_exit_sells_entire_held_quantity_even_below_threshold():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[],  # name no longer selected
+        current_positions={"KLAC": 0.00005},  # $55 of $1M — far below 2% band
+        nav=1_000_000.0,
+        prices={"KLAC": 55.0},
+        current_quantities={"KLAC": 1.0},
+    )
+    assert len(orders) == 1
+    o = orders[0]
+    assert (o.symbol, str(o.side), o.reason) == ("KLAC", "sell", "removed_position")
+    assert o.quantity == 1.0  # exact held quantity, not delta*nav/price
+
+
+def test_full_exit_uses_held_quantity_not_weight_math():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[],
+        current_positions={"SCHW": 0.13},
+        nav=1_000_000.0,
+        prices={"SCHW": 92.0889},
+        current_quantities={"SCHW": 1434.8511},
+    )
+    assert orders[0].quantity == 1434.8511
+
+
+def test_full_exit_without_price_is_skipped():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[],
+        current_positions={"KLAC": 0.00005},
+        nav=1_000_000.0,
+        prices={},  # unpriced → stays, visible via digest 'unpriced'
+        current_quantities={"KLAC": 1.0},
+    )
+    assert orders == []
+
+
+def test_legacy_call_without_quantities_keeps_threshold_behavior():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[],
+        current_positions={"KLAC": 0.00005},  # below 2% → silently kept (old behavior)
+        nav=1_000_000.0,
+        prices={"KLAC": 55.0},
+    )
+    assert orders == []
+
+
+def _score_with_weight(symbol, weight):
+    return CompositeScore(
+        symbol=symbol,
+        composite_score=6.0,
+        composite_confidence=6.0,
+        conviction=36.0,
+        target_weight=weight,
+    )
+
+
+def test_mixed_portfolio_full_exit_sorts_before_buy_and_keeps_threshold_logic():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[_score_with_weight("NEWBUY", 0.05), _score_with_weight("HELD", 0.05)],
+        current_positions={"DUST": 0.0001, "HELD": 0.041},  # HELD delta 0.9% < 2% band
+        nav=1_000_000.0,
+        prices={"DUST": 55.0, "NEWBUY": 100.0, "HELD": 100.0},
+        current_quantities={"DUST": 1.8, "HELD": 410.0},
+    )
+    assert [(o.symbol, str(o.side)) for o in orders] == [("DUST", "sell"), ("NEWBUY", "buy")]
+    assert orders[0].quantity == 1.8  # full exit, exact held
+    # HELD absent: sub-threshold adjustment still blocked by the 2% band
+
+
+def test_entry_between_half_and_two_percent_now_trades():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[_score_with_weight("NEW", 0.01)],  # 1% entry: below old 2% band, above 0.5%
+        current_positions={},
+        nav=1_000_000.0,
+        prices={"NEW": 100.0},
+    )
+    assert len(orders) == 1
+    assert (orders[0].symbol, str(orders[0].side), orders[0].reason) == ("NEW", "buy", "new_position")
+    assert orders[0].quantity == 100.0  # 0.01 * 1M / 100
+
+
+def test_entry_below_half_percent_still_skipped():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[_score_with_weight("TINY", 0.004)],
+        current_positions={},
+        nav=1_000_000.0,
+        prices={"TINY": 100.0},
+    )
+    assert orders == []
+
+
+def test_weight_adjustment_keeps_two_percent_band():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[_score_with_weight("HELD", 0.05)],
+        current_positions={"HELD": 0.039},  # delta 1.1% < 2% band
+        nav=1_000_000.0,
+        prices={"HELD": 100.0},
+    )
+    assert orders == []
+
+
+def test_min_entry_weight_default_is_half_percent():
+    assert PortfolioConfig().min_entry_weight == 0.005
+
+
+def test_entry_at_exactly_half_percent_trades():
+    pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+    orders = pm.generate_orders(
+        target=[_score_with_weight("EDGE", 0.005)],  # exactly min_entry_weight: strict < means it trades
+        current_positions={},
+        nav=1_000_000.0,
+        prices={"EDGE": 100.0},
+    )
+    assert len(orders) == 1
+    assert orders[0].quantity == 50.0  # 0.005 * 1M / 100

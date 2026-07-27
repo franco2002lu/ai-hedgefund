@@ -53,6 +53,35 @@ def dedupe_last_per_day(snapshots: list[dict]) -> list[tuple[str, dict]]:
     return sorted(by_day.items())
 
 
+# Standing investor-reporting disclosures. Rebuilds are wholesale, so notes
+# must live in code to survive every regeneration.
+FUND_NOTES = [
+    {
+        "period": "2026-06-15/2026-07-20",
+        "note": (
+            "Execution before 2026-07-16 could fill buys ahead of sells with no "
+            "fill-time cash check; branches ran negative cash (unintended leverage — "
+            "the value branch peaked near -24% of NAV in the week of 2026-06-22). "
+            "Fixed on 2026-07-16 (fill-time cash gate + sells-first ordering). "
+            "Returns in this window reflect exposure above 100% of allocated capital."
+        ),
+    },
+]
+
+
+def build_fund_summary(branches: dict) -> dict:
+    """Fund-level rollup across branch payloads, including standing notes."""
+    totals_initial = sum(b["initial_capital"] for b in branches.values())
+    totals_nav = sum(b["nav"] for b in branches.values())
+    return {
+        "initial_capital": totals_initial,
+        "nav": totals_nav,
+        "total_pnl": totals_nav - totals_initial if totals_initial > 0 else None,
+        "total_return_pct": ((totals_nav - totals_initial) / totals_initial if totals_initial > 0 else None),
+        "notes": list(FUND_NOTES),
+    }
+
+
 async def _branch_payload(session, branch_name: str) -> dict:
     branch_id = await resolve_branch_id(session, branch_name)
     bid = uuid.UUID(branch_id)
@@ -156,14 +185,7 @@ async def _main_async(args) -> int:
         for branch in args.branches:
             payload["branches"][branch] = await _branch_payload(session, branch)
 
-    totals_initial = sum(b["initial_capital"] for b in payload["branches"].values())
-    totals_nav = sum(b["nav"] for b in payload["branches"].values())
-    payload["fund"] = {
-        "initial_capital": totals_initial,
-        "nav": totals_nav,
-        "total_pnl": totals_nav - totals_initial if totals_initial > 0 else None,
-        "total_return_pct": ((totals_nav - totals_initial) / totals_initial if totals_initial > 0 else None),
-    }
+    payload["fund"] = build_fund_summary(payload["branches"])
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

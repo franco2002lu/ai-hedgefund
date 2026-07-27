@@ -31,6 +31,7 @@ from app.config import settings  # noqa: E402
 from app.db.connection import async_session_factory  # noqa: E402
 from app.dependencies import get_equities_service, get_paper_broker, init_services  # noqa: E402
 from app.modules.equities.attribution import AttributionEngine  # noqa: E402
+from app.modules.equities.risk_checks import evaluate_post_run_invariants, persist_alerts, to_digest_dicts  # noqa: E402
 from app.modules.equities.weekly_runner import (  # noqa: E402
     ManualInterventionRequired,
     RunInFlightError,
@@ -43,6 +44,7 @@ from app.modules.event_log.repository import PostgresEventLogRepository  # noqa:
 from app.modules.portfolio.repository import (  # noqa: E402
     PostgresPortfolioRepository,
     PostgresPositionRepository,
+    PostgresRiskAlertRepository,
     PostgresSnapshotRepository,
 )
 from app.modules.portfolio.service import PortfolioService  # noqa: E402
@@ -166,6 +168,7 @@ async def _run_one_branch(
             branch_id=branch_id,
             branch_name=branch_name,
             data_service=equities_service.data_service,
+            portfolio_config=equities_service.config.portfolio,
             summary=summary,
             run_started_at=run_started_at,
         )
@@ -173,11 +176,62 @@ async def _run_one_branch(
     return summary
 
 
+async def _evaluate_and_persist_alerts(
+    *,
+    session,
+    alert_repo,
+    event_log,
+    mtm,
+    portfolio_config,
+    branch_id: str,
+    branch_name: str,
+    status: str,
+) -> list[dict]:
+    """Theme A1 post-run invariant checks. Returns digest-shaped alert dicts.
+
+    Completed runs only (a skipped idempotent rerun must not duplicate alert
+    rows). Persistence failures degrade to a digest notice — never raise.
+    """
+    if status != "completed":
+        return []
+    # Weights are market-value/NAV; an unpriced position is carried at cost,
+    # so its weight (and this cap check) can be stale — the digest's separate
+    # "unpriced" warning is the tell.
+    weights = {d["symbol"]: d["weight"] for d in mtm.positions_detail}
+    alerts = evaluate_post_run_invariants(
+        cash=mtm.cash,
+        nav=mtm.nav,
+        position_weights=weights,
+        portfolio_config=portfolio_config,
+        branch_id=branch_id,
+        branch_name=branch_name,
+    )
+    digest_alerts = to_digest_dicts(alerts)
+    if alerts:
+        try:
+            # Pin the savepoint boundary: everything before this (mark,
+            # snapshot, events) must be flushed OUTSIDE the savepoint so a
+            # rollback-to-savepoint can never catch it.
+            await session.flush()
+            async with session.begin_nested():
+                await persist_alerts(alerts, repo=alert_repo, event_log=event_log)
+        except Exception:
+            logger.warning(
+                "Risk alert persistence failed for %s — digest still shows them",
+                branch_name,
+                exc_info=True,
+            )
+            level = "critical" if any(str(a.level) == "critical" for a in alerts) else "warning"
+            digest_alerts.append({"level": level, "message": "Risk alert persistence failed — see run logs"})
+    return digest_alerts
+
+
 async def _mark_snapshot_and_report(
     *,
     branch_id: str,
     branch_name: str,
     data_service,
+    portfolio_config,
     summary: WeeklyRunSummary,
     run_started_at: datetime,
 ) -> None:
@@ -254,6 +308,17 @@ async def _mark_snapshot_and_report(
                     for t in trades
                 ],
                 unpriced=mtm.unpriced,
+            )
+
+            report.risk_alerts = await _evaluate_and_persist_alerts(
+                session=session,
+                alert_repo=PostgresRiskAlertRepository(session),
+                event_log=event_log,
+                mtm=mtm,
+                portfolio_config=portfolio_config,
+                branch_id=branch_id,
+                branch_name=branch_name,
+                status=summary.status,
             )
         # Assign only after the `async with` block above has exited normally,
         # i.e. the transaction committed. If commit itself raises, control

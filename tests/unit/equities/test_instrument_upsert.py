@@ -7,7 +7,7 @@ symbol + name + asset_class.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.modules.equities.config import EquitiesConfig
 from app.modules.equities.models import UniverseStock
@@ -71,10 +71,14 @@ class TestEnrichedInstrumentUpsert:
         # Mock session
         session = AsyncMock()
 
+        portfolio_service = AsyncMock()
+        portfolio_service.get_portfolio = AsyncMock(return_value=MagicMock(nav=1_000_000.0, positions=[]))
+
         svc = EquitiesBranchService(
             config=config,
             data_service=data_service,
             universe_provider=universe_provider,
+            portfolio_service=portfolio_service,
         )
 
         # We only care about the instrument upsert, so mock the graph to skip it
@@ -134,10 +138,14 @@ class TestEnrichedInstrumentUpsert:
 
         session = AsyncMock()
 
+        portfolio_service = AsyncMock()
+        portfolio_service.get_portfolio = AsyncMock(return_value=MagicMock(nav=1_000_000.0, positions=[]))
+
         svc = EquitiesBranchService(
             config=config,
             data_service=data_service,
             universe_provider=universe_provider,
+            portfolio_service=portfolio_service,
         )
 
         with patch(

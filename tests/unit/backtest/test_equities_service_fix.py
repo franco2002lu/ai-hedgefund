@@ -16,6 +16,8 @@ from app.modules.equities.service import EquitiesBranchService
 class TestInstrumentIdsParameter:
     def _make_service(self) -> EquitiesBranchService:
         """Create a minimal EquitiesBranchService with mocked dependencies."""
+        portfolio_service = AsyncMock()
+        portfolio_service.get_portfolio = AsyncMock(return_value=MagicMock(nav=1_000_000.0, positions=[]))
         return EquitiesBranchService(
             config=EquitiesConfig(),
             data_service=AsyncMock(),
@@ -23,6 +25,7 @@ class TestInstrumentIdsParameter:
             news_analyst=AsyncMock(),
             fundamentals_analyst=AsyncMock(),
             technical_analyst=AsyncMock(),
+            portfolio_service=portfolio_service,
         )
 
     @patch("app.modules.equities.service.build_equities_graph")

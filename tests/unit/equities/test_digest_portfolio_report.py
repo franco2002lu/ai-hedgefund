@@ -56,12 +56,24 @@ def test_digest_includes_nav_returns_holdings_trades():
 
 
 def test_digest_warns_on_negative_cash_and_unpriced():
+    # Negative-cash signaling now comes from risk_alerts (see
+    # test_digest_negative_cash_line_comes_from_alerts_not_hardcode), not a
+    # hardcoded hint — this test supplies the alert explicitly.
     text = render_digest(
-        [_summary(portfolio_report=_report(cash=-5_000.0, cash_pct=-0.005, unpriced=2))],
+        [
+            _summary(
+                portfolio_report=_report(
+                    cash=-5_000.0,
+                    cash_pct=-0.005,
+                    unpriced=2,
+                    risk_alerts=[{"level": "critical", "message": "growth: cash is negative (-$5,000.00)"}],
+                )
+            )
+        ],
         run_date=date(2026, 7, 20),
     )
     assert "⚠️" in text
-    assert "negative cash" in text.lower()
+    assert "- ❌ CRITICAL: growth: cash is negative (-$5,000.00)" in text
     assert "2 position(s) unpriced" in text
 
 
@@ -87,3 +99,50 @@ def test_ny_date_converts_utc_evening_to_same_ny_day():
     assert ny_date(datetime(2026, 7, 20, 21, 30, tzinfo=UTC)) == date(2026, 7, 20)
     # 2026-07-21 01:00 UTC == 2026-07-20 21:00 ET
     assert ny_date(datetime(2026, 7, 21, 1, 0, tzinfo=UTC)) == date(2026, 7, 20)
+
+
+def test_digest_renders_critical_and_warning_alert_lines():
+    text = render_digest(
+        [
+            _summary(
+                portfolio_report=_report(
+                    cash=-55_473.33,
+                    cash_pct=-0.055,
+                    risk_alerts=[
+                        {"level": "critical", "message": "growth: cash is negative (-$55,473.33)"},
+                        {"level": "warning", "message": "growth: cash is 6.0% of NAV"},
+                    ],
+                )
+            )
+        ],
+        run_date=date(2026, 7, 20),
+    )
+    assert "- ❌ CRITICAL: growth: cash is negative (-$55,473.33)" in text
+    assert "- ⚠️ WARNING: growth: cash is 6.0% of NAV" in text
+
+
+def test_digest_negative_cash_line_comes_from_alerts_not_hardcode():
+    # No alerts attached → no negative-cash line even though cash < 0
+    # (the hardcoded hint is superseded by the alert-driven rendering).
+    text = render_digest(
+        [_summary(portfolio_report=_report(cash=-5_000.0, cash_pct=-0.005, risk_alerts=[]))],
+        run_date=date(2026, 7, 20),
+    )
+    assert "Negative cash balance" not in text
+    assert "CRITICAL" not in text
+
+
+def test_digest_unknown_alert_level_escalates_to_critical():
+    text = render_digest(
+        [_summary(portfolio_report=_report(risk_alerts=[{"level": "CRITICAL", "message": "case-drifted level"}]))],
+        run_date=date(2026, 7, 27),
+    )
+    assert "- ❌ CRITICAL: case-drifted level" in text
+
+
+def test_digest_malformed_alert_does_not_crash_rendering():
+    text = render_digest(
+        [_summary(portfolio_report=_report(risk_alerts=[{}]))],
+        run_date=date(2026, 7, 27),
+    )
+    assert "- ❌ CRITICAL: <malformed alert>" in text

@@ -217,7 +217,10 @@ def build_equities_graph(branch_name: str):
         pm = deps["portfolio_manager"]
         data_service = deps["data_service"]
         current_positions = deps.get("current_positions", {})
-        nav = deps.get("nav", 1_000_000.0)
+        current_quantities = deps.get("current_quantities")
+        if "nav" not in deps:
+            raise RuntimeError("portfolio_decision requires deps['nav'] — refusing to size against a default NAV")
+        nav = deps["nav"]
         scores = pm.compute_composite_scores(state["signals"])
         selected = pm.select_stocks(scores, current_holdings=set(current_positions))
         sized = pm.size_positions(selected)
@@ -231,7 +234,7 @@ def build_equities_graph(branch_name: str):
                 price = await data_service.get_current_price(sym)
                 if price:
                     prices[sym] = price
-        orders = pm.generate_orders(sized, current_positions, nav, prices)
+        orders = pm.generate_orders(sized, current_positions, nav, prices, current_quantities=current_quantities)
         logger.info("Portfolio manager generated %d orders", len(orders))
         return {"scores": scores, "targets": sized, "orders": orders}
 

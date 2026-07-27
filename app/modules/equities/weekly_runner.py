@@ -23,7 +23,7 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from datetime import datetime as dt
 from typing import TYPE_CHECKING, Any
@@ -67,6 +67,8 @@ class PortfolioReport:
     top_holdings: list[dict]  # [{symbol, weight}, ...] best-first
     trades: list[dict]  # [{symbol, side, quantity, price, notional}, ...]
     unpriced: int = 0
+    # [{"level": "critical"|"warning", "message": str}, ...] from risk_checks
+    risk_alerts: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -356,6 +358,9 @@ def _fmt_money(x: float) -> str:
     return f"-${abs(x):,.0f}" if x < 0 else f"${x:,.0f}"
 
 
+_ALERT_ICONS = {"critical": "❌ CRITICAL", "warning": "⚠️ WARNING", "info": "ℹ️ INFO"}
+
+
 def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
     """Build the markdown digest written to $GITHUB_STEP_SUMMARY."""
     lines = [f"# Weekly Rebalance — {run_date.isoformat()}", ""]
@@ -445,8 +450,11 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
                     lines.append("")
                 if r.unpriced > 0:
                     lines.append(f"- ⚠️ {r.unpriced} position(s) unpriced — carried at cost basis")
-                if r.cash < 0:
-                    lines.append("- ⚠️ Negative cash balance — check order sizing")
+                for alert in r.risk_alerts:
+                    # Unknown/malformed levels escalate rather than downgrade:
+                    # this surface exists to expose breaches, never to hide one.
+                    icon = _ALERT_ICONS.get(alert.get("level"), "❌ CRITICAL")
+                    lines.append(f"- {icon}: {alert.get('message', '<malformed alert>')}")
         elif s.status == "failed":
             lines.append(f"- Duration before failure: {_format_duration(s.duration_seconds)}")
             lines.append(f"- Error: `{s.error or 'unknown'}`")
