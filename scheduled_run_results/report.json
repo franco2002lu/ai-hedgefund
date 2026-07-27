@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-07-20T15:05:44.349111+00:00",
+  "generated_at": "2026-07-27T15:40:33.324205+00:00",
   "branches": {
     "growth": {
       "initial_capital": 1000000.0,
       "inception_date": "2026-06-10",
-      "nav": 1014493.3,
-      "cash": 19803.33,
-      "total_pnl": 14493.300000000047,
-      "total_return_pct": 0.014493300000000046,
+      "nav": 998752.28,
+      "cash": 1379.18,
+      "total_pnl": -1247.719999999972,
+      "total_return_pct": -0.0012477199999999721,
       "nav_series": [
         {
           "date": "2026-06-15",
@@ -176,215 +176,250 @@
           "cash": 19803.33,
           "unrealized_pnl": 24958.28,
           "realized_pnl": -10465.0
+        },
+        {
+          "date": "2026-07-21",
+          "nav": 1016862.39,
+          "cash": 19803.33,
+          "unrealized_pnl": 27327.37,
+          "realized_pnl": -10465.0
+        },
+        {
+          "date": "2026-07-22",
+          "nav": 1011566.13,
+          "cash": 19803.33,
+          "unrealized_pnl": 22031.11,
+          "realized_pnl": -10465.0
+        },
+        {
+          "date": "2026-07-23",
+          "nav": 1003748.43,
+          "cash": 19803.33,
+          "unrealized_pnl": 14213.41,
+          "realized_pnl": -10465.0
+        },
+        {
+          "date": "2026-07-24",
+          "nav": 999911.25,
+          "cash": 19803.33,
+          "unrealized_pnl": 10376.23,
+          "realized_pnl": -10465.0
+        },
+        {
+          "date": "2026-07-27",
+          "nav": 998752.28,
+          "cash": 1379.18,
+          "unrealized_pnl": 12606.16,
+          "realized_pnl": -13853.89
         }
       ],
       "holdings": [
         {
-          "price": 1176.31005859375,
+          "price": 377.1499938964844,
+          "symbol": "AVGO",
+          "weight": 0.12480466193424743,
+          "quantity": 330.5023,
+          "cost_basis": 128617.75,
+          "market_value": 124648.94042777404,
+          "unrealized_pnl": -3968.8095722259604
+        },
+        {
+          "price": 1197.27001953125,
           "symbol": "LLY",
-          "weight": 0.09784691685529173,
+          "weight": 0.10116000523532433,
           "quantity": 84.3868,
           "cost_basis": 97608.09,
-          "market_value": 99265.04165253906,
-          "unrealized_pnl": 1656.9516525390645
+          "market_value": 101033.78568417967,
+          "unrealized_pnl": 3425.695684179678
         },
         {
-          "price": 251.05499267578125,
+          "price": 232.30999755859375,
           "symbol": "AMZN",
-          "weight": 0.08856021491029797,
+          "weight": 0.08323943047235348,
           "quantity": 357.8648,
           "cost_basis": 88831.78,
-          "market_value": 89843.74474291992,
-          "unrealized_pnl": 1011.9647429199249
+          "market_value": 83135.57081430664,
+          "unrealized_pnl": -5696.209185693355
         },
         {
-          "price": 379.5,
-          "symbol": "AVGO",
-          "weight": 0.08496789903193185,
-          "quantity": 227.1393,
-          "cost_basis": 89614.9,
-          "market_value": 86199.36435,
-          "unrealized_pnl": -3415.5356499999907
-        },
-        {
-          "price": 170.52499389648438,
+          "price": 166.21499633789062,
           "symbol": "ANET",
-          "weight": 0.07367935260044314,
+          "weight": 0.0729490034589522,
           "quantity": 438.3358,
           "cost_basis": 73045.68,
-          "market_value": 74747.2096196106,
-          "unrealized_pnl": 1701.5296196106065
+          "market_value": 72857.98339176636,
+          "unrealized_pnl": -187.69660823362938
         },
         {
-          "price": 361.3500061035156,
+          "price": 363.0199890136719,
           "symbol": "V",
-          "weight": 0.07044683319897777,
+          "weight": 0.07188782574166039,
           "quantity": 197.7801,
           "cost_basis": 64161.74,
-          "market_value": 71467.84034215393,
-          "unrealized_pnl": 7306.100342153928
+          "market_value": 71798.12972912293,
+          "unrealized_pnl": 7636.38972912293
         },
         {
-          "price": 645.6199951171875,
+          "price": 602.9149780273438,
           "symbol": "META",
-          "weight": 0.06956698435500895,
+          "weight": 0.06598932393940762,
           "quantity": 109.3139,
           "cost_basis": 67130.22,
-          "market_value": 70575.23958424073,
-          "unrealized_pnl": 3445.0195842407265
+          "market_value": 65906.98761658325,
+          "unrealized_pnl": -1223.2323834167473
         },
         {
-          "price": 326.8399963378906,
+          "price": 337.885009765625,
           "symbol": "AAPL",
-          "weight": 0.06155299578200336,
+          "weight": 0.06463597782256544,
           "quantity": 191.0571,
           "cost_basis": 53572.45,
-          "market_value": 62445.101864328,
-          "unrealized_pnl": 8872.651864328
+          "market_value": 64555.33009929199,
+          "unrealized_pnl": 10982.880099291993
         },
         {
-          "price": 150.9199981689453,
-          "symbol": "APH",
-          "weight": 0.05318161303131609,
-          "quantity": 357.49,
-          "cost_basis": 56758.44,
-          "market_value": 53952.39014541626,
-          "unrealized_pnl": -2806.04985458374
-        },
-        {
-          "price": 356.1000061035156,
-          "symbol": "GOOG",
-          "weight": 0.05210358417831845,
-          "quantity": 148.4379,
-          "cost_basis": 53982.48,
-          "market_value": 52858.73709599305,
-          "unrealized_pnl": -1123.7429040069546
-        },
-        {
-          "price": 273.45001220703125,
+          "price": 283.989990234375,
           "symbol": "HWM",
-          "weight": 0.049965994884770215,
+          "weight": 0.052709758381141024,
           "quantity": 185.3727,
           "cost_basis": 50882.55,
-          "market_value": 50690.16707785035,
-          "unrealized_pnl": -192.38292214965622
+          "market_value": 52643.99126271973,
+          "unrealized_pnl": 1761.4412627197235
         },
         {
-          "price": 545.02001953125,
+          "price": 146.84500122070312,
+          "symbol": "APH",
+          "weight": 0.052561201246824674,
+          "quantity": 357.49,
+          "cost_basis": 56758.44,
+          "market_value": 52495.619486389165,
+          "unrealized_pnl": -4262.820513610837
+        },
+        {
+          "price": 552.5650024414062,
           "symbol": "MA",
-          "weight": 0.048123194829937606,
+          "weight": 0.04955834243000118,
           "quantity": 89.5759,
           "cost_basis": 43785.09,
-          "market_value": 48820.6587675293,
-          "unrealized_pnl": 5035.568767529301
+          "market_value": 49496.507402191164,
+          "unrealized_pnl": 5711.417402191168
         },
         {
-          "price": 352.9800109863281,
-          "symbol": "AXP",
-          "weight": 0.04739796088079467,
-          "quantity": 136.2256,
-          "cost_basis": 45900.32,
-          "market_value": 48084.91378461914,
-          "unrealized_pnl": 2184.5937846191373
+          "price": 494.3599853515625,
+          "symbol": "AMAT",
+          "weight": 0.049176121539119176,
+          "quantity": 99.3502,
+          "cost_basis": 49161.62,
+          "market_value": 49114.7634166748,
+          "unrealized_pnl": -46.85658332519961
         },
         {
-          "price": 197.07000732421875,
+          "price": 327.5400085449219,
+          "symbol": "GOOG",
+          "weight": 0.04868009024774299,
+          "quantity": 148.4379,
+          "cost_basis": 53982.48,
+          "market_value": 48619.35103439026,
+          "unrealized_pnl": -5363.128965609743
+        },
+        {
+          "price": 217.88999938964844,
           "symbol": "RTX",
-          "weight": 0.0409604313572782,
+          "weight": 0.04600157349571719,
           "quantity": 210.8595,
           "cost_basis": 41437.83,
-          "market_value": 41554.083209381104,
-          "unrealized_pnl": 116.25320938110235
+          "market_value": 45944.176326301575,
+          "unrealized_pnl": 4506.346326301573
         },
         {
-          "price": 90.05999755859375,
+          "price": 333.4549865722656,
+          "symbol": "AXP",
+          "weight": 0.04548185432323543,
+          "quantity": 136.2256,
+          "cost_basis": 45900.32,
+          "market_value": 45425.10561879882,
+          "unrealized_pnl": -475.2143812011782
+        },
+        {
+          "price": 92.80010223388672,
           "symbol": "NEM",
-          "weight": 0.04085993587937436,
+          "weight": 0.04276668670584956,
           "quantity": 460.2724,
           "cost_basis": 44489.65,
-          "market_value": 41452.13122028809,
-          "unrealized_pnl": -3037.5187797119142
+          "market_value": 42713.3257754364,
+          "unrealized_pnl": -1776.3242245635993
         },
         {
-          "price": 356.44000244140625,
-          "symbol": "GOOGL",
-          "weight": 0.03945267023746855,
-          "quantity": 112.2895,
-          "cost_basis": 39210.05,
-          "market_value": 40024.46965414429,
-          "unrealized_pnl": 814.419654144287
-        },
-        {
-          "price": 1061.8699951171875,
-          "symbol": "GEV",
-          "weight": 0.036159502676648754,
-          "quantity": 34.5462,
-          "cost_basis": 33843.52,
-          "market_value": 36683.573225317385,
-          "unrealized_pnl": 2840.053225317388
-        },
-        {
-          "price": 340.3299865722656,
+          "price": 354.2099914550781,
           "symbol": "JPM",
-          "weight": 0.02526499697907346,
+          "weight": 0.02670983727163104,
           "quantity": 75.3127,
           "cost_basis": 25000.28,
-          "market_value": 25631.17017972107,
-          "unrealized_pnl": 630.890179721071
+          "market_value": 26676.510823458866,
+          "unrealized_pnl": 1676.2308234588672
         },
         {
-          "price": 308.4700012207031,
+          "price": 278.7349853515625,
           "symbol": "LRCX",
-          "weight": 0.00019432674185906675,
+          "weight": 0.0001783620754008687,
           "quantity": 0.6391,
           "cost_basis": 248.84,
-          "market_value": 197.14317778015138,
-          "unrealized_pnl": -51.69682221984863
+          "market_value": 178.1395291381836,
+          "unrealized_pnl": -70.7004708618164
         },
         {
-          "price": 531.27001953125,
-          "symbol": "AMAT",
-          "weight": 0.00011075835497729299,
-          "quantity": 0.2115,
-          "cost_basis": 126.91,
-          "market_value": 112.36360913085937,
-          "unrealized_pnl": -14.546390869140623
-        },
-        {
-          "price": 210.31500244140625,
+          "price": 195.85000610351562,
           "symbol": "KLAC",
-          "weight": 5.35482738903969e-05,
+          "weight": 5.065125525558521e-05,
           "quantity": 0.2583,
           "cost_basis": 65.33,
-          "market_value": 54.32436513061523,
-          "unrealized_pnl": -11.005634869384771
+          "market_value": 50.58805657653808,
+          "unrealized_pnl": -14.741943423461919
         },
         {
-          "price": 869.4000244140625,
+          "price": 841.1900024414062,
           "symbol": "CAT",
-          "weight": 2.7509043935519665e-05,
+          "weight": 2.703593240256867e-05,
           "quantity": 0.0321,
           "cost_basis": 32.8,
-          "market_value": 27.907740783691402,
-          "unrealized_pnl": -4.892259216308595
+          "market_value": 27.002199078369138,
+          "unrealized_pnl": -5.797800921630859
         },
         {
-          "price": 112.0,
+          "price": 327.5350036621094,
+          "symbol": "GOOGL",
+          "weight": 2.6432301455830442e-05,
+          "quantity": 0.0806,
+          "cost_basis": 28.14,
+          "market_value": 26.39932129516602,
+          "unrealized_pnl": -1.7406787048339822
+        },
+        {
+          "price": 952.8800048828125,
+          "symbol": "GEV",
+          "weight": 2.25160618981451e-05,
+          "quantity": 0.0236,
+          "cost_basis": 23.12,
+          "market_value": 22.487968115234374,
+          "unrealized_pnl": -0.6320318847656274
+        },
+        {
+          "price": 112.94000244140625,
           "symbol": "CSCO",
-          "weight": 1.5014391902002301e-06,
+          "weight": 1.5379029082994445e-06,
           "quantity": 0.0136,
           "cost_basis": 1.61,
-          "market_value": 1.5231999999999999,
-          "unrealized_pnl": -0.08680000000000021
+          "market_value": 1.535984033203125,
+          "unrealized_pnl": -0.07401596679687517
         },
         {
-          "price": 872.1799926757812,
+          "price": 866.1599731445312,
           "symbol": "MU",
-          "weight": 8.597198148056511e-07,
+          "weight": 8.672420500190088e-07,
           "quantity": 0.001,
           "cost_basis": 1.13,
-          "market_value": 0.8721799926757813,
-          "unrealized_pnl": -0.2578200073242186
+          "market_value": 0.8661599731445313,
+          "unrealized_pnl": -0.2638400268554686
         }
       ],
       "trades": [
@@ -811,6 +846,38 @@
           "quantity": 133.5851,
           "price": 251.1805,
           "notional": 33553.972210550004
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "GEV",
+          "side": "sell",
+          "quantity": 34.5226,
+          "price": 952.4036,
+          "notional": 32879.44852136
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "GOOGL",
+          "side": "sell",
+          "quantity": 112.2089,
+          "price": 327.3712,
+          "notional": 36733.96224368
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "AMAT",
+          "side": "buy",
+          "quantity": 99.1387,
+          "price": 494.6072,
+          "notional": 49034.71481864
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "AVGO",
+          "side": "buy",
+          "quantity": 103.363,
+          "price": 377.3386,
+          "notional": 39002.8497118
         }
       ],
       "attribution": [
@@ -954,16 +1021,31 @@
             "technical": -0.0019331405787563914,
             "fundamentals": 0.177848933245588
           }
+        },
+        {
+          "decision_date": "2026-07-20",
+          "as_of_date": "2026-07-27",
+          "basket_return_conviction": -0.01856,
+          "basket_return_equal": -0.020293,
+          "benchmark_return": -0.022289,
+          "benchmark_symbol": "VOOG",
+          "spy_return": -0.007007,
+          "analyst_ics": {
+            "news": -0.3422249866222994,
+            "composite": -0.022608695652173914,
+            "technical": 0.260493093265505,
+            "fundamentals": 0.09528103075818807
+          }
         }
       ]
     },
     "value": {
       "initial_capital": 1000000.0,
       "inception_date": "2026-06-10",
-      "nav": 1025751.72,
-      "cash": 19253.69,
-      "total_pnl": 25751.719999999972,
-      "total_return_pct": 0.02575171999999997,
+      "nav": 1060859.45,
+      "cash": 37749.62,
+      "total_pnl": 60859.44999999995,
+      "total_return_pct": 0.060859449999999954,
       "nav_series": [
         {
           "date": "2026-06-15",
@@ -1132,134 +1214,187 @@
           "cash": 19253.69,
           "unrealized_pnl": 4242.78,
           "realized_pnl": 21508.93
+        },
+        {
+          "date": "2026-07-21",
+          "nav": 1025506.05,
+          "cash": 19253.69,
+          "unrealized_pnl": 3997.11,
+          "realized_pnl": 21508.93
+        },
+        {
+          "date": "2026-07-22",
+          "nav": 1022705.72,
+          "cash": 19253.69,
+          "unrealized_pnl": 1196.78,
+          "realized_pnl": 21508.93
+        },
+        {
+          "date": "2026-07-23",
+          "nav": 1014654.17,
+          "cash": 19253.69,
+          "unrealized_pnl": -6854.77,
+          "realized_pnl": 21508.93
+        },
+        {
+          "date": "2026-07-24",
+          "nav": 1040183.35,
+          "cash": 19253.69,
+          "unrealized_pnl": 18674.41,
+          "realized_pnl": 21508.93
+        },
+        {
+          "date": "2026-07-27",
+          "nav": 1060859.45,
+          "cash": 37749.62,
+          "unrealized_pnl": 16958.75,
+          "realized_pnl": 43900.71
         }
       ],
       "holdings": [
         {
-          "price": 142.14999389648438,
+          "price": 154.69500732421875,
           "symbol": "ACN",
-          "weight": 0.16223244233130152,
-          "quantity": 1170.6663,
-          "cost_basis": 170745.41,
-          "market_value": 166410.20739981995,
-          "unrealized_pnl": -4335.202600180055
+          "weight": 0.1408468108226006,
+          "quantity": 965.892,
+          "cost_basis": 140878.43,
+          "market_value": 149418.6700144043,
+          "unrealized_pnl": 8540.24001440432
         },
         {
-          "price": 60.880001068115234,
-          "symbol": "BAC",
-          "weight": 0.16212755942094761,
-          "quantity": 2731.6462,
-          "cost_basis": 161628.29,
-          "market_value": 166302.62357371292,
-          "unrealized_pnl": 4674.333573712909
+          "price": 87.45999908447266,
+          "symbol": "WFC",
+          "weight": 0.12090652461376973,
+          "quantity": 1466.5542,
+          "cost_basis": 125054.55,
+          "market_value": 128264.82898932953,
+          "unrealized_pnl": 3210.2789893295267
         },
         {
-          "price": 170.15499877929688,
+          "price": 173.7550048828125,
           "symbol": "CRM",
-          "weight": 0.11968328338176899,
+          "weight": 0.11817089171229372,
           "quantity": 721.4912,
           "cost_basis": 124237.18,
-          "market_value": 122765.33425527344,
-          "unrealized_pnl": -1471.8457447265537
+          "market_value": 125362.70697890625,
+          "unrealized_pnl": 1125.5269789062586
         },
         {
-          "price": 43.525001525878906,
+          "price": 132.69320678710938,
+          "symbol": "C",
+          "weight": 0.1166360335542007,
+          "quantity": 932.4851,
+          "cost_basis": 123796.35,
+          "market_value": 123734.43820019836,
+          "unrealized_pnl": -61.91179980164452
+        },
+        {
+          "price": 24.427600860595703,
+          "symbol": "T",
+          "weight": 0.1152249698346756,
+          "quantity": 5004.073,
+          "cost_basis": 122289.75,
+          "market_value": 122237.49792128374,
+          "unrealized_pnl": -52.252078716264805
+        },
+        {
+          "price": 206.2100067138672,
+          "symbol": "COF",
+          "weight": 0.09577721732368381,
+          "quantity": 492.7315,
+          "cost_basis": 101656.96,
+          "market_value": 101606.16592313384,
+          "unrealized_pnl": -50.79407686616469
+        },
+        {
+          "price": 47.415000915527344,
           "symbol": "VZ",
-          "weight": 0.10687216781846225,
-          "quantity": 2518.6515,
-          "cost_basis": 119569.7,
-          "market_value": 109624.31038065719,
-          "unrealized_pnl": -9945.389619342808
+          "weight": 0.07798904626429143,
+          "quantity": 1744.9207,
+          "cost_basis": 82837.84,
+          "market_value": 82735.4165880226,
+          "unrealized_pnl": -102.42341197739006
         },
         {
-          "price": 86.95500183105469,
-          "symbol": "WFC",
-          "weight": 0.09016869698316557,
-          "quantity": 1063.6616,
-          "cost_basis": 89799.96,
-          "market_value": 92490.69637562255,
-          "unrealized_pnl": 2690.7363756225386
-        },
-        {
-          "price": 340.2699890136719,
-          "symbol": "JPM",
-          "weight": 0.07906454729925437,
-          "quantity": 238.3419,
-          "cost_basis": 77103.1,
-          "market_value": 81100.59569449768,
-          "unrealized_pnl": 3997.495694497673
-        },
-        {
-          "price": 1064.1949462890625,
-          "symbol": "BLK",
-          "weight": 0.0768567923985521,
-          "quantity": 74.0804,
-          "cost_basis": 76224.45,
-          "market_value": 78835.98729907227,
-          "unrealized_pnl": 2611.537299072268
-        },
-        {
-          "price": 83.8499984741211,
+          "price": 85.05000305175781,
           "symbol": "MDT",
-          "weight": 0.07011442934766822,
+          "weight": 0.0687643093005229,
           "quantity": 857.7221,
           "cost_basis": 69317.33,
-          "market_value": 71919.99677621994,
-          "unrealized_pnl": 2602.666776219936
+          "market_value": 72949.26722256011,
+          "unrealized_pnl": 3631.937222560111
         },
         {
-          "price": 115.752197265625,
-          "symbol": "COP",
-          "weight": 0.06725911881441973,
-          "quantity": 596.0246,
-          "cost_basis": 66579.4,
-          "market_value": 68991.15707436523,
-          "unrealized_pnl": 2411.7570743652323
+          "price": 562.75,
+          "symbol": "TMO",
+          "weight": 0.06489011740883324,
+          "quantity": 122.3266,
+          "cost_basis": 68869.41,
+          "market_value": 68839.29415,
+          "unrealized_pnl": -30.115850000001956
         },
         {
-          "price": 24.985000610351562,
+          "price": 24.840099334716797,
           "symbol": "PFE",
-          "weight": 0.04652285034150984,
+          "weight": 0.044722357174261936,
           "quantity": 1909.9817,
           "cost_basis": 46722.35,
-          "market_value": 47720.893940260314,
-          "unrealized_pnl": 998.5439402603151
+          "market_value": 47444.135155491254,
+          "unrealized_pnl": 721.7851554912559
         },
         {
-          "price": 101.61000061035156,
+          "price": 62.275001525878906,
+          "symbol": "BAC",
+          "weight": 0.00012875198601891327,
+          "quantity": 2.1933,
+          "cost_basis": 129.77,
+          "market_value": 136.58776084671018,
+          "unrealized_pnl": 6.817760846710172
+        },
+        {
+          "price": 105.6449966430664,
           "symbol": "ABT",
-          "weight": 0.00011884115316363071,
+          "weight": 0.00011947134248933172,
           "quantity": 1.1997,
           "cost_basis": 109.81,
-          "market_value": 121.90151773223877,
-          "unrealized_pnl": 12.09151773223877
+          "market_value": 126.74230247268676,
+          "unrealized_pnl": 16.932302472686757
         },
         {
-          "price": 96.63999938964844,
+          "price": 97.08999633789062,
           "symbol": "DIS",
-          "weight": 0.00010176978005949114,
+          "weight": 9.886004618146338e-05,
           "quantity": 1.0802,
           "cost_basis": 109.81,
-          "market_value": 104.39052734069824,
-          "unrealized_pnl": -5.419472659301761
+          "market_value": 104.87661404418945,
+          "unrealized_pnl": -4.93338595581055
         },
         {
-          "price": 21.899999618530273,
-          "symbol": "T",
-          "weight": 8.29753989501411e-05,
-          "quantity": 3.8864,
-          "cost_basis": 86.19,
-          "market_value": 85.11215851745605,
-          "unrealized_pnl": -1.0778414825439455
+          "price": 117.31999969482422,
+          "symbol": "COP",
+          "weight": 7.219287713227968e-05,
+          "quantity": 0.6528,
+          "cost_basis": 72.92,
+          "market_value": 76.58649580078125,
+          "unrealized_pnl": 3.6664958007812487
         },
         {
-          "price": 525.9949951171875,
-          "symbol": "TMO",
-          "weight": 2.420367735210303e-05,
-          "quantity": 0.0472,
-          "cost_basis": 22.27,
-          "market_value": 24.82696376953125,
-          "unrealized_pnl": 2.556963769531251
+          "price": 354.364990234375,
+          "symbol": "JPM",
+          "weight": 3.4839929590169756e-05,
+          "quantity": 0.1043,
+          "cost_basis": 33.74,
+          "market_value": 36.96026848144531,
+          "unrealized_pnl": 3.2202684814453093
+        },
+        {
+          "price": 1051.72998046875,
+          "symbol": "BLK",
+          "weight": 3.360826582384038e-05,
+          "quantity": 0.0339,
+          "cost_basis": 34.88,
+          "market_value": 35.65364633789063,
+          "unrealized_pnl": 0.7736463378906251
         }
       ],
       "trades": [
@@ -1598,6 +1733,94 @@
           "quantity": 303.6888,
           "price": 142.2211,
           "notional": 43190.955193680005
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "ACN",
+          "side": "sell",
+          "quantity": 204.7743,
+          "price": 154.6177,
+          "notional": 31661.731285110003
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "BAC",
+          "side": "sell",
+          "quantity": 2729.4529,
+          "price": 62.2439,
+          "notional": 169891.79336231
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "BLK",
+          "side": "sell",
+          "quantity": 74.0465,
+          "price": 1051.2041,
+          "notional": 77837.98439064999
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "COP",
+          "side": "sell",
+          "quantity": 595.3718,
+          "price": 117.2613,
+          "notional": 69814.07125134
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "JPM",
+          "side": "sell",
+          "quantity": 238.2376,
+          "price": 354.1878,
+          "notional": 84380.85142128
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "VZ",
+          "side": "sell",
+          "quantity": 773.7308,
+          "price": 47.3913,
+          "notional": 36668.10846204
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "C",
+          "side": "buy",
+          "quantity": 932.4851,
+          "price": 132.7596,
+          "notional": 123796.34888196
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "COF",
+          "side": "buy",
+          "quantity": 492.7315,
+          "price": 206.3131,
+          "notional": 101656.96323264999
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "T",
+          "side": "buy",
+          "quantity": 5000.1866,
+          "price": 24.4398,
+          "notional": 122203.56046668
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "TMO",
+          "side": "buy",
+          "quantity": 122.2794,
+          "price": 563.0314,
+          "notional": 68847.14177316
+        },
+        {
+          "date": "2026-07-27",
+          "symbol": "WFC",
+          "side": "buy",
+          "quantity": 402.8926,
+          "price": 87.5037,
+          "notional": 35254.59320262
         }
       ],
       "attribution": [
@@ -1741,14 +1964,29 @@
             "technical": 0.06457464030007576,
             "fundamentals": -0.11300562052513259
           }
+        },
+        {
+          "decision_date": "2026-07-20",
+          "as_of_date": "2026-07-27",
+          "basket_return_conviction": 0.038498,
+          "basket_return_equal": 0.037217,
+          "benchmark_return": 0.011632,
+          "benchmark_symbol": "VOOV",
+          "spy_return": -0.007331,
+          "analyst_ics": {
+            "news": -0.12413899382233244,
+            "composite": -0.06593406593406594,
+            "technical": 0.21517425595870956,
+            "fundamentals": -0.12965628243665833
+          }
         }
       ]
     }
   },
   "fund": {
     "initial_capital": 2000000.0,
-    "nav": 2040245.02,
-    "total_pnl": 40245.02000000002,
-    "total_return_pct": 0.02012251000000001
+    "nav": 2059611.73,
+    "total_pnl": 59611.72999999998,
+    "total_return_pct": 0.02980586499999999
   }
 }
