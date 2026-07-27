@@ -113,6 +113,9 @@ async def test_persist_alerts_writes_rows_and_events():
 
     assert [a.metric for a in repo.created] == ["cash", "position_weight"]
     assert [e.event_type for e in log.events] == ["risk.alert", "risk.alert"]
+    # events.branch_id column is filled from event.branch_id — without it,
+    # branch-filtered event-log queries never surface risk alerts
+    assert [e.branch_id for e in log.events] == ["b-1", "b-1"]
     assert log.events[0].metric == "cash"
     assert log.events[0].level == RiskAlertLevel.CRITICAL
     assert log.events[0].affected_branches == ["growth"]

@@ -101,6 +101,9 @@ async def persist_alerts(
         await event_log.append(
             RiskAlertEvent(
                 source=alert.source,
+                # alert.source holds the branch id by convention (see RiskAlert);
+                # events.branch_id is what branch-filtered queries match on
+                branch_id=alert.source,
                 level=alert.level,
                 metric=alert.metric,
                 current_value=alert.current_value,
