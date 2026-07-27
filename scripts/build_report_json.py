@@ -78,7 +78,7 @@ def build_fund_summary(branches: dict) -> dict:
         "nav": totals_nav,
         "total_pnl": totals_nav - totals_initial if totals_initial > 0 else None,
         "total_return_pct": ((totals_nav - totals_initial) / totals_initial if totals_initial > 0 else None),
-        "notes": FUND_NOTES,
+        "notes": list(FUND_NOTES),
     }
 
 
