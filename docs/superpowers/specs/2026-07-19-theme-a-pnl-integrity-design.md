@@ -72,6 +72,8 @@ New `tests/unit/test_trade_execution_sequence.py` (reusing the fixture pattern o
 - When `current_quantities` is not provided (legacy callers/tests), behavior is unchanged (delta-based sizing with thresholds).
 - **Plumbing:** the service's portfolio-read block builds `current_quantities[sym] = float(pos.long_quantity)` alongside the weights map; it flows through graph deps into `generate_orders`. The backtest inherits automatically (same service/graph path).
 - **Float/Decimal edge:** SELL validation rejects only if `quantity > held + 1e-6`, and a full-exit fill is clamped to the exact held quantity, so `handle_trade_executed` brings the position to exactly zero and `delete_if_flat` removes the row. A unit test asserts a full-exit trade leaves no residual position.
+- **Sweep-scope precision (review finding, 2026-07-20):** the sweep fires only when a name's target weight is 0. A legacy-dust name *re-selected* at a target in (0, ~2.6%) is neither swept (target ≠ 0) nor topped up (held → `is_entry=False` → 2% adjustment band): it persists at dust until the name drops out entirely or its target clears the band. Bounded to pre-deploy dust; new dust cannot form since exits sell the full quantity. With conviction sizing over ~20 names, real targets sit near 5%, so the freeze window is rarely hit.
+- **Backtest comparability:** backtests run the same service/graph path, so they inherit full-exit semantics and the 0.5% entry threshold. Backtest results from before these commits are not directly comparable to results after; experiment-harness comparisons that straddle the boundary mix an execution-logic delta into what is meant to measure a skills delta. Re-baseline (fresh baseline run on current code) before the next A/B gate.
 
 ## A3 — Entry threshold
 
