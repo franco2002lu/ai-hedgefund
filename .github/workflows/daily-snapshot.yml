@@ -16,6 +16,9 @@ jobs:
   snapshot:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
     env:
       HEDGE_DATABASE_URL: ${{ secrets.HEDGE_DATABASE_URL }}
       HEDGE_EQUITIES_ENABLED_BRANCHES: ${{ vars.HEDGE_EQUITIES_ENABLED_BRANCHES || 'growth,value' }}
@@ -38,3 +41,9 @@ jobs:
 
       - name: Take daily snapshot
         run: python -m scripts.take_daily_snapshot
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ops_alert.sh "Daily snapshot failed" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
