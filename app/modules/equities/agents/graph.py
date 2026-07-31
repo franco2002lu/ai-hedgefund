@@ -30,6 +30,8 @@ class EquitiesWorkflowState(TypedDict, total=False):
     scores: list
     targets: list
     orders: list
+    order_skips: list
+    order_results: list
     trades: list
     deps: dict
     news_context: dict
@@ -234,23 +236,28 @@ def build_equities_graph(branch_name: str):
                 price = await data_service.get_current_price(sym)
                 if price:
                     prices[sym] = price
-        orders = pm.generate_orders(sized, current_positions, nav, prices, current_quantities=current_quantities)
-        logger.info("Portfolio manager generated %d orders", len(orders))
-        return {"scores": scores, "targets": sized, "orders": orders}
+        orders, order_skips = pm.generate_orders_with_skips(
+            sized, current_positions, nav, prices, current_quantities=current_quantities
+        )
+        logger.info("Portfolio manager generated %d orders (%d skipped)", len(orders), len(order_skips))
+        return {"scores": scores, "targets": sized, "orders": orders, "order_skips": order_skips}
 
     async def execute_trades(state: EquitiesWorkflowState) -> dict:
         deps = state["deps"]
         trade_fn = deps.get("execute_trade_fn")
         trades = []
+        order_results: list[dict | None] = []
         if trade_fn:
             for order in state.get("orders", []):
                 trade = await trade_fn(order)
                 # submit_order returns a dict for both fills and rejections;
-                # only count actual fills as executed trades
+                # None means the order never reached the broker. Keep every
+                # result so order-flow accounting can reconcile the run.
+                order_results.append(trade if isinstance(trade, dict) else None)
                 if isinstance(trade, dict) and trade.get("success"):
                     trades.append(trade)
         logger.info("Executed %d trades", len(trades))
-        return {"trades": trades}
+        return {"trades": trades, "order_results": order_results}
 
     graph = StateGraph(EquitiesWorkflowState)
     graph.add_node("fetch_universe", fetch_universe)
