@@ -768,3 +768,49 @@ def test_entry_at_exactly_half_percent_trades():
     )
     assert len(orders) == 1
     assert orders[0].quantity == 50.0  # 0.005 * 1M / 100
+
+
+# ---------------------------------------------------------------------------
+# TestGenerateOrdersWithSkips
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateOrdersWithSkips:
+    def test_unpriced_full_exit_is_reported_as_exit_skip(self):
+        """Held name, target 0, NO price for it -> previously an invisible
+        skip; now reported as an exit skip so a stuck position is visible."""
+        pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+        orders, skips = pm.generate_orders_with_skips(
+            [], {"AAPL": 0.05}, 1_000_000.0, {}, current_quantities={"AAPL": 100.0}
+        )
+        assert orders == []
+        assert skips == [{"symbol": "AAPL", "reason": "unpriced", "is_exit": True}]
+
+    def test_below_entry_threshold_skip_is_reported(self):
+        """New entry with target 0.4% (< min_entry_weight 0.5%), price known."""
+        pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+        orders, skips = pm.generate_orders_with_skips(
+            [_score_with_weight("TINY", 0.004)], {}, 1_000_000.0, {"TINY": 10.0}
+        )
+        assert orders == []
+        assert skips == [{"symbol": "TINY", "reason": "below_entry_threshold", "is_exit": False}]
+
+    def test_unpriced_adjustment_skip_is_reported(self):
+        """New entry, target 5%, NO price -> unpriced skip, not an exit."""
+        pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+        orders, skips = pm.generate_orders_with_skips([_score_with_weight("NEWP", 0.05)], {}, 1_000_000.0, {})
+        assert orders == []
+        assert skips == [{"symbol": "NEWP", "reason": "unpriced", "is_exit": False}]
+
+    def test_generate_orders_still_returns_bare_list(self):
+        pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+        result = pm.generate_orders([], {"AAPL": 0.05}, 1_000_000.0, {}, current_quantities={"AAPL": 100.0})
+        assert result == []  # list, not tuple
+
+    def test_clean_run_has_no_skips(self):
+        pm = PortfolioManager(agents_config=AgentsConfig(), portfolio_config=PortfolioConfig())
+        orders, skips = pm.generate_orders_with_skips(
+            [_score_with_weight("MSFT", 0.05)], {}, 1_000_000.0, {"MSFT": 400.0}
+        )
+        assert len(orders) == 1
+        assert skips == []
