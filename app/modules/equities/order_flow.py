@@ -3,7 +3,10 @@
 Pure logic (no I/O) so the tally is unit-testable and identical for live and
 backtest paths. The counts must reconcile: generated = persisted + dropped,
 persisted = filled + rejected. `dropped` > 0 means an order left no DB row —
-the silent-loss mode behind the 2026-07-20/27 starved buys.
+the silent-loss mode behind the 2026-07-20/27 starved buys. Each entry in
+`rejections` carries a `kind` of "dropped" or "rejected" so downstream
+consumers (e.g. the Task 9 risk checks) can tell silent losses apart from
+ordinary broker rejections instead of conflating their counts.
 """
 
 from __future__ import annotations
@@ -32,13 +35,18 @@ def build_order_flow(
                 if isinstance(res, dict)
                 else "never submitted (missing instrument id or execution exception — see logs)"
             )
-            rejections.append({"symbol": order.symbol, "side": str(order.side), "reason": reason})
+            rejections.append({"symbol": order.symbol, "side": str(order.side), "kind": "dropped", "reason": reason})
         elif res.get("status") == "filled":
             filled += 1
         else:
             rejected += 1
             rejections.append(
-                {"symbol": order.symbol, "side": str(order.side), "reason": res.get("message", "unknown")}
+                {
+                    "symbol": order.symbol,
+                    "side": str(order.side),
+                    "kind": "rejected",
+                    "reason": res.get("message", "unknown"),
+                }
             )
     return {
         "generated": len(orders),

@@ -31,7 +31,9 @@ def test_rejection_with_reason_is_counted_and_listed():
     flow = build_order_flow(orders, results, [])
     assert flow["rejected"] == 1
     assert flow["persisted"] == 1
-    assert flow["rejections"] == [{"symbol": "AAA", "side": "buy", "reason": "Insufficient cash: cost 5 > available 1"}]
+    assert flow["rejections"] == [
+        {"symbol": "AAA", "side": "buy", "kind": "rejected", "reason": "Insufficient cash: cost 5 > available 1"}
+    ]
 
 
 def test_none_result_is_dropped():
@@ -41,6 +43,7 @@ def test_none_result_is_dropped():
     assert flow["dropped"] == 1
     assert flow["persisted"] == 0
     assert flow["rejections"][0]["symbol"] == "AAA"
+    assert flow["rejections"][0]["kind"] == "dropped"
     assert "never submitted" in flow["rejections"][0]["reason"]
 
 
@@ -57,7 +60,24 @@ def test_order_id_none_result_is_dropped_with_its_message():
     ]
     flow = build_order_flow(orders, results, [])
     assert flow["dropped"] == 1
+    assert flow["rejections"][0]["kind"] == "dropped"
     assert "Insufficient position" in flow["rejections"][0]["reason"]
+
+
+def test_rejections_distinguish_dropped_from_rejected():
+    # Mixed run: two silent losses (no result at all, then order_id=None)
+    # plus one ordinary broker rejection (has an order_id). Kinds must line
+    # up 1:1 with rejections in order and must not be conflated in the counts.
+    orders = [_order("AAA"), _order("BBB"), _order("CCC")]
+    results = [
+        None,
+        {"success": False, "order_id": None, "status": "rejected", "message": "no instrument_id"},
+        {"success": False, "order_id": "3", "status": "rejected", "message": "Insufficient cash"},
+    ]
+    flow = build_order_flow(orders, results, [])
+    assert flow["dropped"] == 2
+    assert flow["rejected"] == 1
+    assert [r["kind"] for r in flow["rejections"]] == ["dropped", "dropped", "rejected"]
 
 
 def test_skips_are_tallied():
