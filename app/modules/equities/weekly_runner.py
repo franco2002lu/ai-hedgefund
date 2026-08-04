@@ -378,14 +378,18 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
             lines.append(f"- Screened: {s.screened_count}")
             if s.order_flow:
                 flow = s.order_flow
-                lines.append(
+                head = (
                     f"- Orders: {flow['generated']} generated / {flow['persisted']} persisted / "
                     f"{flow['filled']} filled / {flow['rejected']} rejected"
                 )
-                if flow.get("rejections"):
-                    syms = ", ".join(r["symbol"] for r in flow["rejections"])
-                    first_reason = str(flow["rejections"][0].get("reason", ""))[:80]
-                    lines.append(f"  - rejected/dropped: {syms} — {first_reason}")
+                if flow.get("dropped"):
+                    head += f" / {flow['dropped']} DROPPED"
+                lines.append(head)
+                for kind, label in (("dropped", "dropped (no DB row)"), ("rejected", "rejected")):
+                    group = [r for r in flow.get("rejections", []) if r.get("kind") == kind]
+                    if group:
+                        syms = ", ".join(r["symbol"] for r in group)
+                        lines.append(f"  - {label}: {syms} — {str(group[0].get('reason', ''))[:80]}")
                 for skip in flow.get("skips", []):
                     suffix = ", exit" if skip.get("is_exit") else ""
                     lines.append(f"  - skipped: {skip['symbol']} ({skip['reason']}{suffix})")

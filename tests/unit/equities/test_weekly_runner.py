@@ -220,8 +220,17 @@ async def test_execute_creates_row_when_no_prior_run():
 
 @pytest.mark.asyncio
 async def test_execute_propagates_order_flow_into_summary_and_summary_json():
-    FLOW = {"generated": 2, "persisted": 2, "filled": 1, "rejected": 1, "dropped": 0,
-            "skipped_unpriced": 0, "skipped_below_entry": 0, "rejections": [], "skips": []}
+    FLOW = {
+        "generated": 2,
+        "persisted": 2,
+        "filled": 1,
+        "rejected": 1,
+        "dropped": 0,
+        "skipped_unpriced": 0,
+        "skipped_below_entry": 0,
+        "rejections": [],
+        "skips": [],
+    }
     recorder: list[str] = []
     factory, repo = _make_factory_and_repo(
         recorder,

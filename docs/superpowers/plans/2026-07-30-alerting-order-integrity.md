@@ -1237,6 +1237,8 @@ git commit -m "feat(equities): order-flow accounting threaded through pipeline r
 
 ### Task 8: Order-flow into summary + digest
 
+(amended per Task 8 code review: dropped count + kind-split sub-lines)
+
 **Files:**
 - Modify: `app/modules/equities/weekly_runner.py` (`WeeklyRunSummary` lines 74-87; `execute` lines 253-274; `render_digest` lines 372-379)
 - Test: `tests/unit/equities/test_digest_portfolio_report.py` (append), `tests/unit/equities/test_weekly_runner.py` (extend helper + append)
@@ -1263,7 +1265,7 @@ def _flow(**kw):
 def test_digest_renders_reconciling_orders_line():
     digest = render_digest([_summary(order_flow=_flow())], run_date=date(2026, 8, 3))
     assert "- Orders: 13 generated / 13 persisted / 8 filled / 5 rejected" in digest
-    assert "rejected/dropped: BKNG, CSCO, JPM, MA, MU — Insufficient cash" in digest
+    assert "rejected: BKNG, CSCO, JPM, MA, MU — Insufficient cash" in digest
     assert "Orders placed:" not in digest
 
 
@@ -1361,16 +1363,20 @@ Expected: new tests FAIL (`TypeError: RunResult ... unexpected keyword 'order_fl
 
 ```python
             if s.order_flow:
-                f = s.order_flow
-                lines.append(
-                    f"- Orders: {f['generated']} generated / {f['persisted']} persisted / "
-                    f"{f['filled']} filled / {f['rejected']} rejected"
+                flow = s.order_flow
+                head = (
+                    f"- Orders: {flow['generated']} generated / {flow['persisted']} persisted / "
+                    f"{flow['filled']} filled / {flow['rejected']} rejected"
                 )
-                if f.get("rejections"):
-                    syms = ", ".join(r["symbol"] for r in f["rejections"])
-                    first_reason = str(f["rejections"][0].get("reason", ""))[:80]
-                    lines.append(f"  - rejected/dropped: {syms} — {first_reason}")
-                for skip in f.get("skips", []):
+                if flow.get("dropped"):
+                    head += f" / {flow['dropped']} DROPPED"
+                lines.append(head)
+                for kind, label in (("dropped", "dropped (no DB row)"), ("rejected", "rejected")):
+                    group = [r for r in flow.get("rejections", []) if r.get("kind") == kind]
+                    if group:
+                        syms = ", ".join(r["symbol"] for r in group)
+                        lines.append(f"  - {label}: {syms} — {str(group[0].get('reason', ''))[:80]}")
+                for skip in flow.get("skips", []):
                     suffix = ", exit" if skip.get("is_exit") else ""
                     lines.append(f"  - skipped: {skip['symbol']} ({skip['reason']}{suffix})")
             else:
