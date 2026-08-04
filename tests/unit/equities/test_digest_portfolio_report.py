@@ -146,3 +146,39 @@ def test_digest_malformed_alert_does_not_crash_rendering():
         run_date=date(2026, 7, 27),
     )
     assert "- ❌ CRITICAL: <malformed alert>" in text
+
+
+def _flow(**kw):
+    base = {
+        "generated": 13, "persisted": 13, "filled": 8, "rejected": 5, "dropped": 0,
+        "skipped_unpriced": 0, "skipped_below_entry": 0,
+        "rejections": [
+            {"symbol": s, "side": "buy", "kind": "rejected", "reason": "Insufficient cash: cost 9 > available 1"}
+            for s in ("BKNG", "CSCO", "JPM", "MA", "MU")
+        ],
+        "skips": [],
+    }
+    base.update(kw)
+    return base
+
+
+def test_digest_renders_reconciling_orders_line():
+    digest = render_digest([_summary(order_flow=_flow())], run_date=date(2026, 8, 3))
+    assert "- Orders: 13 generated / 13 persisted / 8 filled / 5 rejected" in digest
+    assert "rejected/dropped: BKNG, CSCO, JPM, MA, MU — Insufficient cash" in digest
+    assert "Orders placed:" not in digest
+
+
+def test_digest_renders_skips_line_with_exit_flag():
+    flow = _flow(
+        rejected=0, filled=13, rejections=[],
+        skipped_unpriced=1,
+        skips=[{"symbol": "AAPL", "reason": "unpriced", "is_exit": True}],
+    )
+    digest = render_digest([_summary(order_flow=flow)], run_date=date(2026, 8, 3))
+    assert "skipped: AAPL (unpriced, exit)" in digest
+
+
+def test_digest_legacy_fallback_without_order_flow():
+    digest = render_digest([_summary()], run_date=date(2026, 8, 3))
+    assert "- Orders placed: 8" in digest
