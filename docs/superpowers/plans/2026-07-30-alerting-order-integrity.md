@@ -1403,6 +1403,8 @@ git commit -m "feat(equities): reconciling order-flow line in summary_json and d
 
 ### Task 9: Risk checks — lost/rejected/unpriced + CASH_PCT_WARN 0.03
 
+(amended per Task 7/9 review: rejections carry kind — CRITICAL names dropped symbols; WARNING filters kind=rejected)
+
 **Files:**
 - Modify: `app/modules/equities/risk_checks.py` (constant line 17; `evaluate_post_run_invariants` lines 21-85)
 - Modify: `scripts/run_weekly_pipeline.py` (`_evaluate_and_persist_alerts` lines 179-208 and its call site ~line 313)
@@ -1414,8 +1416,10 @@ Follow the file's existing call style (it calls `evaluate_post_run_invariants(ca
 
 ```python
 def _flow(**kw):
-    base = {"generated": 0, "persisted": 0, "filled": 0, "rejected": 0, "dropped": 0,
-            "skipped_unpriced": 0, "skipped_below_entry": 0, "rejections": [], "skips": []}
+    base = {
+        "generated": 0, "persisted": 0, "filled": 0, "rejected": 0, "dropped": 0,
+        "skipped_unpriced": 0, "skipped_below_entry": 0, "rejections": [], "skips": [],
+    }
     base.update(kw)
     return base
 
@@ -1428,33 +1432,69 @@ class TestOrderFlowChecks:
             order_flow=flow,
         )
 
-    def test_lost_orders_is_critical(self):
-        alerts = self._eval(_flow(generated=13, persisted=9, filled=4, rejected=5, dropped=4))
+    def test_lost_orders_is_critical_and_names_dropped_symbols(self):
+        flow = _flow(
+            generated=13, persisted=9, filled=4, rejected=5, dropped=4,
+            rejections=[
+                {"symbol": s, "side": "sell", "kind": "dropped", "reason": "Insufficient position"}
+                for s in ("AAPL", "AXP", "NEM", "RTX")
+            ]
+            + [
+                {"symbol": s, "side": "buy", "kind": "rejected", "reason": "Insufficient cash"}
+                for s in ("BKNG", "CSCO", "JPM", "MA", "MU")
+            ],
+        )
+        alerts = self._eval(flow)
         lost = [a for a in alerts if a.metric == "orders_lost"]
         assert len(lost) == 1
         assert str(lost[0].level) == "critical"
         assert "4" in lost[0].message
+        assert "AAPL, AXP, NEM, RTX" in lost[0].message
+        assert "BKNG" not in lost[0].message  # rejected-kind symbols stay out of the CRITICAL
 
-    def test_rejected_orders_is_warning_with_symbols(self):
-        flow = _flow(generated=2, persisted=2, filled=1, rejected=1,
-                     rejections=[{"symbol": "MSFT", "side": "buy", "reason": "Insufficient cash"}])
+    def test_rejected_orders_is_warning_with_only_rejected_symbols(self):
+        flow = _flow(
+            generated=2, persisted=2, filled=1, rejected=1,
+            rejections=[
+                {"symbol": "GONE", "side": "sell", "kind": "dropped", "reason": "x"},
+                {"symbol": "MSFT", "side": "buy", "kind": "rejected", "reason": "Insufficient cash"},
+            ],
+            dropped=1,
+        )
         alerts = self._eval(flow)
         rej = [a for a in alerts if a.metric == "orders_rejected"]
         assert len(rej) == 1
         assert str(rej[0].level) == "warning"
         assert "MSFT" in rej[0].message
+        assert "GONE" not in rej[0].message
 
     def test_unpriced_exit_skip_is_warning_naming_the_exit(self):
-        flow = _flow(skipped_unpriced=1,
-                     skips=[{"symbol": "AAPL", "reason": "unpriced", "is_exit": True}])
+        flow = _flow(
+            skipped_unpriced=1,
+            skips=[{"symbol": "AAPL", "reason": "unpriced", "is_exit": True}],
+        )
         alerts = self._eval(flow)
         skip = [a for a in alerts if a.metric == "orders_skipped_unpriced"]
         assert len(skip) == 1
+        assert str(skip[0].level) == "warning"
         assert "AAPL" in skip[0].message
+        assert "stuck" in skip[0].message
+
+    def test_non_exit_unpriced_skip_warns_without_stuck_wording(self):
+        flow = _flow(
+            skipped_unpriced=1,
+            skips=[{"symbol": "NEWP", "reason": "unpriced", "is_exit": False}],
+        )
+        alerts = self._eval(flow)
+        skip = [a for a in alerts if a.metric == "orders_skipped_unpriced"]
+        assert len(skip) == 1
+        assert "EXIT" not in skip[0].message
 
     def test_below_entry_skips_do_not_alert(self):
-        flow = _flow(skipped_below_entry=3,
-                     skips=[{"symbol": "T", "reason": "below_entry_threshold", "is_exit": False}] * 3)
+        flow = _flow(
+            skipped_below_entry=3,
+            skips=[{"symbol": "T", "reason": "below_entry_threshold", "is_exit": False}] * 3,
+        )
         assert self._eval(flow) == []
 
     def test_none_order_flow_keeps_legacy_behavior(self):
@@ -1506,10 +1546,14 @@ Before the final `return alerts` (after the position-cap loop, line 83), append:
 
 ```python
     # Order-path integrity (2026-07-30 S2). order_flow is None for callers
-    # predating the accounting (backtests, old tests) — checks skip.
+    # predating the accounting (backtests, old tests) — checks skip. The
+    # rejections entries carry kind: "dropped" (no DB row — the silent-loss
+    # mode of 2026-07-20/27) vs "rejected" (persisted REJECTED row).
     if order_flow:
+        rejections = order_flow.get("rejections", [])
         lost = int(order_flow.get("generated", 0)) - int(order_flow.get("persisted", 0))
         if lost > 0:
+            dropped_syms = ", ".join(r.get("symbol", "?") for r in rejections if r.get("kind") == "dropped") or "unknown"
             alerts.append(
                 RiskAlert(
                     level=RiskAlertLevel.CRITICAL,
@@ -1519,7 +1563,7 @@ Before the final `return alerts` (after the position-cap loop, line 83), append:
                     threshold=0.0,
                     message=(
                         f"{branch_name}: {lost} order(s) vanished between generation and submission "
-                        "— every generated order must persist as filled or rejected"
+                        f"({dropped_syms}) — every generated order must persist as filled or rejected"
                     ),
                     action_required="Investigate trade_execution logs (silent-drop mode of 2026-07-20/27).",
                     affected_branches=[branch_name],
@@ -1527,7 +1571,7 @@ Before the final `return alerts` (after the position-cap loop, line 83), append:
             )
         rejected = int(order_flow.get("rejected", 0))
         if rejected > 0:
-            syms = ", ".join(r.get("symbol", "?") for r in order_flow.get("rejections", [])) or "unknown"
+            rejected_syms = ", ".join(r.get("symbol", "?") for r in rejections if r.get("kind") == "rejected") or "unknown"
             alerts.append(
                 RiskAlert(
                     level=RiskAlertLevel.WARNING,
@@ -1535,7 +1579,7 @@ Before the final `return alerts` (after the position-cap loop, line 83), append:
                     metric="orders_rejected",
                     current_value=float(rejected),
                     threshold=0.0,
-                    message=f"{branch_name}: {rejected} order(s) rejected ({syms})",
+                    message=f"{branch_name}: {rejected} order(s) rejected ({rejected_syms})",
                     affected_branches=[branch_name],
                 )
             )

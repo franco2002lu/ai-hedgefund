@@ -14,7 +14,9 @@ from app.modules.equities.config import PortfolioConfig
 
 # Check parameters — invariant tolerances, not strategy knobs, so they are
 # module constants rather than PortfolioConfig fields.
-CASH_PCT_WARN = 0.05
+# Sizing targets 1% cash; 3% = drift worth a look (value sat at 3.49% cash
+# unalerted on 2026-07-27 under the old 5% threshold).
+CASH_PCT_WARN = 0.03
 POSITION_WEIGHT_TOLERANCE = 0.005
 
 
@@ -26,6 +28,7 @@ def evaluate_post_run_invariants(
     portfolio_config: PortfolioConfig,
     branch_id: str,
     branch_name: str,
+    order_flow: dict | None = None,
 ) -> list[RiskAlert]:
     """Evaluate the marked book right after a rebalance.
 
@@ -78,6 +81,66 @@ def evaluate_post_run_invariants(
                     current_value=weight,
                     threshold=cap,
                     message=f"{branch_name}: {symbol} is {weight:.1%} of NAV (cap {cap:.0%})",
+                    affected_branches=[branch_name],
+                )
+            )
+
+    # Order-path integrity (2026-07-30 S2). order_flow is None for callers
+    # predating the accounting (backtests, old tests) — checks skip. The
+    # rejections entries carry kind: "dropped" (no DB row — the silent-loss
+    # mode of 2026-07-20/27) vs "rejected" (persisted REJECTED row).
+    if order_flow:
+        rejections = order_flow.get("rejections", [])
+        lost = int(order_flow.get("generated", 0)) - int(order_flow.get("persisted", 0))
+        if lost > 0:
+            dropped_syms = (
+                ", ".join(r.get("symbol", "?") for r in rejections if r.get("kind") == "dropped") or "unknown"
+            )
+            alerts.append(
+                RiskAlert(
+                    level=RiskAlertLevel.CRITICAL,
+                    source=branch_id,
+                    metric="orders_lost",
+                    current_value=float(lost),
+                    threshold=0.0,
+                    message=(
+                        f"{branch_name}: {lost} order(s) vanished between generation and submission "
+                        f"({dropped_syms}) — every generated order must persist as filled or rejected"
+                    ),
+                    action_required="Investigate trade_execution logs (silent-drop mode of 2026-07-20/27).",
+                    affected_branches=[branch_name],
+                )
+            )
+        rejected = int(order_flow.get("rejected", 0))
+        if rejected > 0:
+            rejected_syms = (
+                ", ".join(r.get("symbol", "?") for r in rejections if r.get("kind") == "rejected") or "unknown"
+            )
+            alerts.append(
+                RiskAlert(
+                    level=RiskAlertLevel.WARNING,
+                    source=branch_id,
+                    metric="orders_rejected",
+                    current_value=float(rejected),
+                    threshold=0.0,
+                    message=f"{branch_name}: {rejected} order(s) rejected ({rejected_syms})",
+                    affected_branches=[branch_name],
+                )
+            )
+        unpriced = [s for s in order_flow.get("skips", []) if s.get("reason") == "unpriced"]
+        if unpriced:
+            exits = [s["symbol"] for s in unpriced if s.get("is_exit")]
+            message = f"{branch_name}: {len(unpriced)} order(s) skipped for missing prices"
+            if exits:
+                message += f" — includes EXIT(s) {', '.join(exits)}: position stuck until priced"
+            alerts.append(
+                RiskAlert(
+                    level=RiskAlertLevel.WARNING,
+                    source=branch_id,
+                    metric="orders_skipped_unpriced",
+                    current_value=float(len(unpriced)),
+                    threshold=0.0,
+                    message=message,
                     affected_branches=[branch_name],
                 )
             )
