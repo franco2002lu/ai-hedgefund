@@ -2165,7 +2165,7 @@ for Phase 2 (Equities Branch).
 |------|----------|
 | Append event, query it back by type | Basic write + read |
 | Query events filtered by branch_id, event_type, since | Filtering works |
-| Submit order → `trade.requested` event logged before execution | Event ordering (intent before outcome) |
+| Submit order → `trade.requested` event logged before execution | Event ordering (intent before outcome); since 2026-08 (order-path integrity), a validation failure instead persists a REJECTED order row and emits `trade.rejected` with no preceding `trade.requested` — the order row itself is the intent record |
 | Successful fill → `trade.executed` event logged | Execution events |
 | Rejected order → `trade.rejected` event logged with reason | Rejection events |
 | Event payloads deserialize back to their Pydantic models | Schema consistency (JSON ↔ Pydantic) |

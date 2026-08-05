@@ -37,6 +37,7 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: write
+      issues: write
     env:
       HEDGE_DATABASE_URL: ${{ secrets.HEDGE_DATABASE_URL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -94,3 +95,9 @@ jobs:
             git pull --rebase origin main
             git push origin HEAD:main
           fi
+
+      - name: Alert on failure
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ops_alert.sh "Weekly rebalance failed" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

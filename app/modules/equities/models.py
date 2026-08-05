@@ -70,3 +70,6 @@ class RunResult(BaseModel):
     trades_executed: int
     # Weights the composite actually used (2026-07-16 adaptive weights spec)
     analyst_weights_report: AnalystWeightsReport | None = None
+    # Reconciling order accounting (see order_flow.build_order_flow); None
+    # when the run executed no orders path (no execution service wired).
+    order_flow: dict | None = None

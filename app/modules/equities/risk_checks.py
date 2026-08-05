@@ -14,7 +14,9 @@ from app.modules.equities.config import PortfolioConfig
 
 # Check parameters — invariant tolerances, not strategy knobs, so they are
 # module constants rather than PortfolioConfig fields.
-CASH_PCT_WARN = 0.05
+# Sizing targets 1% cash; 3% = drift worth a look (value sat at 3.49% cash
+# unalerted on 2026-07-27 under the old 5% threshold).
+CASH_PCT_WARN = 0.03
 POSITION_WEIGHT_TOLERANCE = 0.005
 
 
@@ -26,12 +28,18 @@ def evaluate_post_run_invariants(
     portfolio_config: PortfolioConfig,
     branch_id: str,
     branch_name: str,
+    order_flow: dict | None = None,
 ) -> list[RiskAlert]:
     """Evaluate the marked book right after a rebalance.
 
     Invariants: cash must not be negative (long-only cash account), cash must
     not balloon (the signature of mass BUY rejections), and no position may
-    exceed the configured cap beyond fill-slippage tolerance.
+    exceed the configured cap beyond fill-slippage tolerance. When order_flow
+    is provided, also checks order-path integrity: lost (dropped) orders,
+    rejected orders, and orders skipped for missing prices. Rejected orders
+    are split by side: a rejected SELL escalates to CRITICAL (a failed
+    exit — the position is still held), while a rejected BUY stays WARNING
+    (self-limiting).
     """
     alerts: list[RiskAlert] = []
 
@@ -61,7 +69,8 @@ def evaluate_post_run_invariants(
                 current_value=cash / nav,
                 threshold=CASH_PCT_WARN,
                 message=(
-                    f"{branch_name}: cash is {cash / nav:.1%} of NAV — underinvested; possible mass BUY rejections"
+                    f"{branch_name}: cash is {cash / nav:.1%} of NAV — underinvested (sizing targets ~1% cash); "
+                    "check the digest orders line for rejections/skips, else sizing drift"
                 ),
                 affected_branches=[branch_name],
             )
@@ -78,6 +87,92 @@ def evaluate_post_run_invariants(
                     current_value=weight,
                     threshold=cap,
                     message=f"{branch_name}: {symbol} is {weight:.1%} of NAV (cap {cap:.0%})",
+                    affected_branches=[branch_name],
+                )
+            )
+
+    # Order-path integrity (2026-07-30 S2). order_flow is None for callers
+    # predating the accounting (backtests, old tests) — checks skip. The
+    # rejections entries carry kind: "dropped" (no DB row — the silent-loss
+    # mode of 2026-07-20/27) vs "rejected" (persisted REJECTED row).
+    if order_flow:
+        rejections = order_flow.get("rejections", [])
+        lost = int(order_flow.get("generated", 0)) - int(order_flow.get("persisted", 0))
+        if lost > 0:
+            dropped = [r for r in rejections if r.get("kind") == "dropped"]
+            dropped_syms = ", ".join(r.get("symbol", "?") for r in dropped) or "unknown"
+            lost_message = (
+                f"{branch_name}: {lost} order(s) vanished between generation and submission "
+                f"({dropped_syms}) — every generated order must persist as filled or rejected"
+            )
+            if dropped:
+                first_reason = str(dropped[0].get("reason", "unknown"))[:80]
+                lost_message += f"; first reason: {first_reason}"
+            alerts.append(
+                RiskAlert(
+                    level=RiskAlertLevel.CRITICAL,
+                    source=branch_id,
+                    metric="orders_lost",
+                    current_value=float(lost),
+                    threshold=0.0,
+                    message=lost_message,
+                    action_required="Investigate trade_execution logs (silent-drop mode of 2026-07-20/27).",
+                    affected_branches=[branch_name],
+                )
+            )
+        rejected = int(order_flow.get("rejected", 0))
+        if rejected > 0:
+            rejected_entries = [r for r in rejections if r.get("kind") == "rejected"]
+            rejected_sells = [r for r in rejected_entries if r.get("side") == "sell"]
+            rejected_buys = [r for r in rejected_entries if r.get("side") != "sell"]
+            if rejected_sells:
+                syms = ", ".join(r.get("symbol", "?") for r in rejected_sells)
+                first_reason = str(rejected_sells[0].get("reason", ""))[:80]
+                alerts.append(
+                    RiskAlert(
+                        level=RiskAlertLevel.CRITICAL,
+                        source=branch_id,
+                        metric="orders_rejected_sells",
+                        current_value=float(len(rejected_sells)),
+                        threshold=0.0,
+                        message=(
+                            f"{branch_name}: {len(rejected_sells)} SELL order(s) rejected ({syms}) "
+                            f"— intended exit/trim still held; first reason: {first_reason}"
+                        ),
+                        action_required=(
+                            "A rejected sell means the book kept a position it meant to shed — "
+                            "investigate before next run."
+                        ),
+                        affected_branches=[branch_name],
+                    )
+                )
+            if rejected_buys:
+                syms = ", ".join(r.get("symbol", "?") for r in rejected_buys)
+                alerts.append(
+                    RiskAlert(
+                        level=RiskAlertLevel.WARNING,
+                        source=branch_id,
+                        metric="orders_rejected",
+                        current_value=float(len(rejected_buys)),
+                        threshold=0.0,
+                        message=f"{branch_name}: {len(rejected_buys)} BUY order(s) rejected ({syms})",
+                        affected_branches=[branch_name],
+                    )
+                )
+        unpriced = [s for s in order_flow.get("skips", []) if s.get("reason") == "unpriced"]
+        if unpriced:
+            exits = [s.get("symbol", "?") for s in unpriced if s.get("is_exit")]
+            message = f"{branch_name}: {len(unpriced)} order(s) skipped for missing prices"
+            if exits:
+                message += f" — includes EXIT(s) {', '.join(exits)}: position stuck until priced"
+            alerts.append(
+                RiskAlert(
+                    level=RiskAlertLevel.WARNING,
+                    source=branch_id,
+                    metric="orders_skipped_unpriced",
+                    current_value=float(len(unpriced)),
+                    threshold=0.0,
+                    message=message,
                     affected_branches=[branch_name],
                 )
             )

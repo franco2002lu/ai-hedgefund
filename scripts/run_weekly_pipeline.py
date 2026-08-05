@@ -186,6 +186,7 @@ async def _evaluate_and_persist_alerts(
     branch_id: str,
     branch_name: str,
     status: str,
+    order_flow: dict | None = None,
 ) -> list[dict]:
     """Theme A1 post-run invariant checks. Returns digest-shaped alert dicts.
 
@@ -198,14 +199,19 @@ async def _evaluate_and_persist_alerts(
     # so its weight (and this cap check) can be stale — the digest's separate
     # "unpriced" warning is the tell.
     weights = {d["symbol"]: d["weight"] for d in mtm.positions_detail}
-    alerts = evaluate_post_run_invariants(
-        cash=mtm.cash,
-        nav=mtm.nav,
-        position_weights=weights,
-        portfolio_config=portfolio_config,
-        branch_id=branch_id,
-        branch_name=branch_name,
-    )
+    try:
+        alerts = evaluate_post_run_invariants(
+            cash=mtm.cash,
+            nav=mtm.nav,
+            position_weights=weights,
+            portfolio_config=portfolio_config,
+            branch_id=branch_id,
+            branch_name=branch_name,
+            order_flow=order_flow,
+        )
+    except Exception:
+        logger.warning("Risk-check evaluation failed for %s — degrading to a digest notice", branch_name, exc_info=True)
+        return [{"level": "warning", "message": "Risk checks failed to evaluate — see run logs"}]
     digest_alerts = to_digest_dicts(alerts)
     if alerts:
         try:
@@ -319,6 +325,7 @@ async def _mark_snapshot_and_report(
                 branch_id=branch_id,
                 branch_name=branch_name,
                 status=summary.status,
+                order_flow=summary.order_flow,
             )
         # Assign only after the `async with` block above has exited normally,
         # i.e. the transaction committed. If commit itself raises, control

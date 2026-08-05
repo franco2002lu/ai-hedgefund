@@ -46,7 +46,7 @@ def test_zero_cash_is_fine():
 
 
 def test_high_cash_pct_is_warning():
-    alerts = _run(cash=60_000.0)  # 6% of 1M > 5%
+    alerts = _run(cash=60_000.0)  # 6% of 1M > 3% warn
     assert len(alerts) == 1
     assert alerts[0].level == RiskAlertLevel.WARNING
     assert alerts[0].metric == "cash_pct"
@@ -54,8 +54,12 @@ def test_high_cash_pct_is_warning():
     assert alerts[0].threshold == CASH_PCT_WARN
 
 
-def test_cash_pct_at_threshold_is_fine():
-    assert _run(cash=50_000.0) == []  # exactly 5%: not a breach
+def test_cash_pct_just_below_threshold_is_fine():
+    assert _run(cash=29_000.0) == []  # 2.9%: just under the 3% warn, not a breach
+
+
+def test_cash_pct_exactly_at_threshold_is_quiet():
+    assert _run(cash=30_000.0) == []  # exactly 3.0%: strict > means not a breach
 
 
 def test_position_above_cap_plus_tolerance_is_critical():
@@ -150,3 +154,181 @@ def test_evaluated_alert_reaches_rendered_digest_end_to_end():
         run_date=date(2026, 7, 27),
     )
     assert "- ❌ CRITICAL: growth: cash is negative (-$55,473.33)" in digest
+
+
+def _flow(**kw):
+    base = {
+        "generated": 0,
+        "persisted": 0,
+        "filled": 0,
+        "rejected": 0,
+        "dropped": 0,
+        "skipped_unpriced": 0,
+        "skipped_below_entry": 0,
+        "rejections": [],
+        "skips": [],
+    }
+    base.update(kw)
+    return base
+
+
+class TestOrderFlowChecks:
+    def _eval(self, flow):
+        return evaluate_post_run_invariants(
+            cash=10_000.0,
+            nav=1_000_000.0,
+            position_weights={},
+            portfolio_config=PortfolioConfig(),
+            branch_id="b-1",
+            branch_name="growth",
+            order_flow=flow,
+        )
+
+    def test_lost_orders_is_critical_and_names_dropped_symbols(self):
+        flow = _flow(
+            generated=13,
+            persisted=9,
+            filled=4,
+            rejected=5,
+            dropped=4,
+            rejections=[
+                {"symbol": s, "side": "sell", "kind": "dropped", "reason": "Insufficient position"}
+                for s in ("AAPL", "AXP", "NEM", "RTX")
+            ]
+            + [
+                {"symbol": s, "side": "buy", "kind": "rejected", "reason": "Insufficient cash"}
+                for s in ("BKNG", "CSCO", "JPM", "MA", "MU")
+            ],
+        )
+        alerts = self._eval(flow)
+        lost = [a for a in alerts if a.metric == "orders_lost"]
+        assert len(lost) == 1
+        assert str(lost[0].level) == "critical"
+        assert "4" in lost[0].message
+        assert "AAPL, AXP, NEM, RTX" in lost[0].message
+        assert "BKNG" not in lost[0].message  # rejected-kind symbols stay out of the CRITICAL
+        assert "Insufficient position" in lost[0].message  # first dropped-entry reason carried through
+
+    def test_rejected_orders_is_warning_with_only_rejected_symbols(self):
+        flow = _flow(
+            generated=2,
+            persisted=2,
+            filled=1,
+            rejected=1,
+            rejections=[
+                {"symbol": "GONE", "side": "sell", "kind": "dropped", "reason": "x"},
+                {"symbol": "MSFT", "side": "buy", "kind": "rejected", "reason": "Insufficient cash"},
+            ],
+            dropped=1,
+        )
+        alerts = self._eval(flow)
+        rej = [a for a in alerts if a.metric == "orders_rejected"]
+        assert len(rej) == 1
+        assert str(rej[0].level) == "warning"
+        assert "MSFT" in rej[0].message
+        assert "GONE" not in rej[0].message
+        assert "BUY order(s) rejected" in rej[0].message
+
+    def test_rejected_sell_is_critical_failed_exit(self):
+        flow = _flow(
+            generated=2,
+            persisted=2,
+            filled=1,
+            rejected=1,
+            rejections=[
+                {
+                    "symbol": "VZ",
+                    "side": "sell",
+                    "kind": "rejected",
+                    "reason": "Insufficient position: hold 5, tried to sell 10",
+                }
+            ],
+        )
+        alerts = self._eval(flow)
+        assert len(alerts) == 1
+        rej = [a for a in alerts if a.metric == "orders_rejected_sells"]
+        assert len(rej) == 1
+        assert str(rej[0].level) == "critical"
+        assert "VZ" in rej[0].message
+        assert "Insufficient position" in rej[0].message
+        assert "still held" in rej[0].message
+
+    def test_mixed_rejected_sides_produce_two_alerts(self):
+        flow = _flow(
+            generated=3,
+            persisted=3,
+            filled=0,
+            rejected=3,
+            rejections=[
+                {"symbol": "VZ", "side": "sell", "kind": "rejected", "reason": "Insufficient position"},
+                {"symbol": "MSFT", "side": "buy", "kind": "rejected", "reason": "Insufficient cash"},
+                {"symbol": "JPM", "side": "buy", "kind": "rejected", "reason": "Insufficient cash"},
+            ],
+        )
+        alerts = self._eval(flow)
+        assert len(alerts) == 2
+        critical = [a for a in alerts if a.metric == "orders_rejected_sells"]
+        warning = [a for a in alerts if a.metric == "orders_rejected"]
+        assert len(critical) == 1
+        assert str(critical[0].level) == "critical"
+        assert "VZ" in critical[0].message
+        assert len(warning) == 1
+        assert str(warning[0].level) == "warning"
+        assert "MSFT" in warning[0].message
+        assert "JPM" in warning[0].message
+        assert "VZ" not in warning[0].message
+
+    def test_unpriced_exit_skip_is_warning_naming_the_exit(self):
+        flow = _flow(
+            skipped_unpriced=1,
+            skips=[{"symbol": "AAPL", "reason": "unpriced", "is_exit": True}],
+        )
+        alerts = self._eval(flow)
+        skip = [a for a in alerts if a.metric == "orders_skipped_unpriced"]
+        assert len(skip) == 1
+        assert str(skip[0].level) == "warning"
+        assert "AAPL" in skip[0].message
+        assert "stuck" in skip[0].message
+
+    def test_non_exit_unpriced_skip_warns_without_stuck_wording(self):
+        flow = _flow(
+            skipped_unpriced=1,
+            skips=[{"symbol": "NEWP", "reason": "unpriced", "is_exit": False}],
+        )
+        alerts = self._eval(flow)
+        skip = [a for a in alerts if a.metric == "orders_skipped_unpriced"]
+        assert len(skip) == 1
+        assert "EXIT" not in skip[0].message
+
+    def test_below_entry_skips_do_not_alert(self):
+        flow = _flow(
+            skipped_below_entry=3,
+            skips=[{"symbol": "T", "reason": "below_entry_threshold", "is_exit": False}] * 3,
+        )
+        assert self._eval(flow) == []
+
+    def test_none_order_flow_keeps_legacy_behavior(self):
+        alerts = evaluate_post_run_invariants(
+            cash=10_000.0,
+            nav=1_000_000.0,
+            position_weights={},
+            portfolio_config=PortfolioConfig(),
+            branch_id="b-1",
+            branch_name="growth",
+        )
+        assert alerts == []
+
+    def test_clean_flow_is_quiet(self):
+        assert self._eval(_flow(generated=5, persisted=5, filled=5)) == []
+
+
+def test_cash_pct_warn_is_now_three_percent():
+    alerts = evaluate_post_run_invariants(
+        cash=35_000.0,
+        nav=1_000_000.0,
+        position_weights={},
+        portfolio_config=PortfolioConfig(),
+        branch_id="b-1",
+        branch_name="value",
+    )
+    assert [a.metric for a in alerts] == ["cash_pct"]  # 3.5% now trips the 3% warn

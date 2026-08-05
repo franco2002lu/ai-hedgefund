@@ -85,6 +85,7 @@ class WeeklyRunSummary:
     attribution: AttributionReport | None = None
     portfolio_report: PortfolioReport | None = None
     analyst_weights_report: AnalystWeightsReport | None = None
+    order_flow: dict | None = None
 
 
 _NY_TZ = ZoneInfo("America/New_York")
@@ -252,12 +253,14 @@ class WeeklyRunner:
         # ------------------------------------------------------------------
         duration = time.monotonic() - t0
         orders_placed = len(result.orders)
+        order_flow = getattr(result, "order_flow", None)
         summary_dict = {
             "universe_count": result.universe_count,
             "screened_count": result.screened_count,
             "orders_placed": orders_placed,
             "trades_executed": result.trades_executed,
             "duration_seconds": duration,
+            "order_flow": order_flow,
         }
         await self._mark_completed(run_id, summary_dict)
 
@@ -271,6 +274,7 @@ class WeeklyRunner:
             trades_executed=result.trades_executed,
             duration_seconds=duration,
             analyst_weights_report=getattr(result, "analyst_weights_report", None),
+            order_flow=order_flow,
         )
 
     async def _mark_completed(self, run_id: str, summary: dict[str, Any]) -> None:
@@ -372,7 +376,29 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
         if s.status == "completed":
             lines.append(f"- Universe: {s.universe_count}")
             lines.append(f"- Screened: {s.screened_count}")
-            lines.append(f"- Orders placed: {s.orders_placed}")
+            if s.order_flow:
+                flow = s.order_flow
+                head = (
+                    f"- Orders: {flow['generated']} generated / {flow['persisted']} persisted / "
+                    f"{flow['filled']} filled / {flow['rejected']} rejected"
+                )
+                if flow.get("dropped"):
+                    head += f" / {flow['dropped']} DROPPED"
+                lines.append(head)
+                for kind, label in (("dropped", "dropped (no DB row)"), ("rejected", "rejected")):
+                    group = [r for r in flow.get("rejections", []) if r.get("kind") == kind]
+                    if group:
+                        syms = ", ".join(r["symbol"] for r in group)
+                        reasons = list(dict.fromkeys(str(r.get("reason", "")) for r in group))
+                        line = f"  - {label}: {syms} — {reasons[0][:80]}"
+                        if len(reasons) > 1:
+                            line += f" (+{len(reasons) - 1} more reason(s))"
+                        lines.append(line)
+                for skip in flow.get("skips", []):
+                    suffix = ", exit" if skip.get("is_exit") else ""
+                    lines.append(f"  - skipped: {skip['symbol']} ({skip['reason']}{suffix})")
+            else:
+                lines.append(f"- Orders placed: {s.orders_placed}")
             lines.append(f"- Trades executed: {s.trades_executed}")
             lines.append(f"- Duration: {_format_duration(s.duration_seconds)}")
             if s.orders_placed == 0:

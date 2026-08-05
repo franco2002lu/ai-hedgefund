@@ -146,3 +146,117 @@ def test_digest_malformed_alert_does_not_crash_rendering():
         run_date=date(2026, 7, 27),
     )
     assert "- ❌ CRITICAL: <malformed alert>" in text
+
+
+def _flow(**kw):
+    base = {
+        "generated": 13,
+        "persisted": 13,
+        "filled": 8,
+        "rejected": 5,
+        "dropped": 0,
+        "skipped_unpriced": 0,
+        "skipped_below_entry": 0,
+        "rejections": [
+            {"symbol": s, "side": "buy", "kind": "rejected", "reason": "Insufficient cash: cost 9 > available 1"}
+            for s in ("BKNG", "CSCO", "JPM", "MA", "MU")
+        ],
+        "skips": [],
+    }
+    base.update(kw)
+    return base
+
+
+def test_digest_renders_reconciling_orders_line():
+    digest = render_digest([_summary(order_flow=_flow())], run_date=date(2026, 8, 3))
+    assert "- Orders: 13 generated / 13 persisted / 8 filled / 5 rejected" in digest
+    assert "rejected: BKNG, CSCO, JPM, MA, MU — Insufficient cash" in digest
+    assert "Orders placed:" not in digest
+    assert "DROPPED" not in digest
+
+
+def test_digest_shows_dropped_count_and_splits_kinds():
+    dropped_symbols = ("AAPL", "AXP", "NEM", "RTX", "GEV", "GOOGL", "BLK", "BAC")
+    flow = _flow(
+        generated=13,
+        persisted=5,
+        filled=4,
+        rejected=1,
+        dropped=8,
+        rejections=[
+            {
+                "symbol": s,
+                "side": "sell",
+                "kind": "dropped",
+                "reason": "Insufficient position: hold 74.0804, tried to sell 74.0814",
+            }
+            for s in dropped_symbols
+        ]
+        + [
+            {
+                "symbol": "MU",
+                "side": "buy",
+                "kind": "rejected",
+                "reason": "Insufficient cash: cost 9 > available 1",
+            }
+        ],
+    )
+    digest = render_digest([_summary(order_flow=flow)], run_date=date(2026, 8, 3))
+    assert "/ 8 DROPPED" in digest
+    assert "dropped (no DB row): AAPL, AXP, NEM, RTX, GEV, GOOGL, BLK, BAC — Insufficient position" in digest
+    assert "  - rejected: MU — Insufficient cash" in digest
+
+
+def test_digest_all_zero_flow_still_renders_flow_line():
+    flow = _flow(
+        generated=0,
+        persisted=0,
+        filled=0,
+        rejected=0,
+        dropped=0,
+        rejections=[],
+        skips=[],
+    )
+    digest = render_digest([_summary(order_flow=flow)], run_date=date(2026, 8, 3))
+    assert "- Orders: 0 generated / 0 persisted / 0 filled / 0 rejected" in digest
+    assert "Orders placed:" not in digest
+
+
+def test_digest_renders_skips_line_with_exit_flag():
+    flow = _flow(
+        rejected=0,
+        filled=13,
+        rejections=[],
+        skipped_unpriced=1,
+        skips=[{"symbol": "AAPL", "reason": "unpriced", "is_exit": True}],
+    )
+    digest = render_digest([_summary(order_flow=flow)], run_date=date(2026, 8, 3))
+    assert "skipped: AAPL (unpriced, exit)" in digest
+
+
+def test_digest_legacy_fallback_without_order_flow():
+    digest = render_digest([_summary()], run_date=date(2026, 8, 3))
+    assert "- Orders placed: 8" in digest
+
+
+def test_digest_notes_additional_distinct_reasons():
+    flow = _flow(
+        rejected=2,
+        rejections=[
+            {
+                "symbol": "VZ",
+                "side": "sell",
+                "kind": "rejected",
+                "reason": "Insufficient position: hold 5, tried to sell 10",
+            },
+            {
+                "symbol": "MU",
+                "side": "buy",
+                "kind": "rejected",
+                "reason": "Insufficient cash: cost 9 > available 1",
+            },
+        ],
+    )
+    digest = render_digest([_summary(order_flow=flow)], run_date=date(2026, 8, 3))
+    assert "rejected: VZ, MU — Insufficient position" in digest
+    assert "(+1 more reason(s))" in digest

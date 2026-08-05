@@ -161,14 +161,34 @@ class PortfolioManager:
         prices: dict[str, float],
         current_quantities: dict[str, float] | None = None,
     ) -> list[RebalanceOrder]:
+        """Back-compat wrapper: orders only. See generate_orders_with_skips."""
+        orders, _ = self.generate_orders_with_skips(
+            target, current_positions, nav, prices, current_quantities=current_quantities
+        )
+        return orders
+
+    def generate_orders_with_skips(
+        self,
+        target: list[CompositeScore],
+        current_positions: dict[str, float],
+        nav: float,
+        prices: dict[str, float],
+        current_quantities: dict[str, float] | None = None,
+    ) -> tuple[list[RebalanceOrder], list[dict]]:
         """Generate BUY/SELL orders by diffing target vs current portfolio.
 
         current_quantities (symbol -> held share count) enables full exits: a
         held name with target weight 0 sells its ENTIRE held quantity,
         bypassing the rebalance threshold — no fractional dust survives an
         exit. Callers that omit it get the legacy delta-only behavior.
+
+        Also returns skip metadata [{symbol, reason, is_exit}] for every
+        symbol it declined to order: reason "unpriced" (no usable price) or
+        "below_entry_threshold" (new entry under min_entry_weight). By-design
+        sub-threshold ADJUSTMENTS of held names are not reported (noise).
         """
         orders = []
+        skips: list[dict] = []
         target_map = {s.symbol: s.target_weight for s in target}
         # sorted() is required: iterating a set of symbol strings produces
         # hash-randomized order (PYTHONHASHSEED), which causes the resulting
@@ -182,9 +202,10 @@ class PortfolioManager:
             held = (current_quantities or {}).get(symbol, 0.0)
             if target_weight == 0.0 and current_weight > 0.0 and held > 0.0:
                 # Full exit: sell exactly what is held. Unpriced names are
-                # still skipped — execution could not fill them anyway and
-                # they stay visible via the digest 'unpriced' warning.
+                # still skipped — execution could not fill them anyway — but
+                # now reported so the digest/risk checks can flag a stuck exit.
                 if not price or price <= 0:
+                    skips.append({"symbol": symbol, "reason": "unpriced", "is_exit": True})
                     continue
                 orders.append(
                     RebalanceOrder(
@@ -208,8 +229,16 @@ class PortfolioManager:
                         target_weight * 100,
                         threshold * 100,
                     )
+                    skips.append({"symbol": symbol, "reason": "below_entry_threshold", "is_exit": False})
                 continue
             if not price or price <= 0:
+                skips.append(
+                    {
+                        "symbol": symbol,
+                        "reason": "unpriced",
+                        "is_exit": target_weight == 0.0 and current_weight > 0.0,
+                    }
+                )
                 continue
             quantity = round(abs(delta * nav) / price, 4)
             if quantity == 0:
@@ -231,4 +260,4 @@ class PortfolioManager:
         # Sells first so proceeds fund the buys; alphabetical within side keeps
         # the deterministic ordering downstream execution depends on.
         orders.sort(key=lambda o: (0 if o.side == OrderSide.SELL else 1, o.symbol))
-        return orders
+        return orders, skips

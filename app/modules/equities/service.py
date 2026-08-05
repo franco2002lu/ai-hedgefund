@@ -17,6 +17,7 @@ from app.modules.equities.agents.portfolio_manager import PortfolioManager
 from app.modules.equities.agents.ranker import CrossSectionalRanker, DeterministicRanker
 from app.modules.equities.config import EquitiesConfig
 from app.modules.equities.models import RebalanceOrder, RunResult
+from app.modules.equities.order_flow import build_order_flow
 from app.modules.equities.universe.provider import UniverseProvider
 from app.modules.equities.universe.screener import (
     DividendYieldFilter,
@@ -340,6 +341,8 @@ class EquitiesBranchService:
             "signals": [],
             "scores": [],
             "orders": [],
+            "order_skips": [],
+            "order_results": [],
             "trades": [],
             "deps": {
                 "config": self.config,
@@ -373,6 +376,21 @@ class EquitiesBranchService:
         screened = result.get("screened", [])
         universe = result.get("universe", [])
 
+        order_skips = result.get("order_skips", [])
+        order_flow = None
+        if execute_trade_fn is not None:
+            order_flow = build_order_flow(orders, result.get("order_results", []), order_skips)
+            if order_flow["dropped"] or order_flow["rejected"]:
+                logger.warning(
+                    "Order flow for %s: %d generated / %d persisted / %d filled / %d rejected / %d dropped",
+                    branch_name,
+                    order_flow["generated"],
+                    order_flow["persisted"],
+                    order_flow["filled"],
+                    order_flow["rejected"],
+                    order_flow["dropped"],
+                )
+
         # --- Gap 3: Event logging ---
         if el:
             await self._log_signal_events(el, branch_id, signals)
@@ -402,6 +420,7 @@ class EquitiesBranchService:
             orders=orders,
             trades_executed=len(result.get("trades", [])),
             analyst_weights_report=weights_report,
+            order_flow=order_flow,
         )
 
     async def _log_signal_events(

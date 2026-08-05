@@ -164,9 +164,11 @@ class TestGraphEndToEnd:
         pm.compute_composite_scores.return_value = scores
         pm.select_stocks.return_value = [scores[0]]
         pm.size_positions.return_value = sized
-        pm.generate_orders.return_value = [
+        generated = [
             RebalanceOrder(symbol=f"SYM{i}", side="buy", quantity=1.0, reason="new_position") for i in range(n_orders)
         ]
+        pm.generate_orders.return_value = generated
+        pm.generate_orders_with_skips.return_value = (generated, [])
 
         deps = _make_deps(
             universe_provider=provider,
@@ -206,6 +208,21 @@ class TestGraphEndToEnd:
 
         assert result["trades"] == [{"success": True, "order_id": "o1", "status": "filled"}]
 
+    async def test_execute_trades_returns_order_results(self):
+        """execute_trades keeps every submit_order result (fills, rejects, None) in order."""
+        trade_results = [
+            {"success": True, "order_id": "o1", "status": "filled"},
+            {"success": False, "order_id": None, "status": "rejected", "message": "Insufficient position"},
+            None,
+        ]
+        state, _ = self._initial_state(trade_results, n_orders=3)
+
+        graph = build_equities_graph("growth")
+        result = await graph.ainvoke(state)
+
+        assert result["trades"] == [{"success": True, "order_id": "o1", "status": "filled"}]
+        assert result["order_results"] == trade_results
+
     async def test_portfolio_decision_runs_exactly_once(self):
         """All three analysts must complete before portfolio_decision fires.
 
@@ -218,7 +235,9 @@ class TestGraphEndToEnd:
         await graph.ainvoke(state)
 
         pm = state["deps"]["portfolio_manager"]
-        assert pm.generate_orders.call_count == 1
+        # portfolio_decision calls generate_orders_with_skips (generate_orders
+        # is kept only as a back-compat wrapper callers may use directly).
+        assert pm.generate_orders_with_skips.call_count == 1
         assert state["deps"]["execute_trade_fn"].await_count == 2
 
     async def test_returns_sized_targets(self):

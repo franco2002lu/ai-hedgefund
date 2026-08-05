@@ -115,7 +115,7 @@ class _FakeRepo:
 # ---------------------------------------------------------------------------
 
 
-def _make_run_result(branch: str) -> RunResult:
+def _make_run_result(branch: str, order_flow: dict | None = None) -> RunResult:
     return RunResult(
         branch_name=branch,
         universe_count=50,
@@ -124,6 +124,7 @@ def _make_run_result(branch: str) -> RunResult:
         composite_scores=[],
         orders=[],
         trades_executed=10,
+        order_flow=order_flow,
     )
 
 
@@ -215,6 +216,50 @@ async def test_execute_creates_row_when_no_prior_run():
     assert len(repo.completed) == 1
     assert summary.status == "completed"
     assert summary.run_id == "2026-04-27-growth"
+
+
+@pytest.mark.asyncio
+async def test_execute_propagates_order_flow_into_summary_and_summary_json():
+    FLOW = {
+        "generated": 2,
+        "persisted": 2,
+        "filled": 1,
+        "rejected": 1,
+        "dropped": 0,
+        "skipped_unpriced": 0,
+        "skipped_below_entry": 0,
+        "rejections": [],
+        "skips": [],
+    }
+    recorder: list[str] = []
+    factory, repo = _make_factory_and_repo(
+        recorder,
+        ["bk1", "trading", "bk2"],
+        find_latest_return=None,
+    )
+    branch_id = str(uuid4())
+
+    with patch("app.modules.equities.weekly_runner.PipelineRunsRepository", return_value=repo):
+        runner = WeeklyRunner(session_factory=factory)
+        summary = await runner.execute(
+            branch_name="growth",
+            branch_id=branch_id,
+            run_date=date(2026, 4, 27),
+            force_retry=False,
+            run_fn=AsyncMock(return_value=_make_run_result("growth", order_flow=FLOW)),
+        )
+
+    assert len(repo.inserted) == 1
+    inserted = repo.inserted[0]
+    assert inserted["run_id"] == "2026-04-27-growth"
+    assert inserted["attempt"] == 1
+    assert inserted["status"] == "running"
+
+    assert len(repo.completed) == 1
+    assert summary.status == "completed"
+    assert summary.run_id == "2026-04-27-growth"
+    assert summary.order_flow == FLOW
+    assert repo.completed[0][1]["order_flow"] == FLOW
 
 
 @pytest.mark.asyncio

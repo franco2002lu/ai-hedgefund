@@ -227,14 +227,16 @@ class TestSubmitOrderRejection:
         assert "trade.rejected" in event_types
 
     async def test_validation_failure_no_portfolio(self, service, deps):
-        _, _, _, _, portfolio_service = deps
+        order_repo, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = None
+        order_repo.create.side_effect = lambda o: o  # echo the order back, like the real repo
 
         result = await service.submit_order(_make_order_request())
 
         assert result["success"] is False
         assert result["status"] == "rejected"
         assert "No portfolio" in result["message"]
+        assert result["order_id"] is not None  # validation failures now persist a REJECTED row
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +288,39 @@ class TestValidateOrder:
         assert result is not None
         assert "Insufficient position" in result
 
+    async def test_validation_rejection_persists_rejected_order_row(self, service, deps):
+        """BLK replay (2026-07-20): oversell by 0.001 sh leaves a REJECTED row + event, broker untouched."""
+        order_repo, _, broker, event_log, portfolio_service = deps
+        portfolio_service.get_portfolio.return_value = _make_portfolio()
+        portfolio_service.get_position_by_symbol.return_value = Position(
+            id="p1",
+            portfolio_id="port-1",
+            instrument_id="inst-1",
+            symbol="BLK",
+            long_quantity=74.0804,
+            updated_at=datetime.now(UTC),
+        )
+        order_repo.create.side_effect = lambda o: o  # echo the order back, like the real repo
+
+        req = _make_order_request(symbol="BLK", side=OrderSide.SELL, quantity=74.0814)
+        result = await service.submit_order(req)
+
+        assert result["success"] is False
+        assert result["status"] == "rejected"
+        assert result["order_id"] is not None  # ← the new behavior (was None)
+        assert "Insufficient position" in result["message"]
+        # order persisted then flipped to REJECTED with the validation reason
+        order_repo.create.assert_awaited_once()
+        assert order_repo.create.await_args.args[0].symbol == "BLK"
+        order_repo.update_status.assert_awaited_once()
+        upd_args, upd_kwargs = order_repo.update_status.await_args
+        assert upd_args[1] == OrderStatus.REJECTED
+        assert "Insufficient position" in upd_kwargs["rejection_reason"]
+        # rejection event logged; broker never called
+        event_log.append.assert_awaited_once()
+        assert type(event_log.append.await_args.args[0]).__name__ == "TradeRejectedEvent"
+        broker.submit_order.assert_not_awaited()
+
     async def test_sell_no_position_fails(self, service, deps):
         _, _, _, _, portfolio_service = deps
         portfolio_service.get_portfolio.return_value = _make_portfolio()
@@ -322,3 +357,40 @@ class TestValidateOrder:
         result = await service._validate_order(req)
         assert result is not None
         assert "No portfolio" in result
+
+
+# ---------------------------------------------------------------------------
+# submit_order — return-contract: every persisting path yields a non-None id
+# ---------------------------------------------------------------------------
+
+
+async def test_every_persisting_path_returns_non_none_order_id(service, deps):
+    """Contract: any submit_order path that writes an Order row returns its id.
+
+    build_order_flow classifies order_id=None as 'dropped' (CRITICAL alert), so
+    a persisting path that omitted the id would fire a false CRITICAL.
+    """
+    order_repo, trade_repo, broker, event_log, portfolio_service = deps
+    order_repo.create.side_effect = lambda o: o
+    trade_repo.create.side_effect = lambda t: t  # echo back, like the real repo (fill path needs a real trade.id)
+    portfolio_service.get_portfolio.return_value = _make_portfolio()  # cash=100k
+
+    # (a) fill path
+    broker.submit_order.return_value = OrderResult(success=True, trade=_make_trade())
+    result = await service.submit_order(_make_order_request(quantity=10.0))
+    assert result["status"] == "filled" and isinstance(result["order_id"], str) and result["order_id"]
+
+    # (b) fill-time cash-gate rejection (cost > cash)
+    broker.submit_order.return_value = OrderResult(success=True, trade=_make_trade(price=50_000.0, quantity=10.0))
+    result = await service.submit_order(_make_order_request(quantity=10.0))
+    assert result["status"] == "rejected" and isinstance(result["order_id"], str) and result["order_id"]
+
+    # (c) broker rejection
+    broker.submit_order.return_value = OrderResult(success=False, trade=None, rejection_reason="halted")
+    result = await service.submit_order(_make_order_request(quantity=10.0))
+    assert result["status"] == "rejected" and isinstance(result["order_id"], str) and result["order_id"]
+
+    # (d) validation rejection (new behavior from this task)
+    portfolio_service.get_position_by_symbol.return_value = None
+    result = await service.submit_order(_make_order_request(side=OrderSide.SELL, quantity=10.0))
+    assert result["status"] == "rejected" and isinstance(result["order_id"], str) and result["order_id"]
