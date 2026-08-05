@@ -61,7 +61,7 @@ def _mtm(cash=10_000.0, nav=1_000_000.0, positions_detail=None):
     return SimpleNamespace(cash=cash, nav=nav, positions_detail=positions_detail or [])
 
 
-async def _call(*, status="completed", mtm=None, repo=None):
+async def _call(*, status="completed", mtm=None, repo=None, order_flow=None):
     session, log = FakeSession(), FakeEventLog()
     repo = repo if repo is not None else FakeRepo()
     result = await _evaluate_and_persist_alerts(
@@ -73,6 +73,7 @@ async def _call(*, status="completed", mtm=None, repo=None):
         branch_id="b-1",
         branch_name="growth",
         status=status,
+        order_flow=order_flow,
     )
     return result, session, repo, log
 
@@ -114,8 +115,40 @@ async def test_persistence_failure_degrades_to_critical_notice_without_raising()
 
 async def test_warning_only_breach_degrade_notice_stays_warning():
     result, session, repo, log = await _call(
-        mtm=_mtm(cash=60_000.0),  # 6% of NAV > 5% → warning-only breach
+        mtm=_mtm(cash=60_000.0),  # 6% of NAV > 3% warn → warning-only breach
         repo=FakeRepo(raise_on_create=True),
     )
     assert [d["level"] for d in result] == ["warning", "warning"]
     assert result[-1]["message"] == "Risk alert persistence failed — see run logs"
+
+
+async def test_order_flow_lost_orders_persists_critical_and_reaches_digest():
+    flow = {
+        "generated": 2,
+        "persisted": 1,
+        "dropped": 1,
+        "rejected": 0,
+        "rejections": [{"symbol": "GONE", "side": "sell", "kind": "dropped", "reason": "Insufficient position"}],
+        "skips": [],
+    }
+    result, session, repo, log = await _call(order_flow=flow)
+    lost = [a for a in repo.created if a.metric == "orders_lost"]
+    assert len(lost) == 1
+    assert "GONE" in lost[0].message
+    assert "Insufficient position" in lost[0].message
+    assert any(d["level"] == "critical" for d in result)
+
+
+async def test_evaluation_failure_is_swallowed_and_returns_empty(monkeypatch):
+    def _raise(**kwargs):
+        raise RuntimeError("malformed order_flow")
+
+    monkeypatch.setattr("scripts.run_weekly_pipeline.evaluate_post_run_invariants", _raise)
+
+    # Breach-y book on purpose: even a book that would normally CRITICAL must
+    # not leak past a crashing evaluator — the mark/snapshot transaction
+    # matters more than these alerts.
+    result, session, repo, log = await _call(mtm=_mtm(cash=-55_473.33))
+    assert result == []
+    assert repo.created == [] and log.events == []
+    assert session.calls == []  # never reaches flush/savepoint

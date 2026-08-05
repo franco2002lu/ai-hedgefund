@@ -58,6 +58,10 @@ def test_cash_pct_just_below_threshold_is_fine():
     assert _run(cash=29_000.0) == []  # 2.9%: just under the 3% warn, not a breach
 
 
+def test_cash_pct_exactly_at_threshold_is_quiet():
+    assert _run(cash=30_000.0) == []  # exactly 3.0%: strict > means not a breach
+
+
 def test_position_above_cap_plus_tolerance_is_critical():
     alerts = _run(weights={"BAC": 0.16, "OK": 0.05}, cap=0.10)
     assert len(alerts) == 1
@@ -203,6 +207,7 @@ class TestOrderFlowChecks:
         assert "4" in lost[0].message
         assert "AAPL, AXP, NEM, RTX" in lost[0].message
         assert "BKNG" not in lost[0].message  # rejected-kind symbols stay out of the CRITICAL
+        assert "Insufficient position" in lost[0].message  # first dropped-entry reason carried through
 
     def test_rejected_orders_is_warning_with_only_rejected_symbols(self):
         flow = _flow(

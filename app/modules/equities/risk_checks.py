@@ -34,7 +34,9 @@ def evaluate_post_run_invariants(
 
     Invariants: cash must not be negative (long-only cash account), cash must
     not balloon (the signature of mass BUY rejections), and no position may
-    exceed the configured cap beyond fill-slippage tolerance.
+    exceed the configured cap beyond fill-slippage tolerance. When order_flow
+    is provided, also checks order-path integrity: lost (dropped) orders,
+    rejected orders, and orders skipped for missing prices.
     """
     alerts: list[RiskAlert] = []
 
@@ -64,7 +66,8 @@ def evaluate_post_run_invariants(
                 current_value=cash / nav,
                 threshold=CASH_PCT_WARN,
                 message=(
-                    f"{branch_name}: cash is {cash / nav:.1%} of NAV — underinvested; possible mass BUY rejections"
+                    f"{branch_name}: cash is {cash / nav:.1%} of NAV — underinvested (sizing targets ~1% cash); "
+                    "check the digest orders line for rejections/skips, else sizing drift"
                 ),
                 affected_branches=[branch_name],
             )
@@ -93,9 +96,15 @@ def evaluate_post_run_invariants(
         rejections = order_flow.get("rejections", [])
         lost = int(order_flow.get("generated", 0)) - int(order_flow.get("persisted", 0))
         if lost > 0:
-            dropped_syms = (
-                ", ".join(r.get("symbol", "?") for r in rejections if r.get("kind") == "dropped") or "unknown"
+            dropped = [r for r in rejections if r.get("kind") == "dropped"]
+            dropped_syms = ", ".join(r.get("symbol", "?") for r in dropped) or "unknown"
+            lost_message = (
+                f"{branch_name}: {lost} order(s) vanished between generation and submission "
+                f"({dropped_syms}) — every generated order must persist as filled or rejected"
             )
+            if dropped:
+                first_reason = str(dropped[0].get("reason", "unknown"))[:80]
+                lost_message += f"; first reason: {first_reason}"
             alerts.append(
                 RiskAlert(
                     level=RiskAlertLevel.CRITICAL,
@@ -103,10 +112,7 @@ def evaluate_post_run_invariants(
                     metric="orders_lost",
                     current_value=float(lost),
                     threshold=0.0,
-                    message=(
-                        f"{branch_name}: {lost} order(s) vanished between generation and submission "
-                        f"({dropped_syms}) — every generated order must persist as filled or rejected"
-                    ),
+                    message=lost_message,
                     action_required="Investigate trade_execution logs (silent-drop mode of 2026-07-20/27).",
                     affected_branches=[branch_name],
                 )
@@ -129,7 +135,7 @@ def evaluate_post_run_invariants(
             )
         unpriced = [s for s in order_flow.get("skips", []) if s.get("reason") == "unpriced"]
         if unpriced:
-            exits = [s["symbol"] for s in unpriced if s.get("is_exit")]
+            exits = [s.get("symbol", "?") for s in unpriced if s.get("is_exit")]
             message = f"{branch_name}: {len(unpriced)} order(s) skipped for missing prices"
             if exits:
                 message += f" — includes EXIT(s) {', '.join(exits)}: position stuck until priced"

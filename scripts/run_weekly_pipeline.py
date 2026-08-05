@@ -199,15 +199,19 @@ async def _evaluate_and_persist_alerts(
     # so its weight (and this cap check) can be stale — the digest's separate
     # "unpriced" warning is the tell.
     weights = {d["symbol"]: d["weight"] for d in mtm.positions_detail}
-    alerts = evaluate_post_run_invariants(
-        cash=mtm.cash,
-        nav=mtm.nav,
-        position_weights=weights,
-        portfolio_config=portfolio_config,
-        branch_id=branch_id,
-        branch_name=branch_name,
-        order_flow=order_flow,
-    )
+    try:
+        alerts = evaluate_post_run_invariants(
+            cash=mtm.cash,
+            nav=mtm.nav,
+            position_weights=weights,
+            portfolio_config=portfolio_config,
+            branch_id=branch_id,
+            branch_name=branch_name,
+            order_flow=order_flow,
+        )
+    except Exception:
+        logger.warning("Risk-check evaluation failed for %s — no alerts this run", branch_name, exc_info=True)
+        return []
     digest_alerts = to_digest_dicts(alerts)
     if alerts:
         try:
