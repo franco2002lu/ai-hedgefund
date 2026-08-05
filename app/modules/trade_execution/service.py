@@ -48,10 +48,44 @@ class TradeExecutionService:
         5. On fill: persist trade, update portfolio, log events
         6. On rejection: update order status, log event
         """
-        # Validate
+        # Validate. A failed validation is persisted as a REJECTED order row +
+        # rejection event — before 2026-07-30 it returned bare, leaving no
+        # trace (8 sells ≈$530k silently dropped on 07-20/27, starving buys).
         validation_error = await self._validate_order(req)
         if validation_error:
-            return {"success": False, "order_id": None, "status": "rejected", "message": validation_error}
+            order = Order(
+                id=str(uuid.uuid4()),
+                branch_id=req.branch_id,
+                instrument_id=req.instrument_id,
+                symbol=req.symbol,
+                side=req.side,
+                order_type=req.order_type,
+                quantity=req.quantity,
+                limit_price=req.limit_price,
+                stop_price=req.stop_price,
+                time_in_force=req.time_in_force,
+                status=OrderStatus.PENDING,
+                confidence=req.confidence,
+                reasoning=req.reasoning,
+                agent_signals=req.agent_signals,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            order = await self.order_repo.create(order)
+            await self.order_repo.update_status(order.id, OrderStatus.REJECTED, rejection_reason=validation_error)
+            await self.event_log.append(
+                TradeRejectedEvent(
+                    source="trade_execution_service",
+                    order_id=order.id,
+                    branch_id=req.branch_id,
+                    instrument_id=req.instrument_id,
+                    symbol=req.symbol,
+                    side=req.side,
+                    quantity=req.quantity,
+                    rejection_reason=validation_error,
+                )
+            )
+            return {"success": False, "order_id": order.id, "status": "rejected", "message": validation_error}
 
         # Clamp near-held SELL quantities to exactly the held quantity so a
         # full exit closes the position to exactly zero (delete_if_flat fires)
