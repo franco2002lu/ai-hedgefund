@@ -42,7 +42,7 @@ jobs:
         run: python -m scripts.ops_watchdog
 
       - name: Alert on failure
-        if: failure()
+        if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/ops_alert.sh "Ops watchdog crashed" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

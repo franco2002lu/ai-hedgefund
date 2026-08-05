@@ -139,7 +139,7 @@ async def test_order_flow_lost_orders_persists_critical_and_reaches_digest():
     assert any(d["level"] == "critical" for d in result)
 
 
-async def test_evaluation_failure_is_swallowed_and_returns_empty(monkeypatch):
+async def test_evaluation_failure_degrades_to_digest_warning(monkeypatch):
     def _raise(**kwargs):
         raise RuntimeError("malformed order_flow")
 
@@ -147,8 +147,10 @@ async def test_evaluation_failure_is_swallowed_and_returns_empty(monkeypatch):
 
     # Breach-y book on purpose: even a book that would normally CRITICAL must
     # not leak past a crashing evaluator — the mark/snapshot transaction
-    # matters more than these alerts.
+    # matters more than these alerts. The crash itself must still surface on
+    # the digest (last silent link, closed in final review) without touching
+    # the DB.
     result, session, repo, log = await _call(mtm=_mtm(cash=-55_473.33))
-    assert result == []
+    assert result == [{"level": "warning", "message": "Risk checks failed to evaluate — see run logs"}]
     assert repo.created == [] and log.events == []
     assert session.calls == []  # never reaches flush/savepoint

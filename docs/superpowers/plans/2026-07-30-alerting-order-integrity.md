@@ -1403,7 +1403,7 @@ git commit -m "feat(equities): reconciling order-flow line in summary_json and d
 
 ### Task 9: Risk checks — lost/rejected/unpriced + CASH_PCT_WARN 0.03
 
-(amended per Task 7/9 review: rejections carry kind — CRITICAL names dropped symbols; WARNING filters kind=rejected)
+(amended per Task 7/9 review: rejections carry kind — CRITICAL names dropped symbols; WARNING filters kind=rejected. Further amended per Task 10 + final review, commits 9c48e0f + final hardening: rejected SELLs escalate to CRITICAL `orders_rejected_sells` — a failed exit is a position the book meant to shed; rejected BUYs stay WARNING; evaluator crashes degrade to a visible digest WARNING instead of an empty list; the three workflow alert steps fire on `failure() || cancelled()` to cover job timeouts)
 
 **Files:**
 - Modify: `app/modules/equities/risk_checks.py` (constant line 17; `evaluate_post_run_invariants` lines 21-85)

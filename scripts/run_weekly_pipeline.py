@@ -210,8 +210,8 @@ async def _evaluate_and_persist_alerts(
             order_flow=order_flow,
         )
     except Exception:
-        logger.warning("Risk-check evaluation failed for %s — no alerts this run", branch_name, exc_info=True)
-        return []
+        logger.warning("Risk-check evaluation failed for %s — degrading to a digest notice", branch_name, exc_info=True)
+        return [{"level": "warning", "message": "Risk checks failed to evaluate — see run logs"}]
     digest_alerts = to_digest_dicts(alerts)
     if alerts:
         try:

@@ -43,7 +43,7 @@ jobs:
         run: python -m scripts.take_daily_snapshot
 
       - name: Alert on failure
-        if: failure()
+        if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/ops_alert.sh "Daily snapshot failed" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
