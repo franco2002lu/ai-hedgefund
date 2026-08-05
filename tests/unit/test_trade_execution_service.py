@@ -378,19 +378,19 @@ async def test_every_persisting_path_returns_non_none_order_id(service, deps):
     # (a) fill path
     broker.submit_order.return_value = OrderResult(success=True, trade=_make_trade())
     result = await service.submit_order(_make_order_request(quantity=10.0))
-    assert result["status"] == "filled" and result["order_id"] is not None
+    assert result["status"] == "filled" and isinstance(result["order_id"], str) and result["order_id"]
 
     # (b) fill-time cash-gate rejection (cost > cash)
     broker.submit_order.return_value = OrderResult(success=True, trade=_make_trade(price=50_000.0, quantity=10.0))
     result = await service.submit_order(_make_order_request(quantity=10.0))
-    assert result["status"] == "rejected" and result["order_id"] is not None
+    assert result["status"] == "rejected" and isinstance(result["order_id"], str) and result["order_id"]
 
     # (c) broker rejection
     broker.submit_order.return_value = OrderResult(success=False, trade=None, rejection_reason="halted")
     result = await service.submit_order(_make_order_request(quantity=10.0))
-    assert result["status"] == "rejected" and result["order_id"] is not None
+    assert result["status"] == "rejected" and isinstance(result["order_id"], str) and result["order_id"]
 
     # (d) validation rejection (new behavior from this task)
     portfolio_service.get_position_by_symbol.return_value = None
     result = await service.submit_order(_make_order_request(side=OrderSide.SELL, quantity=10.0))
-    assert result["status"] == "rejected" and result["order_id"] is not None
+    assert result["status"] == "rejected" and isinstance(result["order_id"], str) and result["order_id"]

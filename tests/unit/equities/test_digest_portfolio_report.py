@@ -237,3 +237,26 @@ def test_digest_renders_skips_line_with_exit_flag():
 def test_digest_legacy_fallback_without_order_flow():
     digest = render_digest([_summary()], run_date=date(2026, 8, 3))
     assert "- Orders placed: 8" in digest
+
+
+def test_digest_notes_additional_distinct_reasons():
+    flow = _flow(
+        rejected=2,
+        rejections=[
+            {
+                "symbol": "VZ",
+                "side": "sell",
+                "kind": "rejected",
+                "reason": "Insufficient position: hold 5, tried to sell 10",
+            },
+            {
+                "symbol": "MU",
+                "side": "buy",
+                "kind": "rejected",
+                "reason": "Insufficient cash: cost 9 > available 1",
+            },
+        ],
+    )
+    digest = render_digest([_summary(order_flow=flow)], run_date=date(2026, 8, 3))
+    assert "rejected: VZ, MU — Insufficient position" in digest
+    assert "(+1 more reason(s))" in digest

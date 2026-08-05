@@ -227,6 +227,56 @@ class TestOrderFlowChecks:
         assert str(rej[0].level) == "warning"
         assert "MSFT" in rej[0].message
         assert "GONE" not in rej[0].message
+        assert "BUY order(s) rejected" in rej[0].message
+
+    def test_rejected_sell_is_critical_failed_exit(self):
+        flow = _flow(
+            generated=2,
+            persisted=2,
+            filled=1,
+            rejected=1,
+            rejections=[
+                {
+                    "symbol": "VZ",
+                    "side": "sell",
+                    "kind": "rejected",
+                    "reason": "Insufficient position: hold 5, tried to sell 10",
+                }
+            ],
+        )
+        alerts = self._eval(flow)
+        assert len(alerts) == 1
+        rej = [a for a in alerts if a.metric == "orders_rejected_sells"]
+        assert len(rej) == 1
+        assert str(rej[0].level) == "critical"
+        assert "VZ" in rej[0].message
+        assert "Insufficient position" in rej[0].message
+        assert "still held" in rej[0].message
+
+    def test_mixed_rejected_sides_produce_two_alerts(self):
+        flow = _flow(
+            generated=3,
+            persisted=3,
+            filled=0,
+            rejected=3,
+            rejections=[
+                {"symbol": "VZ", "side": "sell", "kind": "rejected", "reason": "Insufficient position"},
+                {"symbol": "MSFT", "side": "buy", "kind": "rejected", "reason": "Insufficient cash"},
+                {"symbol": "JPM", "side": "buy", "kind": "rejected", "reason": "Insufficient cash"},
+            ],
+        )
+        alerts = self._eval(flow)
+        assert len(alerts) == 2
+        critical = [a for a in alerts if a.metric == "orders_rejected_sells"]
+        warning = [a for a in alerts if a.metric == "orders_rejected"]
+        assert len(critical) == 1
+        assert str(critical[0].level) == "critical"
+        assert "VZ" in critical[0].message
+        assert len(warning) == 1
+        assert str(warning[0].level) == "warning"
+        assert "MSFT" in warning[0].message
+        assert "JPM" in warning[0].message
+        assert "VZ" not in warning[0].message
 
     def test_unpriced_exit_skip_is_warning_naming_the_exit(self):
         flow = _flow(

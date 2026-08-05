@@ -88,6 +88,11 @@ Wiring: `run_weekly_pipeline._evaluate_and_persist_alerts` passes the run's `ord
 
 Note: `below_entry_threshold` skips are by-design behavior (Theme A3) — counted in the digest, **not** alerted.
 
+**Severity policy (decided in review):**
+- Rejected SELL → CRITICAL `orders_rejected_sells` (failed exit still held — pages via watchdog)
+- Rejected BUY → WARNING `orders_rejected` (self-limiting)
+- `dropped` (no row at all) → CRITICAL `orders_lost` (unchanged)
+
 ### 5. Hot-path: persist validation rejections (ships now, per user decision)
 
 In `TradeExecutionService.submit_order`, a `_validate_order` failure currently returns a bare dict (`service.py:52-54`). New behavior: create the Order row with `status=REJECTED` and `rejection_reason=<validation error>`, append `TradeRejectedEvent`, return `{"success": False, "order_id": <id>, "status": "rejected", "message": ...}` — mirroring the existing fill-time rejection path (`service.py:123-135`) exactly. No broker call is made (unchanged).

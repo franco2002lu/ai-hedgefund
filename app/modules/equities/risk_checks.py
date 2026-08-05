@@ -36,7 +36,10 @@ def evaluate_post_run_invariants(
     not balloon (the signature of mass BUY rejections), and no position may
     exceed the configured cap beyond fill-slippage tolerance. When order_flow
     is provided, also checks order-path integrity: lost (dropped) orders,
-    rejected orders, and orders skipped for missing prices.
+    rejected orders, and orders skipped for missing prices. Rejected orders
+    are split by side: a rejected SELL escalates to CRITICAL (a failed
+    exit — the position is still held), while a rejected BUY stays WARNING
+    (self-limiting).
     """
     alerts: list[RiskAlert] = []
 
@@ -119,20 +122,43 @@ def evaluate_post_run_invariants(
             )
         rejected = int(order_flow.get("rejected", 0))
         if rejected > 0:
-            rejected_syms = (
-                ", ".join(r.get("symbol", "?") for r in rejections if r.get("kind") == "rejected") or "unknown"
-            )
-            alerts.append(
-                RiskAlert(
-                    level=RiskAlertLevel.WARNING,
-                    source=branch_id,
-                    metric="orders_rejected",
-                    current_value=float(rejected),
-                    threshold=0.0,
-                    message=f"{branch_name}: {rejected} order(s) rejected ({rejected_syms})",
-                    affected_branches=[branch_name],
+            rejected_entries = [r for r in rejections if r.get("kind") == "rejected"]
+            rejected_sells = [r for r in rejected_entries if r.get("side") == "sell"]
+            rejected_buys = [r for r in rejected_entries if r.get("side") != "sell"]
+            if rejected_sells:
+                syms = ", ".join(r.get("symbol", "?") for r in rejected_sells)
+                first_reason = str(rejected_sells[0].get("reason", ""))[:80]
+                alerts.append(
+                    RiskAlert(
+                        level=RiskAlertLevel.CRITICAL,
+                        source=branch_id,
+                        metric="orders_rejected_sells",
+                        current_value=float(len(rejected_sells)),
+                        threshold=0.0,
+                        message=(
+                            f"{branch_name}: {len(rejected_sells)} SELL order(s) rejected ({syms}) "
+                            f"— intended exit/trim still held; first reason: {first_reason}"
+                        ),
+                        action_required=(
+                            "A rejected sell means the book kept a position it meant to shed — "
+                            "investigate before next run."
+                        ),
+                        affected_branches=[branch_name],
+                    )
                 )
-            )
+            if rejected_buys:
+                syms = ", ".join(r.get("symbol", "?") for r in rejected_buys)
+                alerts.append(
+                    RiskAlert(
+                        level=RiskAlertLevel.WARNING,
+                        source=branch_id,
+                        metric="orders_rejected",
+                        current_value=float(len(rejected_buys)),
+                        threshold=0.0,
+                        message=f"{branch_name}: {len(rejected_buys)} BUY order(s) rejected ({syms})",
+                        affected_branches=[branch_name],
+                    )
+                )
         unpriced = [s for s in order_flow.get("skips", []) if s.get("reason") == "unpriced"]
         if unpriced:
             exits = [s.get("symbol", "?") for s in unpriced if s.get("is_exit")]

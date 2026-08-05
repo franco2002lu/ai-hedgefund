@@ -389,7 +389,11 @@ def render_digest(summaries: list[WeeklyRunSummary], *, run_date: date) -> str:
                     group = [r for r in flow.get("rejections", []) if r.get("kind") == kind]
                     if group:
                         syms = ", ".join(r["symbol"] for r in group)
-                        lines.append(f"  - {label}: {syms} — {str(group[0].get('reason', ''))[:80]}")
+                        reasons = list(dict.fromkeys(str(r.get("reason", "")) for r in group))
+                        line = f"  - {label}: {syms} — {reasons[0][:80]}"
+                        if len(reasons) > 1:
+                            line += f" (+{len(reasons) - 1} more reason(s))"
+                        lines.append(line)
                 for skip in flow.get("skips", []):
                     suffix = ", exit" if skip.get("is_exit") else ""
                     lines.append(f"  - skipped: {skip['symbol']} ({skip['reason']}{suffix})")
